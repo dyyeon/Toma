@@ -1,7 +1,6 @@
 package com.capstone.toma
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -26,9 +25,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,6 +39,7 @@ private val VoiceBrand = Color(0xFFEE8C2B)
 private val VoiceTextPrimary = Color(0xFF222222)
 private val VoiceTextSecondary = Color(0xFF7A7A7A)
 private val VoiceSurface = Color(0xFFF7F7F7)
+
 
 @Composable
 fun TomaVoiceGuideScreen(
@@ -87,7 +90,7 @@ fun TomaVoiceGuideScreen(
             color = VoiceTextSecondary
         )
 
-        Spacer(modifier = Modifier.height(28.dp))
+        Spacer(modifier = Modifier.height(56.dp)) // Increased spacing above
 
         Box(
             modifier = Modifier.fillMaxWidth(),
@@ -99,9 +102,11 @@ fun TomaVoiceGuideScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(48.dp)) // Increased spacing below
 
-        StatusBadge(statusText = statusText)
+        StatusBadge(
+            statusText = statusText
+        )
 
         Spacer(modifier = Modifier.height(10.dp))
 
@@ -176,23 +181,18 @@ fun TomaVoiceGuideScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        suggestions.chunked(2).forEach { rowItems ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                rowItems.forEach { item ->
-                    SuggestionChip(
-                        text = item,
-                        onClick = { onSuggestionClick(item) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                if (rowItems.size == 1) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
+        @OptIn(ExperimentalLayoutApi::class)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            suggestions.forEach { item ->
+                SuggestionChip(
+                    text = item,
+                    onClick = { onSuggestionClick(item) }
+                )
             }
-            Spacer(modifier = Modifier.height(10.dp))
         }
     }
 }
@@ -214,7 +214,7 @@ private fun VoiceTopBar() {
             modifier = Modifier.align(Alignment.Center),
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
-            color = VoiceTextPrimary
+            color = TomaBrown
         )
 
         IconButton(
@@ -238,92 +238,87 @@ private fun VoiceMicButton(
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
 
-    val ringColor = if (isListening) {
-        VoiceBrand.copy(alpha = 0.18f)
-    } else {
-        VoiceBrand.copy(alpha = 0.10f)
-    }
-
-    val fillColor = VoiceBrand
-    val iconColor = Color.White
-
-    val glowSize by animateDpAsState(
-        targetValue = when {
-            pressed -> 186.dp
-            isListening -> 196.dp
-            else -> 188.dp
-        },
-        label = "glowSize"
+    val animatedScale by animateFloatAsState(
+        targetValue = if (pressed) 0.95f else 1f,
+        animationSpec = spring(),
+        label = "micScale"
     )
 
     val glowAlpha by animateFloatAsState(
         targetValue = when {
-            pressed -> 0.10f
-            isListening -> 0.22f
-            else -> 0.12f
+            isListening -> 0.85f // Increased for better visibility
+            pressed -> 0.65f
+            else -> 0.50f
         },
-        label = "glowAlpha"
+        animationSpec = spring(),
+        label = "micGlowAlpha"
     )
 
-    val animatedElevation by animateDpAsState(
+    val glowRadius by animateDpAsState(
         targetValue = when {
-            pressed -> 8.dp
-            isListening -> 22.dp
-            else -> 14.dp
+            isListening -> 180.dp // Increased radius
+            pressed -> 140.dp
+            else -> 155.dp
         },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "micShadowElevation"
-    )
-
-    val animatedScale by animateFloatAsState(
-        targetValue = if (pressed) 0.96f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "micScale"
+        animationSpec = spring(),
+        label = "micGlowRadius"
     )
 
     Box(
         contentAlignment = Alignment.Center,
-        modifier = Modifier.size(210.dp)
-    ) {
-        // 1. 글로우 레이어
-        Box(
-            modifier = Modifier
-                .size(glowSize)
-                .background(
-                    VoiceBrand.copy(alpha = glowAlpha),
-                    CircleShape
-                )
-        )
+        modifier = Modifier
+            .size(176.dp)
+            .drawBehind {
+                val buttonRadius = 88.dp.toPx()
+                val currentGlowRadius = glowRadius.toPx()
 
-        // 2. 실제 마이크 버튼
+                if (currentGlowRadius > buttonRadius) {
+                    val stop = (buttonRadius / currentGlowRadius).coerceIn(0f, 0.95f)
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            0f to VoiceBrand.copy(alpha = glowAlpha),
+                            stop to VoiceBrand.copy(alpha = glowAlpha),
+                            stop + (1f - stop) * 0.4f to VoiceBrand.copy(alpha = glowAlpha * 0.3f),
+                            1f to Color.Transparent,
+                            center = center,
+                            radius = currentGlowRadius
+                        ),
+                        radius = currentGlowRadius,
+                        center = center
+                    )
+                }
+            }
+    ) {
         Surface(
             onClick = onClick,
             interactionSource = interactionSource,
             shape = CircleShape,
-            color = fillColor,
-            border = BorderStroke(3.dp, ringColor),
+            color = VoiceBrand.copy(alpha = 0.8f),
             modifier = Modifier
-                .size(176.dp)
+                .size(182.dp)
                 .graphicsLayer {
-                    shadowElevation = animatedElevation.toPx()
-                    shape = CircleShape
-                    clip = false
                     scaleX = animatedScale
                     scaleY = animatedScale
+                    clip = false
                 }
         ) {
-            Box(contentAlignment = Alignment.Center) {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
                 Icon(
                     imageVector = Icons.Default.Mic,
                     contentDescription = "Mic",
-                    tint = iconColor,
-                    modifier = Modifier.size(60.dp)
+                    tint = Color.White,
+                    modifier = Modifier.size(56.dp)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Tap to say To-ma",
+                    color = Color.White,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
         }
@@ -331,20 +326,18 @@ private fun VoiceMicButton(
 }
 
 @Composable
-private fun StatusBadge(statusText: String) {
-    Surface(
-        shape = RoundedCornerShape(999.dp),
-        color = VoiceBrand.copy(alpha = 0.10f),
-        border = BorderStroke(1.dp, VoiceBrand.copy(alpha = 0.22f)),
-    ) {
-        Text(
-            text = statusText,
-            color = VoiceBrand,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-        )
-    }
+private fun StatusBadge(
+    statusText: String,
+    modifier: Modifier = Modifier
+) {
+    Text(
+        text = statusText,
+        color = VoiceBrand.copy(alpha = 0.8f),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.5.sp,
+        modifier = modifier
+    )
 }
 
 @Composable
@@ -376,10 +369,12 @@ private fun SuggestionChip(
             Text(
                 text = text,
                 fontSize = 13.sp,
-                fontWeight = FontWeight.Medium
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 4.dp)
             )
         },
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(20.dp),
         border = BorderStroke(
             width = 1.dp,
             color = VoiceBrand.copy(alpha = 0.22f)
