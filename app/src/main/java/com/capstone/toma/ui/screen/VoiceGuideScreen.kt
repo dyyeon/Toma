@@ -1,4 +1,4 @@
-package com.capstone.toma
+package com.capstone.toma.ui.screen
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -13,11 +13,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,20 +32,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-
-private val VoiceBrand = Color(0xFFEE8C2B)
-private val VoiceTextPrimary = Color(0xFF222222)
-private val VoiceTextSecondary = Color(0xFF7A7A7A)
-private val VoiceSurface = Color(0xFFF7F7F7)
-
+import com.capstone.toma.ui.component.TomaTopAppBar
+import com.capstone.toma.ui.theme.*
+import com.capstone.toma.VoiceUiState
 
 @Composable
-fun TomaVoiceGuideScreen(
+fun VoiceGuideScreen(
     uiState: VoiceUiState,
     suggestions: List<String>,
     onMicClick: () -> Unit,
-    onSuggestionClick: (String) -> Unit,
-    modifier: Modifier = Modifier
+    onSuggestionClick: (String) -> Unit
 ) {
     val statusText = when (uiState) {
         VoiceUiState.Idle -> "READY"
@@ -66,166 +60,137 @@ fun TomaVoiceGuideScreen(
     }
 
     Column(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxSize()
-            .background(VoiceSurface)
-            .padding(horizontal = 24.dp, vertical = 18.dp)
+            .background(TomaSurface)
+            .padding(vertical = 24.dp)
     ) {
-        VoiceTopBar()
+        TomaTopAppBar()
 
         Spacer(modifier = Modifier.height(34.dp))
 
-        Text(
-            text = "무엇을 도와드릴까요?",
-            fontSize = 26.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = VoiceTextPrimary
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "음성으로 레시피 검색이나 메뉴 추천을 요청해보세요.",
-            fontSize = 15.sp,
-            color = VoiceTextSecondary
-        )
-
-        Spacer(modifier = Modifier.height(56.dp)) // Increased spacing above
-
-        Box(
-            modifier = Modifier.fillMaxWidth(),
-            contentAlignment = Alignment.Center
+        Column(
+            modifier = Modifier.padding(horizontal = 24.dp)
         ) {
-            VoiceMicButton(
-                isListening = uiState == VoiceUiState.Listening,
-                onClick = onMicClick
+            Text(
+                text = "무엇을 도와드릴까요?",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TomaPrimaryText
             )
-        }
 
-        Spacer(modifier = Modifier.height(48.dp)) // Increased spacing below
+            Spacer(modifier = Modifier.height(8.dp))
 
-        StatusBadge(
-            statusText = statusText
-        )
+            Text(
+                text = "음성으로 레시피 검색이나 메뉴 추천을 요청해보세요.",
+                fontSize = 15.sp,
+                color = TomaSecondaryText
+            )
 
-        Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(56.dp)) // Increased spacing above
 
-        Text(
-            text = helperText,
-            fontSize = 14.sp,
-            color = VoiceTextSecondary,
-            modifier = Modifier.align(Alignment.CenterHorizontally)
-        )
-
-        AnimatedVisibility(visible = uiState == VoiceUiState.Listening) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
             ) {
-                ListeningBarRow()
-            }
-        }
-
-        AnimatedVisibility(visible = uiState is VoiceUiState.Result) {
-            val result = uiState as? VoiceUiState.Result
-            if (result != null) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, VoiceBrand.copy(alpha = 0.18f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp)
-                ) {
-                    Text(
-                        text = result.text,
-                        modifier = Modifier.padding(16.dp),
-                        fontSize = 15.sp,
-                        color = VoiceTextPrimary
-                    )
-                }
-            }
-        }
-
-        AnimatedVisibility(visible = uiState is VoiceUiState.Error) {
-            val error = uiState as? VoiceUiState.Error
-            if (error != null) {
-                Surface(
-                    shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFFFFF4F4),
-                    border = BorderStroke(1.dp, Color(0x33D32F2F)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp)
-                ) {
-                    Text(
-                        text = error.message,
-                        modifier = Modifier.padding(16.dp),
-                        fontSize = 14.sp,
-                        color = Color(0xFFC62828)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        Text(
-            text = "추천 명령어",
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            color = VoiceTextPrimary
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        @OptIn(ExperimentalLayoutApi::class)
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            suggestions.forEach { item ->
-                SuggestionChip(
-                    text = item,
-                    onClick = { onSuggestionClick(item) }
+                VoiceMicButton(
+                    isListening = uiState == VoiceUiState.Listening,
+                    onClick = onMicClick
                 )
             }
-        }
-    }
-}
 
-@Composable
-private fun VoiceTopBar() {
-    Box(
-        modifier = Modifier.fillMaxWidth().height(40.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .align(Alignment.CenterStart)
-                .background(VoiceBrand.copy(alpha = 0.16f), CircleShape)
-        )
+            Spacer(modifier = Modifier.height(48.dp)) // Increased spacing below
 
-        Text(
-            text = "To-ma",
-            modifier = Modifier.align(Alignment.Center),
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = TomaBrown
-        )
-
-        IconButton(
-            onClick = {},
-            modifier = Modifier.align(Alignment.CenterEnd)
-        ) {
-            Icon(
-                imageVector = Icons.Default.Menu,
-                contentDescription = "Menu",
-                tint = VoiceTextPrimary
+            StatusBadge(
+                statusText = statusText
             )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = helperText,
+                fontSize = 14.sp,
+                color = TomaSecondaryText,
+                modifier = Modifier.align(Alignment.CenterHorizontally)
+            )
+
+            AnimatedVisibility(visible = uiState == VoiceUiState.Listening) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    ListeningBarRow()
+                }
+            }
+
+            AnimatedVisibility(visible = uiState is VoiceUiState.Result) {
+                val result = uiState as? VoiceUiState.Result
+                if (result != null) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, TomaIosLinkBlue.copy(alpha = 0.18f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp)
+                    ) {
+                        Text(
+                            text = result.text,
+                            modifier = Modifier.padding(13.dp),
+                            fontSize = 15.sp,
+                            color = TomaPrimaryText
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(visible = uiState is VoiceUiState.Error) {
+                val error = uiState as? VoiceUiState.Error
+                if (error != null) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFFFF4F4),
+                        border = BorderStroke(1.dp, Color(0x33D32F2F)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp)
+                    ) {
+                        Text(
+                            text = error.message,
+                            modifier = Modifier.padding(16.dp),
+                            fontSize = 14.sp,
+                            color = Color(0xFFC62828)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(28.dp))
+
+            Text(
+                text = "추천 명령어",
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = TomaPrimaryText
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                suggestions.forEach { item ->
+                    SuggestionChip(
+                        text = item,
+                        onClick = { onSuggestionClick(item) }
+                    )
+                }
+            }
         }
     }
 }
@@ -276,9 +241,9 @@ private fun VoiceMicButton(
                     val stop = (buttonRadius / currentGlowRadius).coerceIn(0f, 0.95f)
                     drawCircle(
                         brush = Brush.radialGradient(
-                            0f to VoiceBrand.copy(alpha = glowAlpha),
-                            stop to VoiceBrand.copy(alpha = glowAlpha),
-                            stop + (1f - stop) * 0.4f to VoiceBrand.copy(alpha = glowAlpha * 0.3f),
+                            0f to TomaIosLinkBlue.copy(alpha = glowAlpha),
+                            stop to TomaIosLinkBlue.copy(alpha = glowAlpha),
+                            stop + (1f - stop) * 0.4f to TomaIosLinkBlue.copy(alpha = glowAlpha * 0.3f),
                             1f to Color.Transparent,
                             center = center,
                             radius = currentGlowRadius
@@ -293,7 +258,7 @@ private fun VoiceMicButton(
             onClick = onClick,
             interactionSource = interactionSource,
             shape = CircleShape,
-            color = VoiceBrand.copy(alpha = 0.8f),
+            color = TomaIosLinkBlue.copy(alpha = 0.8f),
             modifier = Modifier
                 .size(182.dp)
                 .graphicsLayer {
@@ -332,7 +297,7 @@ private fun StatusBadge(
 ) {
     Text(
         text = statusText,
-        color = VoiceBrand.copy(alpha = 0.8f),
+        color = TomaIosLinkBlue.copy(alpha = 0.8f),
         fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 0.5.sp,
@@ -351,7 +316,7 @@ private fun ListeningBarRow() {
                 modifier = Modifier
                     .width(8.dp)
                     .height(barHeight)
-                    .background(VoiceBrand, RoundedCornerShape(999.dp))
+                    .background(TomaIosLinkBlue, RoundedCornerShape(999.dp))
             )
         }
     }
@@ -377,11 +342,11 @@ private fun SuggestionChip(
         shape = RoundedCornerShape(20.dp),
         border = BorderStroke(
             width = 1.dp,
-            color = VoiceBrand.copy(alpha = 0.22f)
+            color = TomaIosLinkBlue.copy(alpha = 0.22f)
         ),
         colors = AssistChipDefaults.assistChipColors(
-            containerColor = VoiceBrand.copy(alpha = 0.10f),
-            labelColor = VoiceTextPrimary
+            containerColor = TomaIosLinkBlue.copy(alpha = 0.10f),
+            labelColor = TomaPrimaryText
         ),
         modifier = modifier
     )
@@ -395,10 +360,10 @@ private val previewSuggestions = listOf(
     "쉬운 요리 추천해줘"
 )
 
-@Preview(name = "Idle", showBackground = true, widthDp = 390, heightDp = 844)
+@Preview(name = "Idle", showBackground = true, showSystemUi = true)
 @Composable
-private fun TomaVoiceGuideIdlePreview() {
-    TomaVoiceGuideScreen(
+private fun VoiceGuideIdlePreview() {
+    VoiceGuideScreen(
         uiState = VoiceUiState.Idle,
         suggestions = previewSuggestions,
         onMicClick = {},
@@ -406,10 +371,10 @@ private fun TomaVoiceGuideIdlePreview() {
     )
 }
 
-@Preview(name = "Listening", showBackground = true, widthDp = 390, heightDp = 844)
+@Preview(name = "Listening", showBackground = true, widthDp = 390, heightDp = 844, showSystemUi = true)
 @Composable
 private fun TomaVoiceGuideListeningPreview() {
-    TomaVoiceGuideScreen(
+    VoiceGuideScreen(
         uiState = VoiceUiState.Listening,
         suggestions = previewSuggestions,
         onMicClick = {},
@@ -420,7 +385,7 @@ private fun TomaVoiceGuideListeningPreview() {
 @Preview(name = "Processing", showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
 private fun TomaVoiceGuideProcessingPreview() {
-    TomaVoiceGuideScreen(
+    VoiceGuideScreen(
         uiState = VoiceUiState.Processing,
         suggestions = previewSuggestions,
         onMicClick = {},
@@ -431,7 +396,7 @@ private fun TomaVoiceGuideProcessingPreview() {
 @Preview(name = "Result", showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
 private fun TomaVoiceGuideResultPreview() {
-    TomaVoiceGuideScreen(
+    VoiceGuideScreen(
         uiState = VoiceUiState.Result("김치볶음밥 레시피를 찾아드릴게요."),
         suggestions = previewSuggestions,
         onMicClick = {},
@@ -442,7 +407,7 @@ private fun TomaVoiceGuideResultPreview() {
 @Preview(name = "Error", showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
 private fun TomaVoiceGuideErrorPreview() {
-    TomaVoiceGuideScreen(
+    VoiceGuideScreen(
         uiState = VoiceUiState.Error("음성을 인식하지 못했어요. 다시 시도해 주세요."),
         suggestions = previewSuggestions,
         onMicClick = {},
