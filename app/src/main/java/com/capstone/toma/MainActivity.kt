@@ -39,9 +39,11 @@ fun TomaApp() {
             VoiceGuideScreen(
                 uiState = VoiceUiState.Idle,
                 suggestions = listOf(
-                    "김치찌개 알려줘",
-                    "계란볶음밥 시작해줘",
-                    "음성으로 조리 가이드 해줘"
+                    "메뉴 추천해줘",
+                    "재료로 요리 찾아줘",
+                    "간단한 레시피 알려줘",
+                    "빠른 요리 찾아줘",
+                    "쉬운 요리 추천해줘"
                 ),
                 onMicClick = {
                 },
