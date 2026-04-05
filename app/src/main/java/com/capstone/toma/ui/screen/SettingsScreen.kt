@@ -1,4 +1,4 @@
-package com.capstone.toma
+package com.capstone.toma.ui.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.capstone.toma.ui.theme.*
 
 // --- 1. 색상 및 스타일 정의 ---
 // 호진님이 요청하신 포인트 오렌지 색상 (#EE8C2B)
