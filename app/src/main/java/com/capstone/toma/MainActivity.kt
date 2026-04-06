@@ -25,8 +25,9 @@ fun TomaApp() {
 
     NavHost(
         navController = navController,
-        startDestination = "home"
+        startDestination = "settings_main" // 👈 팀원들을 위해 시작 화면은 다시 "home"으로 돌려두었습니다!
     ) {
+        // --- [기존: 팀원이 만든 홈 및 음성 가이드 화면] ---
         composable("home") {
             TomaHomeScreen(
                 onMicClick = {
@@ -52,5 +53,21 @@ fun TomaApp() {
                 }
             )
         }
+
+        // --- 🌟 [추가: 호진님이 만든 설정 화면들] 🌟 ---
+        composable("settings_main") {
+            SettingsScreen(
+                onBackClick = { navController.popBackStack() },
+                onPushClick = { navController.navigate("push_setting") },
+                onEmailClick = { navController.navigate("email_setting") },
+                onCustomerCenterClick = { navController.navigate("customer_center") },
+                onContactClick = { navController.navigate("contact_us") }
+            )
+        }
+
+        composable("push_setting") { PushSettingScreen(onBackClick = { navController.popBackStack() }) }
+        composable("email_setting") { EmailSettingScreen(onBackClick = { navController.popBackStack() }) }
+        composable("customer_center") { CustomerCenterScreen(onBackClick = { navController.popBackStack() }) }
+        composable("contact_us") { ContactUsScreen(onBackClick = { navController.popBackStack() }) }
     }
 }
