@@ -5,7 +5,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -15,7 +17,10 @@ import androidx.compose.ui.unit.sp
 import com.capstone.toma.ui.theme.*
 
 @Composable
-fun TomaTopAppBar() {
+fun TomaTopAppBar(
+    onMenuClick: () -> Unit = {},
+    menuItems: List<TomaActionMenuItem> = emptyList()
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -34,13 +39,20 @@ fun TomaTopAppBar() {
             fontSize = 24.sp,
             fontWeight = FontWeight.ExtraBold
         )
-        IconButton(onClick = { }) {
-            Icon(
-                imageVector = Icons.Default.Menu,
-                contentDescription = "Menu",
-                tint = TomaPrimaryText,
-                modifier = Modifier.size(28.dp)
+        if (menuItems.isNotEmpty()) {
+            TomaActionMenuButton(
+                items = menuItems,
+                iconTint = TomaPrimaryText
             )
+        } else {
+            IconButton(onClick = onMenuClick) {
+                Icon(
+                    imageVector = Icons.Default.Menu,
+                    contentDescription = "Menu",
+                    tint = TomaPrimaryText,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
         }
     }
 }

@@ -51,12 +51,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.capstone.toma.ui.component.TomaActionMenuItem
 import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.ui.theme.*
 
 @Composable
 fun TomaHomeScreen(
-    onMicClick: () -> Unit
+    onMicClick: () -> Unit,
+    onHomeClick: () -> Unit = {},
+    onStorageClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -65,7 +69,13 @@ fun TomaHomeScreen(
             .padding(vertical = 24.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        TomaTopAppBar()
+        TomaTopAppBar(
+            menuItems = listOf(
+                TomaActionMenuItem("홈", onHomeClick),
+                TomaActionMenuItem("저장소", onStorageClick),
+                TomaActionMenuItem("설정", onSettingsClick)
+            )
+        )
         Spacer(modifier = Modifier.height(32.dp))
         MicButton(
             modifier = Modifier.align(Alignment.CenterHorizontally),
@@ -424,6 +434,9 @@ fun RecentAnalysisCard(item: RecentAnalysisItem) {
 @Composable
 fun PreviewTomaHomeScreen() {
     TomaHomeScreen(
-        onMicClick = {}
+        onMicClick = {},
+        onHomeClick = {},
+        onStorageClick = {},
+        onSettingsClick = {}
     )
 }
