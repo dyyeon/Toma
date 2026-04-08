@@ -56,7 +56,7 @@ fun LoadingSection() {
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
-            text = "제미나이가 영상에서 재료, 단계, 영양 정보를\n추출하고 있어요...",
+            text = "영상에서 재료, 단계, 영양 정보를\n추출하고 있어요...",
             color = TomaSecondaryText,
             fontSize = 15.sp,
             fontWeight = FontWeight.Medium,

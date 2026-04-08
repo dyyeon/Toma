@@ -3,10 +3,6 @@ package com.capstone.toma.ui.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -21,36 +17,45 @@ fun TomaTopAppBar(
     onMenuClick: () -> Unit = {},
     menuItems: List<TomaActionMenuItem> = emptyList()
 ) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 24.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .size(36.dp)
-                .background(TomaMainRed, CircleShape)
-        )
-        Text(
-            text = "To-ma",
-            color = TomaBrown,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.ExtraBold
-        )
-        if (menuItems.isNotEmpty()) {
-            TomaActionMenuButton(
-                items = menuItems,
-                iconTint = TomaPrimaryText
-            )
-        } else {
-            IconButton(onClick = onMenuClick) {
-                Icon(
-                    imageVector = Icons.Default.Menu,
-                    contentDescription = "Menu",
-                    tint = TomaPrimaryText,
-                    modifier = Modifier.size(28.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.width(48.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(TomaMainRed, CircleShape)
+                )
+            }
+
+            Box(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = "To-ma",
+                    color = TomaBrown,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+            }
+
+            Box(
+                modifier = Modifier.width(48.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                TomaActionMenuButton(
+                    items = menuItems,
+                    iconTint = TomaPrimaryText
                 )
             }
         }
