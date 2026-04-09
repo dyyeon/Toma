@@ -18,6 +18,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -27,15 +28,12 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.SmartDisplay
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,12 +49,12 @@ import androidx.compose.ui.unit.sp
 import com.capstone.toma.ui.component.LoadingSection
 import com.capstone.toma.ui.component.TomaActionMenuItem
 import com.capstone.toma.ui.component.TomaTopAppBar
+import com.capstone.toma.ui.theme.TomaBackground
 import com.capstone.toma.ui.theme.TomaLightRed
 import com.capstone.toma.ui.theme.TomaMainOrange
 import com.capstone.toma.ui.theme.TomaMainRed
 import com.capstone.toma.ui.theme.TomaPrimaryText
 import com.capstone.toma.ui.theme.TomaSecondaryText
-import com.capstone.toma.ui.theme.TomaSurface
 
 enum class RecipeSourceType {
     TEXT, YOUTUBE, IMAGE
@@ -96,7 +94,7 @@ fun TomaHomeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(TomaSurface)
+            .background(TomaBackground)
             .padding(top = 24.dp, bottom = 24.dp)
     ) {
         TomaTopAppBar(
@@ -120,17 +118,8 @@ fun TomaHomeScreen(
                 onQueryChange = onSearchQueryChange,
                 onSearchSubmit = onSearchSubmit,
                 onMicClick = onMicClick,
+                enabled = !uiState.isAnalyzing,
                 modifier = Modifier.padding(horizontal = 24.dp)
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            ImportSection(
-                modifier = Modifier.padding(horizontal = 24.dp),
-                youtubeLink = uiState.youtubeLink,
-                onYoutubeLinkChange = onYoutubeLinkChange,
-                onYoutubeSubmit = onYoutubeSubmit,
-                onPhotoScanClick = onPhotoScanClick
             )
 
             Spacer(modifier = Modifier.height(32.dp))
@@ -138,14 +127,26 @@ fun TomaHomeScreen(
             if (uiState.isAnalyzing) {
                 LoadingSection()
             } else {
-                RecentAnalysisSection(
-                    items = uiState.recentItems,
-                    onItemClick = onRecentItemClick,
-                    onMoreClick = onRecentMoreClick
+                ImportSection(
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                    youtubeLink = uiState.youtubeLink,
+                    onYoutubeLinkChange = onYoutubeLinkChange,
+                    onYoutubeSubmit = onYoutubeSubmit,
+                    onPhotoScanClick = onPhotoScanClick,
+                    enabled = !uiState.isAnalyzing
                 )
             }
 
             Spacer(modifier = Modifier.height(20.dp))
+
+            RecentAnalysisSection(
+                items = uiState.recentItems,
+                onItemClick = onRecentItemClick,
+                onMoreClick = onRecentMoreClick
+            )
+
+            Spacer(modifier = Modifier.height(32.dp))
+
 
             uiState.selectedRecentItemId?.let { selectedId ->
                 val selectedItem = uiState.recentItems.firstOrNull { it.id == selectedId }
@@ -180,6 +181,7 @@ fun AIRecipeSearchCard(
     onQueryChange: (String) -> Unit,
     onSearchSubmit: () -> Unit,
     onMicClick: () -> Unit,
+    enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -217,91 +219,103 @@ fun AIRecipeSearchCard(
                 lineHeight = 22.sp
             )
 
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
+                Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(56.dp),
-                    placeholder = {
-                        Text(
-                            text = "검색어를 입력하세요",
-                            color = TomaSecondaryText,
-                            fontSize = 15.sp
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(TomaBackground)
+                        .clickable(enabled = enabled) { onSearchSubmit() }
+                        .padding(horizontal = 14.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        BasicTextField(
+                            value = query,
+                            onValueChange = onQueryChange,
+                            enabled = enabled,
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(
+                                color = TomaPrimaryText,
+                                fontSize = 15.sp
+                            ),
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(
+                                imeAction = ImeAction.Search
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onSearch = { onSearchSubmit() },
+                                onDone = { onSearchSubmit() }
+                            ),
+                            decorationBox = { innerTextField ->
+                                if (query.isEmpty()) {
+                                    Text(
+                                        text = "검색어를 입력하세요",
+                                        color = TomaSecondaryText,
+                                        fontSize = 15.sp,
+                                        maxLines = 1
+                                    )
+                                }
+                                innerTextField()
+                            }
                         )
-                    },
-                    trailingIcon = {
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "검색",
                             tint = TomaSecondaryText,
-                            modifier = Modifier
-                                .size(20.dp)
-                                .clickable { onSearchSubmit() }
+                            modifier = Modifier.size(18.dp)
                         )
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
-                    keyboardOptions = KeyboardOptions(
-                        imeAction = ImeAction.Search
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onSearch = { onSearchSubmit() },
-                        onDone = { onSearchSubmit() }
-                    ),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = TomaSurface,
-                        unfocusedContainerColor = TomaSurface,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
-                        cursorColor = TomaMainOrange,
-                        focusedTextColor = TomaPrimaryText,
-                        unfocusedTextColor = TomaPrimaryText
-                    )
-                )
+                    }
+                }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                Button(
-                    onClick = onMicClick,
-                    modifier = Modifier.size(56.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    contentPadding = PaddingValues(0.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = TomaMainOrange
-                    )
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(
+                            if (enabled) TomaMainOrange else Color(0xFFD9D9D9)
+                        )
+                        .clickable(enabled = enabled) { onMicClick() },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.Mic,
                         contentDescription = "음성 검색",
                         tint = Color.White,
-                        modifier = Modifier.size(24.dp)
+                        modifier = Modifier.size(19.dp)
                     )
                 }
             }
         }
     }
 }
-
 @Composable
 fun ImportSection(
     youtubeLink: String,
     onYoutubeLinkChange: (String) -> Unit,
     onYoutubeSubmit: () -> Unit,
     onPhotoScanClick: () -> Unit,
+    enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = "레시피 가져오기",
-            color = TomaSecondaryText,
+            color = TomaPrimaryText,
             fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -311,13 +325,15 @@ fun ImportSection(
         YoutubeImportCard(
             linkText = youtubeLink,
             onLinkChange = onYoutubeLinkChange,
-            onSubmit = onYoutubeSubmit
+            onSubmit = onYoutubeSubmit,
+            enabled = enabled
         )
 
         Spacer(modifier = Modifier.height(14.dp))
 
         PhotoImportCard(
-            onClick = onPhotoScanClick
+            onClick = onPhotoScanClick,
+            enabled = enabled
         )
     }
 }
@@ -327,6 +343,7 @@ fun YoutubeImportCard(
     linkText: String,
     onLinkChange: (String) -> Unit,
     onSubmit: () -> Unit,
+    enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -344,66 +361,78 @@ fun YoutubeImportCard(
             Box(
                 modifier = Modifier
                     .size(50.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(14.dp))
                     .background(TomaLightRed),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.SmartDisplay,
+                    imageVector = Icons.Filled.SmartDisplay,
                     contentDescription = "유튜브",
                     tint = TomaMainRed,
                     modifier = Modifier.size(24.dp)
                 )
             }
 
-            OutlinedTextField(
-                value = linkText,
-                onValueChange = onLinkChange,
-                modifier = Modifier.weight(1f),
-                placeholder = {
-                    Text(
-                        text = "유튜브 링크를 붙여넣으세요",
-                        color = TomaSecondaryText,
-                        fontSize = 15.sp,
-                        maxLines = 1
-                    )
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp),
-                keyboardOptions = KeyboardOptions(
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = { onSubmit() }
-                ),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent,
-                    cursorColor = TomaMainOrange,
-                    focusedTextColor = TomaPrimaryText,
-                    unfocusedTextColor = TomaPrimaryText
-                )
-            )
-
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
             Box(
                 modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.White)
-                    .padding(4.dp)
-                    .clickable { onSubmit() },
+                    .weight(1f)
+                    .height(36.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                BasicTextField(
+                    value = linkText,
+                    onValueChange = onLinkChange,
+                    enabled = enabled,
+                    singleLine = true,
+                    textStyle = LocalTextStyle.current.copy(
+                        color = TomaPrimaryText,
+                        fontSize = 14.sp
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = { onSubmit() }
+                    ),
+                    decorationBox = { innerTextField ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 2.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            if (linkText.isEmpty()) {
+                                Text(
+                                    text = "유튜브 링크를 붙여넣으세요",
+                                    color = TomaSecondaryText,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            innerTextField()
+                        }
+                    }
+                )
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(RoundedCornerShape(7.dp))
+                    .clickable(enabled = enabled) { onSubmit() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.CallMade,
                     contentDescription = "유튜브 링크 전송",
                     tint = Color(0xD20A0F23),
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
@@ -413,12 +442,13 @@ fun YoutubeImportCard(
 @Composable
 fun PhotoImportCard(
     onClick: () -> Unit,
+    enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .clickable(enabled = enabled) { onClick() },
         shape = RoundedCornerShape(20.dp),
         color = Color.White,
         shadowElevation = 6.dp

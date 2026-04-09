@@ -5,20 +5,35 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BrightnessAuto
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.capstone.toma.ui.theme.*
+import com.capstone.toma.ui.theme.TomaSecondaryText
+
+private val LoadingGradient = Brush.sweepGradient(
+    colors = listOf(
+        Color(0xFFFF3059),
+        Color(0xFFF9A703),
+        Color(0xFFFF3059),
+        Color(0xFF007AFF),
+        Color(0xFFFF3059)
+    )
+)
 
 @Composable
 fun LoadingSection() {
@@ -29,24 +44,41 @@ fun LoadingSection() {
         Box(
             modifier = Modifier
                 .size(160.dp)
+                .shadow(
+                    elevation = 2.dp,
+                    shape = CircleShape,
+                    spotColor = Color.Black.copy(alpha = 0.05f)
+                )
                 .clip(CircleShape)
                 .background(Color.White)
-                .border(6.dp, LoadingGradient, CircleShape)
-                .shadow(2.dp, CircleShape, spotColor = Color.Black.copy(0.05f)),
+                .border(6.dp, LoadingGradient, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Default.BrightnessAuto,
+                imageVector = Icons.Default.AutoAwesome,
                 contentDescription = "Magic Stars",
-                tint = Color(0xFFFF9F43),
-                modifier = Modifier.size(48.dp)
+                tint = Color.White,
+                modifier = Modifier
+                    .size(48.dp)
+                    .graphicsLayer(
+                        compositingStrategy = CompositingStrategy.Offscreen
+                    )
+                    .drawWithCache {
+                        onDrawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush = LoadingGradient,
+                                blendMode = BlendMode.SrcIn
+                            )
+                        }
+                    }
             )
         }
 
         Spacer(modifier = Modifier.height(28.dp))
 
         Text(
-            text = "요리의 마법을 분석 중입니다",
+            text = "마법의 레시피를 분석 중입니다",
             color = Color.Black,
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,

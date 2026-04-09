@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.sp
 import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.ui.theme.*
 import com.capstone.toma.VoiceUiState
-private val StorageBg = Color(0xFFFFFBF7)
 @Composable
 fun VoiceGuideScreen(
     uiState: VoiceUiState,
@@ -62,7 +61,7 @@ fun VoiceGuideScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(StorageBg)
+            .background(TomaBackground)
             .padding(vertical = 24.dp)
     ) {
         TomaTopAppBar()
