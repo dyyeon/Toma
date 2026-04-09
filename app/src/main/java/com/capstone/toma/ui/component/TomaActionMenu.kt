@@ -1,6 +1,7 @@
 package com.capstone.toma.ui.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -51,7 +52,8 @@ fun TomaActionMenuButton(
             Icon(
                 imageVector = Icons.Default.Menu,
                 contentDescription = "Menu",
-                tint = iconTint
+                tint = iconTint,
+                modifier = Modifier.size(28.dp)
             )
         }
 

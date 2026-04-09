@@ -35,7 +35,6 @@ import androidx.compose.ui.unit.sp
 import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.ui.theme.*
 import com.capstone.toma.VoiceUiState
-
 @Composable
 fun VoiceGuideScreen(
     uiState: VoiceUiState,
@@ -62,7 +61,7 @@ fun VoiceGuideScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(TomaSurface)
+            .background(TomaBackground)
             .padding(vertical = 24.dp)
     ) {
         TomaTopAppBar()
@@ -131,7 +130,7 @@ fun VoiceGuideScreen(
                     Surface(
                         shape = RoundedCornerShape(16.dp),
                         color = Color.White,
-                        border = BorderStroke(1.dp, TomaIosLinkBlue.copy(alpha = 0.18f)),
+                        border = BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.18f)),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 16.dp)
@@ -241,9 +240,9 @@ private fun VoiceMicButton(
                     val stop = (buttonRadius / currentGlowRadius).coerceIn(0f, 0.95f)
                     drawCircle(
                         brush = Brush.radialGradient(
-                            0f to TomaIosLinkBlue.copy(alpha = glowAlpha),
-                            stop to TomaIosLinkBlue.copy(alpha = glowAlpha),
-                            stop + (1f - stop) * 0.4f to TomaIosLinkBlue.copy(alpha = glowAlpha * 0.3f),
+                            0f to TomaMainOrange.copy(alpha = glowAlpha),
+                            stop to TomaMainOrange.copy(alpha = glowAlpha),
+                            stop + (1f - stop) * 0.4f to TomaMainOrange.copy(alpha = glowAlpha * 0.3f),
                             1f to Color.Transparent,
                             center = center,
                             radius = currentGlowRadius
@@ -258,7 +257,7 @@ private fun VoiceMicButton(
             onClick = onClick,
             interactionSource = interactionSource,
             shape = CircleShape,
-            color = TomaIosLinkBlue.copy(alpha = 0.8f),
+            color = TomaMainOrange.copy(alpha = 0.8f),
             modifier = Modifier
                 .size(182.dp)
                 .graphicsLayer {
@@ -297,7 +296,7 @@ private fun StatusBadge(
 ) {
     Text(
         text = statusText,
-        color = TomaIosLinkBlue.copy(alpha = 0.8f),
+        color = TomaMainOrange.copy(alpha = 0.8f),
         fontSize = 13.sp,
         fontWeight = FontWeight.Bold,
         letterSpacing = 0.5.sp,
@@ -316,7 +315,7 @@ private fun ListeningBarRow() {
                 modifier = Modifier
                     .width(8.dp)
                     .height(barHeight)
-                    .background(TomaIosLinkBlue, RoundedCornerShape(999.dp))
+                    .background(TomaMainOrange, RoundedCornerShape(999.dp))
             )
         }
     }
@@ -342,10 +341,10 @@ private fun SuggestionChip(
         shape = RoundedCornerShape(20.dp),
         border = BorderStroke(
             width = 1.dp,
-            color = TomaIosLinkBlue.copy(alpha = 0.22f)
+            color = TomaMainOrange.copy(alpha = 0.22f)
         ),
         colors = AssistChipDefaults.assistChipColors(
-            containerColor = TomaIosLinkBlue.copy(alpha = 0.10f),
+            containerColor = TomaMainOrange.copy(alpha = 0.10f),
             labelColor = TomaPrimaryText
         ),
         modifier = modifier
