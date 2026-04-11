@@ -18,5 +18,6 @@ data class StoredRecipe(
     val ingredients: List<String>,
     val steps: List<String>,
     val sourceType: RecipeSourceType,
-    val timeText: String
+    val timeText: String,
+    val imageUri: String? = null
 )
