@@ -85,9 +85,7 @@ fun TomaNavHost(
 
         composable(TomaDestination.RecipeStorage.route) {
             RecipeStorageScreen(
-                onHomeClick = { navController.navigateSingleTop(TomaDestination.Home.route) },
-                onStorageClick = { navController.navigateSingleTop(TomaDestination.RecipeStorage.route) },
-                onSettingsClick = { navController.navigateSingleTop(TomaDestination.Settings.route) }
+                onBackClick = { navController.popBackStack() }
             )
         }
 

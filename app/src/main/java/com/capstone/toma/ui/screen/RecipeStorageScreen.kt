@@ -20,8 +20,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Search
@@ -56,8 +56,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.capstone.toma.ui.component.TomaActionMenuButton
-import com.capstone.toma.ui.component.TomaActionMenuItem
 import com.capstone.toma.ui.theme.TomaMainRed
 import com.capstone.toma.ui.theme.TomaPrimaryText
 import com.capstone.toma.ui.theme.TomaSecondaryText
@@ -69,6 +67,7 @@ private val StorageChip = Color(0xFFFFEFE3)
 private val StorageAccent = TomaMainRed
 private val StorageInk = TomaPrimaryText
 private val StorageMuted = TomaSecondaryText
+private val StorageLogo = Color(0xFFEE8C2B)
 
 private data class StoredRecipe(
     val id: String,
@@ -87,9 +86,7 @@ private data class StoredRecipe(
 
 @Composable
 fun RecipeStorageScreen(
-    onHomeClick: () -> Unit = {},
-    onStorageClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {}
+    onBackClick: () -> Unit = {}
 ) {
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
@@ -124,9 +121,7 @@ fun RecipeStorageScreen(
                 totalCount = recipes.size,
                 query = query,
                 onQueryChange = { query = it },
-                onHomeClick = onHomeClick,
-                onStorageClick = onStorageClick,
-                onSettingsClick = onSettingsClick,
+                onBackClick = onBackClick,
                 onOpen = { openedId = it.id },
                 onFavoriteToggle = { recipe -> recipes = recipes.toggleFavorite(recipe.id) }
             )
@@ -135,9 +130,6 @@ fun RecipeStorageScreen(
                 inner = inner,
                 recipe = opened,
                 onBack = { openedId = null },
-                onHomeClick = onHomeClick,
-                onStorageClick = onStorageClick,
-                onSettingsClick = onSettingsClick,
                 onFavoriteToggle = { recipes = recipes.toggleFavorite(opened.id) }
             )
         }
@@ -151,9 +143,7 @@ private fun StorageList(
     totalCount: Int,
     query: String,
     onQueryChange: (String) -> Unit,
-    onHomeClick: () -> Unit,
-    onStorageClick: () -> Unit,
-    onSettingsClick: () -> Unit,
+    onBackClick: () -> Unit,
     onOpen: (StoredRecipe) -> Unit,
     onFavoriteToggle: (StoredRecipe) -> Unit
 ) {
@@ -162,7 +152,7 @@ private fun StorageList(
         contentPadding = PaddingValues(20.dp, inner.calculateTopPadding() + 12.dp, 20.dp, inner.calculateBottomPadding() + 96.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        item { StorageHeader(onHomeClick, onStorageClick, onSettingsClick) }
+        item { StorageHeader(onBackClick) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
@@ -197,9 +187,6 @@ private fun StorageDetail(
     inner: PaddingValues,
     recipe: StoredRecipe,
     onBack: () -> Unit,
-    onHomeClick: () -> Unit,
-    onStorageClick: () -> Unit,
-    onSettingsClick: () -> Unit,
     onFavoriteToggle: () -> Unit
 ) {
     LazyColumn(
@@ -207,16 +194,7 @@ private fun StorageDetail(
         contentPadding = PaddingValues(20.dp, inner.calculateTopPadding() + 12.dp, 20.dp, inner.calculateBottomPadding() + 32.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack, modifier = Modifier.background(StorageCard, CircleShape)) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "뒤로", tint = StorageInk)
-            }
-            Spacer(Modifier.width(10.dp))
-            Text("레시피 상세", color = StorageInk, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            StorageMenu(onHomeClick, onStorageClick, onSettingsClick)
-        }
-        }
+        item { StorageDetailHeader(onBack) }
         item { HeroCard(recipe, onFavoriteToggle) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -253,24 +231,69 @@ private fun StorageDetail(
 }
 
 @Composable
-private fun StorageHeader(onHomeClick: () -> Unit, onStorageClick: () -> Unit, onSettingsClick: () -> Unit) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text("내 레시피", color = StorageInk, fontSize = 34.sp, fontWeight = FontWeight.ExtraBold)
-        StorageMenu(onHomeClick, onStorageClick, onSettingsClick)
+private fun StorageHeader(onBackClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBackClick) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "뒤로",
+                tint = Color.Black
+            )
+        }
+
+        Text(
+            text = "저장소",
+            color = Color.Black,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 8.dp)
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Text(
+            text = "TOMA",
+            color = StorageLogo,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.ExtraBold
+        )
     }
 }
 
 @Composable
-private fun StorageMenu(onHomeClick: () -> Unit, onStorageClick: () -> Unit, onSettingsClick: () -> Unit) {
-    TomaActionMenuButton(
-        items = listOf(
-            TomaActionMenuItem("홈", onHomeClick),
-            TomaActionMenuItem("저장소", onStorageClick),
-            TomaActionMenuItem("설정", onSettingsClick)
-        ),
-        containerColor = StorageCard,
-        iconTint = StorageInk
-    )
+private fun StorageDetailHeader(onBackClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBackClick) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "뒤로",
+                tint = Color.Black
+            )
+        }
+
+        Text(
+            text = "레시피 상세",
+            color = Color.Black,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 8.dp)
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Text(
+            text = "TOMA",
+            color = StorageLogo,
+            fontSize = 24.sp,
+            fontWeight = FontWeight.ExtraBold
+        )
+    }
 }
 
 @Composable

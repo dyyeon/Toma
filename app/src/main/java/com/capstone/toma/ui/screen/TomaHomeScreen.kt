@@ -25,16 +25,22 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,7 +53,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.capstone.toma.ui.component.LoadingSection
-import com.capstone.toma.ui.component.TomaActionMenuItem
+import com.capstone.toma.ui.component.TomaDrawerItem
+import com.capstone.toma.ui.component.TomaDrawerSheet
 import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.ui.theme.TomaBackground
 import com.capstone.toma.ui.theme.TomaLightRed
@@ -55,6 +62,7 @@ import com.capstone.toma.ui.theme.TomaMainOrange
 import com.capstone.toma.ui.theme.TomaMainRed
 import com.capstone.toma.ui.theme.TomaPrimaryText
 import com.capstone.toma.ui.theme.TomaSecondaryText
+import kotlinx.coroutines.launch
 
 enum class RecipeSourceType {
     TEXT, YOUTUBE, IMAGE
@@ -91,86 +99,118 @@ fun TomaHomeScreen(
     onStorageClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {}
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(TomaBackground)
-            .padding(top = 24.dp, bottom = 24.dp)
-    ) {
-        TomaTopAppBar(
-            menuItems = listOf(
-                TomaActionMenuItem("홈", onHomeClick),
-                TomaActionMenuItem("저장소", onStorageClick),
-                TomaActionMenuItem("설정", onSettingsClick)
-            )
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    val drawerItems = listOf(
+        TomaDrawerItem(
+            label = "저장소",
+            subtitle = "저장한 레시피를 관리합니다",
+            icon = Icons.Default.BookmarkBorder,
+            onClick = {
+                scope.launch {
+                    drawerState.close()
+                    onStorageClick()
+                }
+            }
+        ),
+        TomaDrawerItem(
+            label = "설정",
+            subtitle = "앱 설정과 지원 메뉴를 확인합니다",
+            icon = Icons.Default.Settings,
+            onClick = {
+                scope.launch {
+                    drawerState.close()
+                    onSettingsClick()
+                }
+            }
         )
+    )
 
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            TomaDrawerSheet(items = drawerItems)
+        }
+    ) {
         Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .fillMaxSize()
+                .background(TomaBackground)
+                .padding(top = 24.dp, bottom = 24.dp)
         ) {
-            Spacer(modifier = Modifier.height(20.dp))
-
-            AIRecipeSearchCard(
-                query = uiState.searchQuery,
-                onQueryChange = onSearchQueryChange,
-                onSearchSubmit = onSearchSubmit,
-                onMicClick = onMicClick,
-                enabled = !uiState.isAnalyzing,
-                modifier = Modifier.padding(horizontal = 24.dp)
+            TomaTopAppBar(
+                onMenuClick = {
+                    scope.launch { drawerState.open() }
+                }
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Spacer(modifier = Modifier.height(20.dp))
 
-            if (uiState.isAnalyzing) {
-                LoadingSection()
-            } else {
-                ImportSection(
-                    modifier = Modifier.padding(horizontal = 24.dp),
-                    youtubeLink = uiState.youtubeLink,
-                    onYoutubeLinkChange = onYoutubeLinkChange,
-                    onYoutubeSubmit = onYoutubeSubmit,
-                    onPhotoScanClick = onPhotoScanClick,
-                    enabled = !uiState.isAnalyzing
+                AIRecipeSearchCard(
+                    query = uiState.searchQuery,
+                    onQueryChange = onSearchQueryChange,
+                    onSearchSubmit = onSearchSubmit,
+                    onMicClick = onMicClick,
+                    enabled = !uiState.isAnalyzing,
+                    modifier = Modifier.padding(horizontal = 24.dp)
                 )
-            }
 
-            Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(32.dp))
 
-            RecentAnalysisSection(
-                items = uiState.recentItems,
-                onItemClick = onRecentItemClick,
-                onMoreClick = onRecentMoreClick
-            )
+                if (uiState.isAnalyzing) {
+                    LoadingSection()
+                } else {
+                    ImportSection(
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                        youtubeLink = uiState.youtubeLink,
+                        onYoutubeLinkChange = onYoutubeLinkChange,
+                        onYoutubeSubmit = onYoutubeSubmit,
+                        onPhotoScanClick = onPhotoScanClick,
+                        enabled = !uiState.isAnalyzing
+                    )
+                }
 
-            Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(20.dp))
+
+                RecentAnalysisSection(
+                    items = uiState.recentItems,
+                    onItemClick = onRecentItemClick,
+                    onMoreClick = onRecentMoreClick
+                )
+
+                Spacer(modifier = Modifier.height(32.dp))
 
 
-            uiState.selectedRecentItemId?.let { selectedId ->
-                val selectedItem = uiState.recentItems.firstOrNull { it.id == selectedId }
+                uiState.selectedRecentItemId?.let { selectedId ->
+                    val selectedItem = uiState.recentItems.firstOrNull { it.id == selectedId }
 
-                if (selectedItem != null) {
+                    if (selectedItem != null) {
+                        Spacer(modifier = Modifier.height(20.dp))
+                        SelectedRecentItemCard(
+                            title = selectedItem.title,
+                            sourceType = selectedItem.sourceType,
+                            timeText = selectedItem.timeText,
+                            modifier = Modifier.padding(horizontal = 24.dp)
+                        )
+                    }
+                }
+
+                uiState.errorMessage?.let { message ->
                     Spacer(modifier = Modifier.height(20.dp))
-                    SelectedRecentItemCard(
-                        title = selectedItem.title,
-                        sourceType = selectedItem.sourceType,
-                        timeText = selectedItem.timeText,
+                    ErrorMessageCard(
+                        message = message,
                         modifier = Modifier.padding(horizontal = 24.dp)
                     )
                 }
-            }
 
-            uiState.errorMessage?.let { message ->
-                Spacer(modifier = Modifier.height(20.dp))
-                ErrorMessageCard(
-                    message = message,
-                    modifier = Modifier.padding(horizontal = 24.dp)
-                )
+                Spacer(modifier = Modifier.height(40.dp))
             }
-
-            Spacer(modifier = Modifier.height(40.dp))
         }
     }
 }
