@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalNavigationDrawer
@@ -97,7 +98,9 @@ fun TomaHomeScreen(
     onRecentMoreClick: () -> Unit = {},
     onHomeClick: () -> Unit = {},
     onStorageClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {}
+    onSettingsClick: () -> Unit = {},
+    // 🌟 [추가] 사이드바에서 사용할 클릭 이벤트
+    onPrivacyPolicyClick: () -> Unit = {}
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -121,6 +124,17 @@ fun TomaHomeScreen(
                 scope.launch {
                     drawerState.close()
                     onSettingsClick()
+                }
+            }
+        ),
+        TomaDrawerItem(
+            label = "개인정보 처리방침",
+            subtitle = "TOMA 서비스 이용 약관 및 방침",
+            icon = Icons.Default.PrivacyTip,
+            onClick = {
+                scope.launch {
+                    drawerState.close()
+                    onPrivacyPolicyClick()
                 }
             }
         )
@@ -185,7 +199,6 @@ fun TomaHomeScreen(
                 )
 
                 Spacer(modifier = Modifier.height(32.dp))
-
 
                 uiState.selectedRecentItemId?.let { selectedId ->
                     val selectedItem = uiState.recentItems.firstOrNull { it.id == selectedId }
@@ -787,7 +800,8 @@ fun PreviewTomaHomeScreen() {
         onRecentMoreClick = {},
         onHomeClick = {},
         onStorageClick = {},
-        onSettingsClick = {}
+        onSettingsClick = {},
+        onPrivacyPolicyClick = {}
     )
 }
 
@@ -808,6 +822,7 @@ fun PreviewTomaHomeScreenLoading() {
         onRecentMoreClick = {},
         onHomeClick = {},
         onStorageClick = {},
-        onSettingsClick = {}
+        onSettingsClick = {},
+        onPrivacyPolicyClick = {}
     )
 }

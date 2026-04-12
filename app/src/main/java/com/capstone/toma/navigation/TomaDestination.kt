@@ -9,4 +9,5 @@ sealed class TomaDestination(val route: String) {
     object EmailSetting : TomaDestination("email_setting")
     object CustomerCenter : TomaDestination("customer_center")
     object ContactUs : TomaDestination("contact_us")
+    object PrivacyPolicy : TomaDestination("privacy_policy")
 }

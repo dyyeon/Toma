@@ -1,4 +1,4 @@
-package com.capstone.toma
+package com.capstone.toma.ui.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
