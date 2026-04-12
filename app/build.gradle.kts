@@ -86,4 +86,10 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     implementation("androidx.compose.material:material-icons-extended")
     ksp(libs.androidx.room.compiler)
+
+    // 💡 Vosk 오프라인 음성 인식 라이브러리 추가
+    implementation("com.alphacephei:vosk-android:0.3.32")
+
+    implementation("net.java.dev.jna:jna:5.2.0@aar")
+
 }
