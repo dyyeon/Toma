@@ -15,18 +15,21 @@ if (localPropertiesFile.exists()) {
 
 android {
     namespace = "com.capstone.toma"
-    compileSdk = 35
+
+    // 에러 해결을 위해 35에서 36으로 변경합니다.
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.capstone.toma"
         minSdk = 24
-        targetSdk = 35
+        // targetSdk도 36으로 맞춰줍니다.
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // 2. BuildConfig에 변수 추가 (키가 없으면 빈 문자열)
+        // 2. BuildConfig에 변수 추가
         val apiKey = localProperties.getProperty("OPENAI_API_KEY") ?: ""
         buildConfigField("String", "OPENAI_API_KEY", "\"$apiKey\"")
     }
@@ -40,7 +43,6 @@ android {
             )
         }
         debug {
-            // 디버그 모드에서도 BuildConfig가 잘 생성되도록 명시적으로 추가 가능
             buildConfigField("String", "OPENAI_API_KEY", "\"${localProperties.getProperty("OPENAI_API_KEY") ?: ""}\"")
         }
     }
@@ -52,7 +54,6 @@ android {
 
     buildFeatures {
         compose = true
-        // 3. 이 옵션이 핵심입니다!
         buildConfig = true
     }
 }
