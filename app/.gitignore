@@ -1,1 +1,20 @@
+# 1. 기본 빌드 결과물 및 안드로이드 설정
 /build
+.gradle
+/captures
+*.iml
+local.properties
+.DS_Store
+
+# 2. Vosk AI 모델 (대용량 파일) 방어 설정
+# model-ko 폴더 안의 모든 파일은 무시하되
+app/src/main/assets/sync/model-ko/*
+
+# 폴더 구조 유지를 위해 .gitkeep 파일만은 예외적으로 추적함
+!app/src/main/assets/sync/model-ko/.gitkeep
+
+# 3. 추가 대용량 확장자 차단 (안전장치)
+*.fst
+*.mdl
+*.ie
+*.dubm
