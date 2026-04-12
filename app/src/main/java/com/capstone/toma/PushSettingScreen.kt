@@ -22,8 +22,12 @@ fun PushSettingScreen(onBackClick: () -> Unit = {}) {
     val TomaPointOrange = Color(0xFFEE8C2B)
     val TomaSettingsBg = Color(0xFFFFFBFA)
     val TomaItemGroupBg = Color(0xFFF7F2F0)
+    val TomaSecondaryText = Color(0xFF8E8E93)
 
+    // 마스터 스위치 (전체 알림)
     var isMasterEnabled by remember { mutableStateOf(true) }
+
+    // 개별 설정 스위치들
     var isCommentEnabled by remember { mutableStateOf(true) }
     var isLikeEnabled by remember { mutableStateOf(true) }
     var isRecipeRecommendEnabled by remember { mutableStateOf(true) }
@@ -32,55 +36,114 @@ fun PushSettingScreen(onBackClick: () -> Unit = {}) {
     var isNoticeEnabled by remember { mutableStateOf(true) }
 
     Column(
-        modifier = Modifier.fillMaxSize().background(TomaSettingsBg).padding(top = 48.dp, start = 20.dp, end = 20.dp).verticalScroll(rememberScrollState())
+        modifier = Modifier
+            .fillMaxSize()
+            .background(TomaSettingsBg)
+            .padding(top = 48.dp, start = 20.dp, end = 20.dp)
+            .verticalScroll(rememberScrollState()) // 스크롤 가능하도록 추가!
     ) {
+        // 상단 바
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             IconButton(onClick = onBackClick, modifier = Modifier.align(Alignment.CenterStart)) {
                 Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.Black)
             }
             Text("푸시 알림 설정", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
+
         Spacer(modifier = Modifier.height(32.dp))
 
-        Column(modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
-            PushSwitchItem("앱 푸시 알림 전체 허용", "모든 알림을 한 번에 켜고 끌 수 있습니다.", isMasterEnabled, { isMasterEnabled = it }, TomaPointOrange)
+        // --- 1. 기본 설정 (마스터 스위치) ---
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(1.dp, RoundedCornerShape(16.dp))
+                .background(TomaItemGroupBg, RoundedCornerShape(16.dp))
+                .padding(vertical = 8.dp)
+        ) {
+            PushSwitchItem(
+                title = "앱 푸시 알림 전체 허용",
+                subtitle = "모든 알림을 한 번에 켜고 끌 수 있습니다.",
+                isChecked = isMasterEnabled,
+                onCheckedChange = { isMasterEnabled = it },
+                activeColor = TomaPointOrange
+            )
         }
+
         Spacer(modifier = Modifier.height(32.dp))
 
+        // 전체 알림이 켜져 있을 때만 아래 세부 항목들이 보이도록 (혹은 조작 가능하도록) 처리
         if (isMasterEnabled) {
+
+            // --- 2. 커뮤니티 알림 ---
             Text("커뮤니티 알림", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
             Spacer(modifier = Modifier.height(12.dp))
-            Column(modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
-                PushSwitchItem("내 게시글 댓글 알림", null, isCommentEnabled, { isCommentEnabled = it }, TomaPointOrange)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(1.dp, RoundedCornerShape(16.dp))
+                    .background(TomaItemGroupBg, RoundedCornerShape(16.dp))
+                    .padding(vertical = 8.dp)
+            ) {
+                PushSwitchItem(title = "내 게시글 댓글 알림", isChecked = isCommentEnabled, onCheckedChange = { isCommentEnabled = it }, activeColor = TomaPointOrange)
                 Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
-                PushSwitchItem("내 레시피 좋아요 알림", null, isLikeEnabled, { isLikeEnabled = it }, TomaPointOrange)
+                PushSwitchItem(title = "내 레시피 좋아요 알림", isChecked = isLikeEnabled, onCheckedChange = { isLikeEnabled = it }, activeColor = TomaPointOrange)
             }
+
             Spacer(modifier = Modifier.height(32.dp))
 
+            // --- 3. 서비스 및 맞춤 알림 ---
             Text("맞춤 정보 알림", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
             Spacer(modifier = Modifier.height(12.dp))
-            Column(modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
-                PushSwitchItem("오늘의 맞춤 레시피 추천", null, isRecipeRecommendEnabled, { isRecipeRecommendEnabled = it }, TomaPointOrange)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(1.dp, RoundedCornerShape(16.dp))
+                    .background(TomaItemGroupBg, RoundedCornerShape(16.dp))
+                    .padding(vertical = 8.dp)
+            ) {
+                PushSwitchItem(title = "오늘의 맞춤 레시피 추천", isChecked = isRecipeRecommendEnabled, onCheckedChange = { isRecipeRecommendEnabled = it }, activeColor = TomaPointOrange)
                 Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
-                PushSwitchItem("관심 식재료 알림", null, isIngredientAlertEnabled, { isIngredientAlertEnabled = it }, TomaPointOrange)
+                PushSwitchItem(title = "관심 식재료 알림", isChecked = isIngredientAlertEnabled, onCheckedChange = { isIngredientAlertEnabled = it }, activeColor = TomaPointOrange)
             }
+
             Spacer(modifier = Modifier.height(32.dp))
 
+            // --- 4. 혜택 및 중요 알림 ---
             Text("이벤트 및 공지", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
             Spacer(modifier = Modifier.height(12.dp))
-            Column(modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
-                PushSwitchItem("이벤트 및 프로모션 알림", "광고성 정보 수신 동의", isEventEnabled, { isEventEnabled = it }, TomaPointOrange)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(1.dp, RoundedCornerShape(16.dp))
+                    .background(TomaItemGroupBg, RoundedCornerShape(16.dp))
+                    .padding(vertical = 8.dp)
+            ) {
+                PushSwitchItem(title = "이벤트 및 프로모션 알림", subtitle = "광고성 정보 수신 동의", isChecked = isEventEnabled, onCheckedChange = { isEventEnabled = it }, activeColor = TomaPointOrange)
                 Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
-                PushSwitchItem("중요 공지사항 알림", null, isNoticeEnabled, { isNoticeEnabled = it }, TomaPointOrange)
+                PushSwitchItem(title = "중요 공지사항 알림", isChecked = isNoticeEnabled, onCheckedChange = { isNoticeEnabled = it }, activeColor = TomaPointOrange)
             }
+
             Spacer(modifier = Modifier.height(48.dp))
         }
     }
 }
 
+// 스위치가 들어가는 Row 컴포넌트 (코드 재사용성을 위해 분리)
 @Composable
-fun PushSwitchItem(title: String, subtitle: String? = null, isChecked: Boolean, onCheckedChange: (Boolean) -> Unit, activeColor: Color) {
-    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+fun PushSwitchItem(
+    title: String,
+    subtitle: String? = null,
+    isChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    activeColor: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp, horizontal = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = title, color = Color.Black, fontSize = 16.sp, fontWeight = FontWeight.Medium)
             if (subtitle != null) {
@@ -88,6 +151,13 @@ fun PushSwitchItem(title: String, subtitle: String? = null, isChecked: Boolean, 
                 Text(text = subtitle, color = Color(0xFF8E8E93), fontSize = 12.sp)
             }
         }
-        Switch(checked = isChecked, onCheckedChange = onCheckedChange, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = activeColor))
+        Switch(
+            checked = isChecked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Color.White,
+                checkedTrackColor = activeColor
+            )
+        )
     }
 }

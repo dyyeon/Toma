@@ -1,4 +1,4 @@
-package com.capstone.toma
+package com.capstone.toma.ui.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -26,7 +26,7 @@ fun CustomerCenterScreen(onBackClick: () -> Unit = {}) {
     val TomaSettingsBg = Color(0xFFFFFBFA)
     val TomaItemGroupBg = Color(0xFFF7F2F0)
 
-    // TOMA 앱 맞춤형 FAQ 데이터
+    // 🌟 TOMA 앱 맞춤형 FAQ 데이터 4가지 꽉꽉!
     val faqList = listOf(
         Pair("Q. 음성 가이드는 어떻게 사용하나요?", "홈 화면에서 마이크 버튼을 누르고 '메뉴 추천해줘' 혹은 '간단한 레시피 알려줘'라고 말씀하시면 TOMA가 똑똑하게 찾아드립니다!"),
         Pair("Q. 맞춤 레시피 기준이 무엇인가요?", "사용자가 최근 검색한 요리, 자주 찾는 식재료, 그리고 설정해 둔 선호/비선호 재료 데이터를 바탕으로 AI가 가장 적합한 레시피를 추천해 줍니다."),

@@ -11,11 +11,13 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.capstone.toma.ContactUsScreen
-import com.capstone.toma.CustomerCenterScreen
-import com.capstone.toma.EmailSettingScreen
-import com.capstone.toma.PushSettingScreen
-import com.capstone.toma.SettingsScreen
+import com.capstone.toma.ui.screen.ContactUsScreen
+import com.capstone.toma.ui.screen.CustomerCenterScreen
+import com.capstone.toma.ui.screen.EmailSettingScreen
+import com.capstone.toma.ui.screen.PushSettingScreen
+import com.capstone.toma.ui.screen.SettingsScreen
+
+import com.capstone.toma.ui.screen.PrivacyPolicyScreen
 import com.capstone.toma.viewmodel.VoiceViewModel
 import com.capstone.toma.viewmodel.HomeViewModel
 import com.capstone.toma.ui.screen.RecipeStorageScreen
@@ -79,6 +81,9 @@ fun TomaNavHost(
                 },
                 onSettingsClick = {
                     navController.navigateSingleTop(TomaDestination.Settings.route)
+                },
+                onPrivacyPolicyClick = {
+                    navController.navigateSingleTop(TomaDestination.PrivacyPolicy.route)
                 }
             )
         }
@@ -126,6 +131,11 @@ fun TomaNavHost(
 
         composable(TomaDestination.ContactUs.route) {
             ContactUsScreen(onBackClick = { navController.popBackStack() })
+        }
+
+        // 🌟 [추가] NavHost에 개인정보 처리방침 화면 목적지 등록!
+        composable(TomaDestination.PrivacyPolicy.route) {
+            PrivacyPolicyScreen(onBackClick = { navController.popBackStack() })
         }
     }
 }

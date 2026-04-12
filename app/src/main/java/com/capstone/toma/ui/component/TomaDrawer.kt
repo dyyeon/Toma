@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
@@ -24,9 +23,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.capstone.toma.R
 import com.capstone.toma.ui.theme.TomaBrown
 import com.capstone.toma.ui.theme.TomaCard
 import com.capstone.toma.ui.theme.TomaLightOrange
@@ -62,15 +63,14 @@ fun TomaDrawerSheet(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 androidx.compose.foundation.layout.Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .background(TomaMainRed, RoundedCornerShape(14.dp)),
+                    modifier = Modifier.size(42.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = Icons.Default.RestaurantMenu,
-                        contentDescription = null,
-                        tint = Color.White
+                        painter = painterResource(id = R.drawable.ic_tomato),
+                        contentDescription = "Toma Logo",
+                        tint = Color.Unspecified,
+                        modifier = Modifier.size(36.dp)
                     )
                 }
 
@@ -79,7 +79,7 @@ fun TomaDrawerSheet(
                 Column {
                     Text(
                         text = "To-ma",
-                        color = TomaBrown,
+                        color = TomaMainOrange,
                         fontSize = 24.sp,
                         fontWeight = FontWeight.ExtraBold
                     )

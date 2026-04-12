@@ -8,9 +8,12 @@ import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import com.capstone.toma.navigation.TomaNavHost
 import com.capstone.toma.ui.theme.TomaTheme
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
+
         super.onCreate(savedInstanceState)
 
         // 🚨 앱 시작 시 마이크 권한이 있는지 확인하고, 없으면 팝업을 띄웁니다!
