@@ -19,6 +19,10 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TomaApp() {
     TomaTheme {
-        TomaNavHost()
+        // 기존 네비게이션은 잠깐 주석(//) 처리해 둡니다.
+        // TomaNavHost()
+
+        // 임시로 만든 테스트 화면을 연결합니다. (테스트 끝나면 이거 지우고 위 주석 풀면 끝!)
+        OpenAITestScreen()
     }
 }
