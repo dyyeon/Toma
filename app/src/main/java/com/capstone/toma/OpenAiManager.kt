@@ -21,10 +21,10 @@ class OpenAiManager {
 
     /**
      * [1단계: STT] 음성을 텍스트로 변환
+     * prompt를 추가하여 요리 관련 단어 인식률을 높임
      */
     fun transcribeAudio(audioFile: File, onResult: (String?) -> Unit) {
         if (!audioFile.exists()) {
-            Log.e("OpenAiManager", "파일 없음: ${audioFile.absolutePath}")
             onResult(null)
             return
         }
@@ -34,6 +34,8 @@ class OpenAiManager {
             .addFormDataPart("file", audioFile.name, audioFile.asRequestBody("audio/mpeg".toMediaType()))
             .addFormDataPart("model", "whisper-1")
             .addFormDataPart("language", "ko")
+            // 요리 관련 컨텍스트를 주어 인식률 향상
+            .addFormDataPart("prompt", "요리, 레시피, 식재료, 조리법, 토마, TOMA, 주방 어시스턴트")
             .build()
 
         val request = Request.Builder()
@@ -44,17 +46,14 @@ class OpenAiManager {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                Log.e("OpenAiManager", "STT 실패: ${e.message}")
                 onResult(null)
             }
             override fun onResponse(call: Call, response: Response) {
                 val resBody = response.body?.string()
                 if (response.isSuccessful && resBody != null) {
                     val text = JSONObject(resBody).optString("text")
-                    Log.d("OpenAiManager", "STT 성공: $text")
                     onResult(text)
                 } else {
-                    Log.e("OpenAiManager", "STT 응답 에러: ${response.code} / $resBody")
                     onResult(null)
                 }
             }
@@ -62,34 +61,51 @@ class OpenAiManager {
     }
 
     /**
-     * [2단계: LLM] 음성 가이드 화면용 - 레시피 검색/메뉴 추천 요청 처리
+     * [2단계: LLM] 요리 전문 AI 정체성 강화
      */
-    fun processVoiceRequest(userText: String, onResult: (VoiceRequestResult) -> Unit) {
+    fun processChatRequest(
+        userText: String,
+        history: List<Pair<String, Boolean>>,
+        onResult: (VoiceRequestResult) -> Unit
+    ) {
         val systemPrompt = """
-            당신은 요리 보조 AI '토마'입니다. 
-            사용자의 음성 요청을 분석하여 적절한 응답을 생성하세요.
+            당신은 요리 전문 AI 어시스턴트 '토마(TOMA)'입니다.
+            당신의 유일한 목적은 사용자의 요리를 돕는 것입니다. 
             
-            [요청 유형]
-            1. 레시피 검색: 특정 음식의 레시피를 요청 (예: "김치볶음밥 레시피 알려줘", "떡볶이 만드는 법")
-            2. 메뉴 추천: 일반적인 메뉴 추천 요청 (예: "저녁 메뉴 추천해줘", "간단한 요리 추천")
-            3. 재료 기반 검색: 특정 재료로 만들 수 있는 요리 (예: "김치로 뭐 만들어?", "계란 요리")
-            4. 빠른/쉬운 요리: 시간이나 난이도 기반 (예: "빨리 만들 수 있는 거", "초보자용 레시피")
+            [엄격한 정체성 규칙]
+            1. 요리, 레시피, 식재료, 식단과 관련 없는 질문(연예, 노래, 정치 등)에는 절대 대답하지 마세요.
+            2. 관련 없는 요청이 오면 "저는 요리 도우미라서 그건 잘 몰라요. 대신 맛있는 레시피를 찾아드릴까요?"와 같이 답변하세요.
+            3. 사용자가 메뉴를 언급하면 즉시 요리 모드로 인식하여 특징을 설명하고 레시피 안내 여부를 묻습니다.
+            4. 사용자가 유튜브나 블로그 링크 분석을 요청하면, 제공된 메타데이터를 바탕으로 요리 제목(keyword)을 정확히 추출하세요.
+            5. 분석 후 응답은 반드시 "분석을 완료했어요! [요리명] 레시피 안내를 시작할까요?" 형식을 지키고, 하단에 JSON 데이터 { "type": "recipe_search", "keyword": "요리명" }을 포함해야 합니다.
             
-            응답 형식 (JSON):
+            [응답 가이드라인]
+            - "레시피 안내를 시작할까요?"라는 문구는 사용자가 특정 메뉴를 확정했을 때만 포함하세요.
+            - 항상 친근하고 정중한 말투를 사용하세요.
+            
+            [응답 형식 (JSON)]
             {
-              "type": "recipe_search" 또는 "menu_recommend" 또는 "ingredient_search" 또는 "quick_easy",
-              "keyword": "검색할 키워드 (예: 김치볶음밥, 저녁메뉴, 김치, 간단한요리)",
-              "response": "사용자에게 보여줄 친근한 응답 메시지"
+              "type": "recipe_search", "chat", 또는 "menu_recommend",
+              "keyword": "결정된 요리 이름 또는 검색어",
+              "response": "사용자에게 줄 대답"
             }
         """.trimIndent()
 
+        val messages = org.json.JSONArray().apply {
+            put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
+            history.takeLast(10).forEach { (text, isUser) ->
+                put(JSONObject().apply { 
+                    put("role", if (isUser) "user" else "assistant")
+                    put("content", text)
+                })
+            }
+            put(JSONObject().apply { put("role", "user"); put("content", userText) })
+        }
+
         val json = JSONObject().apply {
             put("model", "gpt-4o-mini")
-            put("messages", org.json.JSONArray().apply {
-                put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
-                put(JSONObject().apply { put("role", "user"); put("content", userText) })
-            })
-            put("temperature", 0.3)
+            put("messages", messages)
+            put("temperature", 0.5) // 정체성 유지를 위해 조금 더 일관성 있게 조절
             put("response_format", JSONObject().apply { put("type", "json_object") })
         }
 
@@ -102,61 +118,34 @@ class OpenAiManager {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                Log.e("OpenAiManager", "LLM 네트워크 오류: ${e.message}")
                 onResult(VoiceRequestResult.Error("네트워크 오류가 발생했습니다."))
             }
             override fun onResponse(call: Call, response: Response) {
                 val resBody = response.body?.string()
                 if (response.isSuccessful && resBody != null) {
                     try {
-                        val content = JSONObject(resBody)
-                            .getJSONArray("choices")
-                            .getJSONObject(0)
-                            .getJSONObject("message")
-                            .getString("content")
-
-                        val resultJson = JSONObject(content)
-                        val type = resultJson.optString("type", "unknown")
-                        val keyword = resultJson.optString("keyword", "")
-                        val responseMsg = resultJson.optString("response", "요청을 처리했습니다.")
-
-                        Log.d("OpenAiManager", "LLM 분석 성공 - type: $type, keyword: $keyword")
-
+                        val resultJson = JSONObject(JSONObject(resBody).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content"))
                         onResult(VoiceRequestResult.Success(
-                            requestType = type,
-                            keyword = keyword,
-                            responseMessage = responseMsg
+                            requestType = resultJson.optString("type", "chat"),
+                            keyword = resultJson.optString("keyword", ""),
+                            responseMessage = resultJson.optString("response", "")
                         ))
-
                     } catch (e: Exception) {
-                        Log.e("OpenAiManager", "LLM 파싱 에러: ${e.message}\n응답: $resBody")
-                        onResult(VoiceRequestResult.Error("응답 처리 중 오류가 발생했습니다."))
+                        onResult(VoiceRequestResult.Error("분석 오류가 발생했습니다."))
                     }
                 } else {
-                    Log.e("OpenAiManager", "🚨 LLM 응답 에러 (코드: ${response.code}) 🚨\n내용: $resBody")
-                    onResult(VoiceRequestResult.Error("API 오류 (${response.code})"))
+                    onResult(VoiceRequestResult.Error("API 응답 에러"))
                 }
             }
         })
     }
 
-    /**
-     * [3단계: LLM] 레시피 단계 진행용 의도 분석 (기존 기능 유지)
-     */
+    fun processVoiceRequest(userText: String, onResult: (VoiceRequestResult) -> Unit) {
+        processChatRequest(userText, emptyList(), onResult)
+    }
+
     fun analyzeIntent(userText: String, onResult: (String?) -> Unit) {
-        val systemPrompt = """
-            당신은 요리 보조 AI '토마'입니다. 사용자의 입력을 분석해 단 한 단어로만 응답하세요.
-            
-            [의도 분류 규칙]
-            1. 다음: 단계 이동, 완료 보고 (예: "다음", "그다음", "다했어", "넘어가자", "알았어")
-            2. 이전: 다시 듣기, 뒤로 가기 (예: "이전", "다시", "뒤로", "뭐라고?", "못들었어")
-            3. 타이머: 시간 설정 (예: "3분 재줘", "타이머", "알람 시작")
-            4. 재료확인: 재료 문의 (예: "뭐뭐 필요해?", "재료 뭐야", "준비물")
-            5. 알수없음: 위 의도와 상관없는 인사나 소음 (예: "안녕", "날씨 좋아")
-
-            반드시 [다음, 이전, 타이머, 재료확인, 알수없음] 중 하나만 출력하세요.
-        """.trimIndent()
-
+        val systemPrompt = "요리 단계 진행 의도 분석: [다음, 이전, 타이머, 재료확인, 알수없음] 중 하나만 응답."
         val json = JSONObject().apply {
             put("model", "gpt-4o-mini")
             put("messages", org.json.JSONArray().apply {
@@ -174,41 +163,19 @@ class OpenAiManager {
             .build()
 
         client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                Log.e("OpenAiManager", "LLM 네트워크 오류: ${e.message}")
-                onResult("분석오류")
-            }
+            override fun onFailure(call: Call, e: IOException) { onResult("에러") }
             override fun onResponse(call: Call, response: Response) {
                 val resBody = response.body?.string()
                 if (response.isSuccessful && resBody != null) {
-                    try {
-                        val content = JSONObject(resBody).getJSONArray("choices")
-                            .getJSONObject(0).getJSONObject("message").getString("content").trim()
-                        onResult(content)
-                    } catch (e: Exception) {
-                        Log.e("OpenAiManager", "LLM 파싱 에러: $resBody")
-                        onResult("파싱오류")
-                    }
-                } else {
-                    Log.e("OpenAiManager", "🚨 LLM 응답 에러 (코드: ${response.code}) 🚨\n내용: $resBody")
-                    onResult("에러(${response.code})")
-                }
+                    val content = JSONObject(resBody).getJSONArray("choices").getJSONObject(0).getJSONObject("message").getString("content").trim()
+                    onResult(content)
+                } else { onResult("에러") }
             }
         })
     }
 }
 
-/**
- * 음성 요청 처리 결과
- */
 sealed class VoiceRequestResult {
-    data class Success(
-        val requestType: String,      // "recipe_search", "menu_recommend", etc.
-        val keyword: String,           // 검색 키워드
-        val responseMessage: String    // 사용자에게 보여줄 메시지
-    ) : VoiceRequestResult()
-
-    data class Error(
-        val message: String
-    ) : VoiceRequestResult()
+    data class Success(val requestType: String, val keyword: String, val responseMessage: String) : VoiceRequestResult()
+    data class Error(val message: String) : VoiceRequestResult()
 }

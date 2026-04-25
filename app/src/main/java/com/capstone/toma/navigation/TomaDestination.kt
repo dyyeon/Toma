@@ -10,4 +10,5 @@ sealed class TomaDestination(val route: String) {
     object CustomerCenter : TomaDestination("customer_center")
     object ContactUs : TomaDestination("contact_us")
     object PrivacyPolicy : TomaDestination("privacy_policy")
+    object Chat : TomaDestination("ai_chat")
 }

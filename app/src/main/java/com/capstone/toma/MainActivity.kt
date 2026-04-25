@@ -31,21 +31,26 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
         }
 
-        // ✅ 2. VoskManager 초기화 및 콜백 연결
+        /* ✅ Vosk 기능 잠시 비활성화 (개발 편의를 위함)
         voskManager = VoskManager(this) {
             runOnUiThread {
                 Log.d("MainActivity", "🚨 [호출어 감지] ViewModel 상태를 업데이트합니다.")
-
-                // 💡 "토마야"라고 부르면 ViewModel의 버튼 클릭 함수를 강제로 실행!
-                // 이렇게 하면 화면이 Idle -> Listening 상태로 바뀝니다.
                 voiceViewModel.onMicClick()
-
                 Toast.makeText(this, "토마야 감지됨!", Toast.LENGTH_SHORT).show()
             }
         }
 
-        // ✅ 3. Vosk 모델 시작
+        voiceViewModel.onRecordingStarted = {
+            Log.d("MainActivity", "🔇 수동 녹음 시작 - Vosk 중지")
+            voskManager.stopListening()
+        }
+        voiceViewModel.onRecordingStopped = {
+            Log.d("MainActivity", "🎤 수동 녹음 종료 - Vosk 재개")
+            voskManager.startListening()
+        }
+
         voskManager.initModel()
+        */
 
         // 4. 메인 화면 띄우기
         setContent {

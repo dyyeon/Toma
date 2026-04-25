@@ -28,6 +28,10 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private var audioFile: File? = null
     private var isRecording = false
 
+    // Vosk 제어를 위한 외부 콜백
+    var onRecordingStarted: (() -> Unit)? = null
+    var onRecordingStopped: (() -> Unit)? = null
+
     fun onMicClick() {
         _uiState.update { current ->
             when (current) {
@@ -54,38 +58,48 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startRecording() {
         try {
-            // 임시 오디오 파일 생성
+            // 확장자를 .m4a로 변경 (AAC 포맷에 더 적합)
             audioFile = File(
                 getApplication<Application>().cacheDir,
-                "voice_${System.currentTimeMillis()}.mp3"
+                "voice_${System.currentTimeMillis()}.m4a"
             )
 
             mediaRecorder = MediaRecorder().apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                // 샘플링 레이트를 44100으로 설정하되 기기 호환성을 위해 체크
+                setAudioSamplingRate(44100)
+                setAudioEncodingBitRate(128000)
                 setOutputFile(audioFile?.absolutePath)
                 prepare()
                 start()
             }
 
             isRecording = true
+            onRecordingStarted?.invoke() // Vosk 중지 요청
             Log.d("VoiceViewModel", "녹음 시작: ${audioFile?.absolutePath}")
 
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             Log.e("VoiceViewModel", "녹음 시작 실패: ${e.message}")
-            showError("녹음을 시작할 수 없습니다.")
+            showError("마이크를 사용할 수 없습니다.")
         }
     }
 
     private fun stopRecordingAndProcess() {
         try {
             mediaRecorder?.apply {
-                stop()
+                // 너무 빨리 멈추면 RuntimeException이 발생할 수 있음
+                try {
+                    stop()
+                } catch (e: RuntimeException) {
+                    Log.e("VoiceViewModel", "녹음 데이터 부족: ${e.message}")
+                }
                 release()
             }
             mediaRecorder = null
             isRecording = false
+            onRecordingStopped?.invoke() // Vosk 재개 요청
 
             Log.d("VoiceViewModel", "녹음 중지: ${audioFile?.absolutePath}")
 
