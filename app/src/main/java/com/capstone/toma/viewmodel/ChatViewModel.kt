@@ -20,7 +20,21 @@ class ChatViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(AiChatUiState())
     val uiState: StateFlow<AiChatUiState> = _uiState.asStateFlow()
 
+    private val _navigationEvent = MutableStateFlow<Pair<String, String?>?>(null)
+    val navigationEvent: StateFlow<Pair<String, String?>?> = _navigationEvent.asStateFlow()
+
+    private val _errorEvent = MutableStateFlow<String?>(null)
+    val errorEvent: StateFlow<String?> = _errorEvent.asStateFlow()
+
     private val timeFormat = SimpleDateFormat("a h:mm", Locale.KOREAN)
+
+    fun clearNavigationEvent() {
+        _navigationEvent.value = null
+    }
+
+    fun clearErrorEvent() {
+        _errorEvent.value = null
+    }
 
     fun onInputTextChange(text: String) {
         _uiState.update { it.copy(inputText = text) }
@@ -96,16 +110,20 @@ class ChatViewModel : ViewModel() {
                             isTyping = false
                         )
                     }
+                    if (result.requestType == "recipe_search") {
+                        _navigationEvent.value = result.keyword to result.recipeData
+                    }
                 }
                 is VoiceRequestResult.Error -> {
                     _uiState.update { state ->
                         state.copy(
                             messages = state.messages.map { 
-                                if (it.id == aiMsgId) it.copy(text = "죄송해요. 분석에 실패했어요: ${result.message}") else it 
+                                if (it.id == aiMsgId) it.copy(text = "죄송해요. 분석에 실패했어요. 😢") else it 
                             },
                             isTyping = false
                         )
                     }
+                    _errorEvent.value = result.message
                 }
             }
         }
@@ -153,10 +171,8 @@ class ChatViewModel : ViewModel() {
                             )
                         }
                         
-                        // 만약 AI가 레시피 안내를 결정했다면 (type == "recipe_search")
-                        // 여기서 레시피 화면으로 이동하는 이벤트를 발생시킬 수 있습니다.
                         if (result.requestType == "recipe_search") {
-                            // TODO: 레시피 검색 결과 화면으로 이동 로직 (Keyword 사용)
+                            _navigationEvent.value = result.keyword to result.recipeData
                         }
                     }
                     is VoiceRequestResult.Error -> {

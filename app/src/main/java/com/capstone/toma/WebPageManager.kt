@@ -1,13 +1,26 @@
 package com.capstone.toma
 
+import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.*
 import java.io.IOException
 import java.util.regex.Pattern
+import kotlin.coroutines.resume
 
 class WebPageManager {
     private val client = OkHttpClient()
 
-    fun fetchPageInfo(url: String, onResult: (title: String?, content: String?) -> Unit) {
+    /**
+     * Coroutine-friendly suspend function to fetch page info
+     */
+    suspend fun fetchPageInfoSuspend(url: String): Triple<String?, String?, String?> = suspendCancellableCoroutine { continuation ->
+        fetchPageInfo(url) { title, content, imageUrl ->
+            if (continuation.isActive) {
+                continuation.resume(Triple(title, content, imageUrl))
+            }
+        }
+    }
+
+    fun fetchPageInfo(url: String, onResult: (title: String?, content: String?, imageUrl: String?) -> Unit) {
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36")
@@ -15,29 +28,38 @@ class WebPageManager {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                onResult(null, null)
+                onResult(null, null, null)
             }
 
             override fun onResponse(call: Call, response: Response) {
-                val html = response.body?.string() ?: ""
-                
-                // 네이버 블로그 iframe 대응
-                if (url.contains("blog.naver.com")) {
-                    val iframeUrl = extractNaverIframeUrl(html, url)
-                    if (iframeUrl != null) {
-                        fetchPageInfo(iframeUrl, onResult)
-                        return
+                if (response.isSuccessful) {
+                    val html = response.body?.string() ?: ""
+                    
+                    // 네이버 블로그 iframe 대응
+                    if (url.contains("blog.naver.com") && !url.contains("PostView.naver")) {
+                        val iframeUrl = extractNaverIframeUrl(html, url)
+                        if (iframeUrl != null) {
+                            fetchPageInfo(iframeUrl, onResult)
+                            return
+                        }
                     }
-                }
 
-                val title = extractMeta(html, "og:title") ?: extractTag(html, "title")
-                val description = extractMeta(html, "og:description") ?: extractMeta(html, "description")
-                
-                // 본문 텍스트 추가 추출 (HTML 태그 제거 후 핵심 텍스트만)
-                val bodyText = extractVisibleText(html)
-                val combinedContent = "요약: $description\n본문일부: $bodyText"
-                
-                onResult(title, combinedContent)
+                    val title = extractMeta(html, "og:title") ?: extractTag(html, "title")
+                    val description = extractMeta(html, "og:description") ?: extractMeta(html, "description")
+                    val imageUrl = extractMeta(html, "og:image")
+                    
+                    // 본문 텍스트 추가 추출 (HTML 태그 제거 후 핵심 텍스트만)
+                    val bodyText = extractVisibleText(html)
+                    
+                    if (title == null && (bodyText.isEmpty() || bodyText.length < 50)) {
+                        onResult(null, "페이지 내용을 읽어올 수 없습니다. 보호된 페이지거나 접근이 제한되었을 수 있습니다.", null)
+                    } else {
+                        val combinedContent = "요약: ${description ?: "없음"}\n본문: $bodyText"
+                        onResult(title, combinedContent, imageUrl)
+                    }
+                } else {
+                    onResult(null, "웹 페이지를 불러오는 데 실패했습니다. (에러 코드: ${response.code})", null)
+                }
             }
         })
     }

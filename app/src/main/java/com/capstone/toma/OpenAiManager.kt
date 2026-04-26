@@ -1,6 +1,6 @@
 package com.capstone.toma
 
-import android.util.Log
+import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.asRequestBody
@@ -8,6 +8,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.resume
 
 class OpenAiManager {
 
@@ -61,6 +62,20 @@ class OpenAiManager {
     }
 
     /**
+     * Coroutine-friendly suspend version of processChatRequest
+     */
+    suspend fun processChatRequestSuspend(
+        userText: String,
+        history: List<Pair<String, Boolean>>
+    ): VoiceRequestResult = suspendCancellableCoroutine { continuation ->
+        processChatRequest(userText, history) { result ->
+            if (continuation.isActive) {
+                continuation.resume(result)
+            }
+        }
+    }
+
+    /**
      * [2단계: LLM] 요리 전문 AI 정체성 강화
      */
     fun processChatRequest(
@@ -76,8 +91,14 @@ class OpenAiManager {
             1. 요리, 레시피, 식재료, 식단과 관련 없는 질문(연예, 노래, 정치 등)에는 절대 대답하지 마세요.
             2. 관련 없는 요청이 오면 "저는 요리 도우미라서 그건 잘 몰라요. 대신 맛있는 레시피를 찾아드릴까요?"와 같이 답변하세요.
             3. 사용자가 메뉴를 언급하면 즉시 요리 모드로 인식하여 특징을 설명하고 레시피 안내 여부를 묻습니다.
-            4. 사용자가 유튜브나 블로그 링크 분석을 요청하면, 제공된 메타데이터를 바탕으로 요리 제목(keyword)을 정확히 추출하세요.
-            5. 분석 후 응답은 반드시 "분석을 완료했어요! [요리명] 레시피 안내를 시작할까요?" 형식을 지키고, 하단에 JSON 데이터 { "type": "recipe_search", "keyword": "요리명" }을 포함해야 합니다.
+            4. [링크 분석 특화 지침]:
+               - 콘텐츠 성격 판별: recipe(조리), guide(팁/노하우), article(정보), non_actionable(잡담/광고) 중 하나로 분류하세요.
+               - 본문 정제: 인사말, 후기, 광고, 협찬 문구 등은 모두 제거하고 실제 도움되는 '실전 정보'만 남기세요.
+               - 정보 추출: 제목, 한 줄 요약, 핵심 포인트, 재료, 도구, 시간, 난이도를 정확히 추출하세요. 원문에 없는 수치는 추정하지 마세요.
+               - 단계 재구성: 사용자가 바로 따라할 수 있게 행동 중심의 단계형 가이드로 다시 작성하세요.
+            5. [출력 형식]:
+               - 분석 완료 시 반드시 "분석을 완료했어요! [요리명] 레시피 안내를 시작할까요?" 문구를 사용하세요.
+               - 하단에 반드시 JSON { "type": "recipe_search", "keyword": "요리명" }을 포함하세요.
             
             [응답 가이드라인]
             - "레시피 안내를 시작할까요?"라는 문구는 사용자가 특정 메뉴를 확정했을 때만 포함하세요.
@@ -87,7 +108,14 @@ class OpenAiManager {
             {
               "type": "recipe_search", "chat", 또는 "menu_recommend",
               "keyword": "결정된 요리 이름 또는 검색어",
-              "response": "사용자에게 줄 대답"
+              "response": "사용자에게 줄 대답",
+              "recipe_data": {
+                "ingredients": ["재료1 (용량)", "재료2 (용량)"],
+                "steps": ["1단계 설명", "2단계 설명"],
+                "difficulty": "쉬움/보통/어려움",
+                "time": "예상 소요 시간 (예: 20분)",
+                "image_url": "이미지 URL (있을 경우)"
+              } (type이 recipe_search일 경우 반드시 포함)
             }
         """.trimIndent()
 
@@ -128,7 +156,8 @@ class OpenAiManager {
                         onResult(VoiceRequestResult.Success(
                             requestType = resultJson.optString("type", "chat"),
                             keyword = resultJson.optString("keyword", ""),
-                            responseMessage = resultJson.optString("response", "")
+                            responseMessage = resultJson.optString("response", ""),
+                            recipeData = resultJson.optJSONObject("recipe_data")?.toString()
                         ))
                     } catch (e: Exception) {
                         onResult(VoiceRequestResult.Error("분석 오류가 발생했습니다."))
@@ -176,6 +205,11 @@ class OpenAiManager {
 }
 
 sealed class VoiceRequestResult {
-    data class Success(val requestType: String, val keyword: String, val responseMessage: String) : VoiceRequestResult()
+    data class Success(
+        val requestType: String,
+        val keyword: String,
+        val responseMessage: String,
+        val recipeData: String? = null
+    ) : VoiceRequestResult()
     data class Error(val message: String) : VoiceRequestResult()
 }

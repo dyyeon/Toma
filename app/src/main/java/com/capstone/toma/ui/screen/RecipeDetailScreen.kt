@@ -48,8 +48,36 @@ import coil.compose.AsyncImage
 import com.capstone.toma.ui.theme.*
 
 
+import androidx.compose.runtime.remember
+import org.json.JSONObject
+
 @Composable
-fun RecipeDetailScreen() {
+fun RecipeDetailScreen(
+    keyword: String = "",
+    recipeDataJson: String? = null,
+    onBackClick: () -> Unit = {}
+) {
+    val recipeData = remember(recipeDataJson) {
+        recipeDataJson?.let {
+            try {
+                JSONObject(it)
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
+    val steps = recipeData?.optJSONArray("steps")?.let { array ->
+        List(array.length()) { array.getString(it) }
+    } ?: emptyList()
+
+    val difficulty = recipeData?.optString("difficulty") ?: "보통"
+    val time = recipeData?.optString("time") ?: "20분"
+    val imageUrl = recipeData?.optString("image_url")
+
+    // 사용하지 않는 ingredients 변수 제거 또는 로그 추가 (추후 재료 화면 구현 시 활용 가능)
+    // val ingredients = ...
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = TomaBackground
@@ -59,11 +87,11 @@ fun RecipeDetailScreen() {
                 .fillMaxSize()
                 .padding(horizontal = 20.dp, vertical = 30.dp)
         ) {
-            RecipeTopBar()
+            RecipeTopBar(onBackClick, keyword)
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            CookingImageSection()
+            CookingImageSection(imageUrl)
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -71,11 +99,11 @@ fun RecipeDetailScreen() {
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            CurrentStepSection()
+            CurrentStepSection(steps.getOrNull(0) ?: "준비된 단계가 없습니다.")
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            InfoCardRow()
+            InfoCardRow(time, difficulty)
 
             Spacer(modifier = Modifier.height(18.dp))
 
@@ -89,28 +117,33 @@ fun RecipeDetailScreen() {
 }
 
 @Composable
-private fun RecipeTopBar() {
+private fun RecipeTopBar(onBackClick: () -> Unit, keyword: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = Icons.Default.Close,
-            contentDescription = "닫기",
-            tint = Color(0xFF7D7D7D),
-            modifier = Modifier.size(22.dp)
-        )
+        androidx.compose.material3.IconButton(onClick = onBackClick) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "닫기",
+                tint = Color(0xFF7D7D7D),
+                modifier = Modifier.size(22.dp)
+            )
+        }
 
         Spacer(modifier = Modifier.width(14.dp))
 
         Text(
-            text = "To-ma",
-            color = TomaMainOrange,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.SemiBold
+            text = if (keyword.isNotBlank()) keyword else "To-ma",
+            color = if (keyword.isNotBlank()) Color.Black else TomaMainOrange,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.width(8.dp))
 
         Row(
             modifier = Modifier
@@ -136,7 +169,7 @@ private fun RecipeTopBar() {
 }
 
 @Composable
-private fun CookingImageSection() {
+private fun CookingImageSection(imageUrl: String?) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -146,7 +179,7 @@ private fun CookingImageSection() {
     ) {
         Box {
             AsyncImage(
-                model = "https://images.unsplash.com/photo-1512621776951-a57141f2eefd",
+                model = imageUrl ?: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd",
                 contentDescription = "조리 이미지",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
@@ -224,7 +257,7 @@ private fun ProgressSection() {
 }
 
 @Composable
-private fun CurrentStepSection() {
+private fun CurrentStepSection(stepText: String) {
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
@@ -237,24 +270,17 @@ private fun CurrentStepSection() {
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
-            text = buildAnnotatedString {
-                append("소스가 숟가락 뒷면에 묻어날 때까지\n")
-                append("생크림을 ")
-                withStyle(style = SpanStyle(color = TomaMainOrange, fontWeight = FontWeight.SemiBold)) {
-                    append("천천히")
-                }
-                append(" 저으며 섞어주세요.")
-            },
+            text = stepText,
             color = TomaPrimaryText,
-            fontSize = 28.sp,
-            lineHeight = 38.sp,
+            fontSize = 24.sp,
+            lineHeight = 34.sp,
             fontWeight = FontWeight.Medium
         )
     }
 }
 
 @Composable
-private fun InfoCardRow() {
+private fun InfoCardRow(time: String, difficulty: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -262,7 +288,7 @@ private fun InfoCardRow() {
         InfoCard(
             modifier = Modifier.weight(1f),
             label = "소요 시간",
-            value = "04:00",
+            value = time,
             icon = {
                 Icon(
                     imageVector = Icons.Default.Schedule,
@@ -275,8 +301,8 @@ private fun InfoCardRow() {
 
         InfoCard(
             modifier = Modifier.weight(1f),
-            label = "온도",
-            value = "중약불",
+            label = "난이도",
+            value = difficulty,
             icon = {
                 Icon(
                     imageVector = Icons.Default.Thermostat,
