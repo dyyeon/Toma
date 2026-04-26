@@ -82,7 +82,8 @@ data class HomeUiState(
     val isAnalyzing: Boolean = false,
     val recentItems: List<RecentRecipeItem> = emptyList(),
     val selectedRecentItemId: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val errorDialogMessage: String? = null
 )
 
 @Composable
@@ -99,11 +100,28 @@ fun TomaHomeScreen(
     onHomeClick: () -> Unit = {},
     onStorageClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
-    // 🌟 [추가] 사이드바에서 사용할 클릭 이벤트
-    onPrivacyPolicyClick: () -> Unit = {}
+    onPrivacyPolicyClick: () -> Unit = {},
+    onErrorDismiss: () -> Unit = {}
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    // 에러 다이얼로그 노출
+    uiState.errorDialogMessage?.let { message ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = onErrorDismiss,
+            title = { Text(text = "알림", fontWeight = FontWeight.Bold) },
+            text = { Text(text = message) },
+            confirmButton = {
+                TextButton(onClick = onErrorDismiss) {
+                    Text("확인", color = TomaMainOrange)
+                }
+            },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = Color.White
+        )
+    }
+
     val drawerItems = listOf(
         TomaDrawerItem(
             label = "저장소",
@@ -178,7 +196,14 @@ fun TomaHomeScreen(
                 Spacer(modifier = Modifier.height(32.dp))
 
                 if (uiState.isAnalyzing) {
-                    LoadingSection()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        LoadingSection()
+                    }
                 } else {
                     ImportSection(
                         modifier = Modifier.padding(horizontal = 24.dp),
@@ -192,11 +217,13 @@ fun TomaHomeScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                RecentAnalysisSection(
-                    items = uiState.recentItems,
-                    onItemClick = onRecentItemClick,
-                    onMoreClick = onRecentMoreClick
-                )
+                if (!uiState.isAnalyzing) {
+                    RecentAnalysisSection(
+                        items = uiState.recentItems,
+                        onItemClick = onRecentItemClick,
+                        onMoreClick = onRecentMoreClick
+                    )
+                }
 
                 Spacer(modifier = Modifier.height(32.dp))
 

@@ -41,7 +41,8 @@ data class ChatMessage(
 data class AiChatUiState(
     val inputText: String = "",
     val messages: List<ChatMessage> = emptyList(),
-    val isTyping: Boolean = false
+    val isTyping: Boolean = false,
+    val errorDialogMessage: String? = null
 )
 
 @Composable
@@ -50,9 +51,11 @@ fun AiChatScreen(
     onBackClick: () -> Unit,
     onInputTextChange: (String) -> Unit,
     onSendMessage: () -> Unit,
-    onMicClick: () -> Unit
+    onMicClick: () -> Unit,
+    onErrorDismiss: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
@@ -60,42 +63,62 @@ fun AiChatScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(TomaBackground)
-    ) {
-        // [상단바] 뒤로가기 & 타이틀
-        ChatTopAppBar(onBackClick = onBackClick)
+    // 에러 다이얼로그 노출
+    uiState.errorDialogMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = onErrorDismiss,
+            title = { Text(text = "분석 실패", fontWeight = FontWeight.Bold) },
+            text = { Text(text = message) },
+            confirmButton = {
+                TextButton(onClick = onErrorDismiss) {
+                    Text("확인", color = TomaMainOrange)
+                }
+            },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = Color.White
+        )
+    }
 
-        // [채팅 목록 영역]
-        LazyColumn(
-            state = listState,
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = TomaBackground,
+        topBar = { ChatTopAppBar(onBackClick = onBackClick) }
+    ) { paddingValues ->
+        Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-            contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .fillMaxSize()
+                .padding(paddingValues)
         ) {
+            // [채팅 목록 영역]
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
 
-            items(uiState.messages, key = { it.id }) { message ->
-                ChatBubble(message = message)
-            }
+                items(uiState.messages, key = { it.id }) { message ->
+                    ChatBubble(message = message)
+                }
 
-            if (uiState.isTyping) {
-                item {
-                    TypingIndicatorBubble()
+                if (uiState.isTyping) {
+                    item {
+                        TypingIndicatorBubble()
+                    }
                 }
             }
-        }
 
-        ChatInputBar(
-            inputText = uiState.inputText,
-            onInputTextChange = onInputTextChange,
-            onSendMessage = onSendMessage,
-            onMicClick = onMicClick
-        )
+            ChatInputBar(
+                inputText = uiState.inputText,
+                isTyping = uiState.isTyping,
+                onInputTextChange = onInputTextChange,
+                onSendMessage = onSendMessage,
+                onMicClick = onMicClick
+            )
+        }
     }
 }
 
@@ -108,8 +131,7 @@ fun ChatTopAppBar(onBackClick: () -> Unit) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp)
-                .statusBarsPadding(),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBackClick) {
@@ -231,6 +253,7 @@ fun TypingIndicatorBubble() {
 @Composable
 fun ChatInputBar(
     inputText: String,
+    isTyping: Boolean,
     onInputTextChange: (String) -> Unit,
     onSendMessage: () -> Unit,
     onMicClick: () -> Unit
@@ -248,14 +271,15 @@ fun ChatInputBar(
         ) {
             IconButton(
                 onClick = onMicClick,
+                enabled = !isTyping,
                 modifier = Modifier
                     .size(42.dp)
-                    .background(TomaBackground, CircleShape)
+                    .background(if (isTyping) Color(0xFFF5F5F5) else TomaBackground, CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Mic,
                     contentDescription = "음성 입력",
-                    tint = TomaMainOrange
+                    tint = if (isTyping) Color.LightGray else TomaMainOrange
                 )
             }
 
@@ -272,8 +296,9 @@ fun ChatInputBar(
                 BasicTextField(
                     value = inputText,
                     onValueChange = onInputTextChange,
+                    enabled = !isTyping,
                     textStyle = LocalTextStyle.current.copy(
-                        color = TomaPrimaryText,
+                        color = if (isTyping) Color.Gray else TomaPrimaryText,
                         fontSize = 15.sp
                     ),
                     modifier = Modifier.fillMaxWidth(),
@@ -288,7 +313,7 @@ fun ChatInputBar(
                     decorationBox = { innerTextField ->
                         if (inputText.isEmpty()) {
                             Text(
-                                text = "메시지를 입력하세요...",
+                                text = if (isTyping) "분석 중입니다..." else "메시지를 입력하세요...",
                                 color = TomaSecondaryText,
                                 fontSize = 15.sp
                             )
@@ -301,13 +326,13 @@ fun ChatInputBar(
             Spacer(modifier = Modifier.width(12.dp))
 
             // [전송 버튼]
-            val isInputValid = inputText.isNotBlank()
+            val isSendEnabled = inputText.isNotBlank() && !isTyping
             Box(
                 modifier = Modifier
                     .size(42.dp)
                     .clip(CircleShape)
-                    .background(if (isInputValid) TomaMainOrange else Color(0xFFE0E0E0))
-                    .clickable(enabled = isInputValid) { onSendMessage() },
+                    .background(if (isSendEnabled) TomaMainOrange else Color(0xFFE0E0E0))
+                    .clickable(enabled = isSendEnabled) { onSendMessage() },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

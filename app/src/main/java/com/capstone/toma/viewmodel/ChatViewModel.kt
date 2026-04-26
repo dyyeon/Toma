@@ -34,6 +34,12 @@ class ChatViewModel : ViewModel() {
 
     fun clearErrorEvent() {
         _errorEvent.value = null
+        _uiState.update { 
+            it.copy(
+                errorDialogMessage = null,
+                isTyping = false 
+            ) 
+        }
     }
 
     fun onInputTextChange(text: String) {
@@ -41,7 +47,9 @@ class ChatViewModel : ViewModel() {
     }
 
     fun sendMessage(text: String? = null) {
+        if (_uiState.value.isTyping) return // [추가] 분석 중 중복 전송 방지
         val messageText = text ?: _uiState.value.inputText
+        if (messageText.isBlank()) return
         sendCustomMessage(messageText)
     }
 
@@ -74,6 +82,7 @@ class ChatViewModel : ViewModel() {
      * 분석 단계별로 메시지를 업데이트하며 최종 결과를 받아옵니다.
      */
     fun startLinkAnalysis(userDisplay: String, initialAiText: String, onAnalyze: suspend (updateStatus: (String) -> Unit) -> VoiceRequestResult) {
+        if (_uiState.value.isTyping) return // [추가] 중복 분석 시작 방지
         val userMsgId = UUID.randomUUID().toString()
         val aiMsgId = UUID.randomUUID().toString()
 
@@ -118,9 +127,10 @@ class ChatViewModel : ViewModel() {
                     _uiState.update { state ->
                         state.copy(
                             messages = state.messages.map { 
-                                if (it.id == aiMsgId) it.copy(text = "죄송해요. 분석에 실패했어요. 😢") else it 
+                                if (it.id == aiMsgId) it.copy(text = "죄송해요. 분석 중에 문제가 발생했어요. 😢") else it 
                             },
-                            isTyping = false
+                            isTyping = false,
+                            errorDialogMessage = result.message
                         )
                     }
                     _errorEvent.value = result.message
@@ -176,18 +186,13 @@ class ChatViewModel : ViewModel() {
                         }
                     }
                     is VoiceRequestResult.Error -> {
-                        val errorMessage = ChatMessage(
-                            id = UUID.randomUUID().toString(),
-                            text = "죄송해요, 오류가 발생했어요: ${result.message}",
-                            isUser = false,
-                            timestamp = getCurrentTime()
-                        )
                         _uiState.update { 
                             it.copy(
-                                messages = it.messages + errorMessage,
-                                isTyping = false
-                            )
+                                isTyping = false,
+                                errorDialogMessage = "네트워크 연결이 원활하지 않아요. 다시 시도해 주세요."
+                            ) 
                         }
+                        _errorEvent.value = result.message
                     }
                 }
             }

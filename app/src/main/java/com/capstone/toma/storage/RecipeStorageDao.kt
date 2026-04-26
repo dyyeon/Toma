@@ -33,4 +33,9 @@ interface RecipeStorageDao {
         """
     )
     suspend fun updateFavorite(recipeId: String, isFavorite: Boolean, updatedAt: Long)
+    @Query("DELETE FROM stored_recipes WHERE id = :recipeId")
+    suspend fun deleteById(recipeId: String)
+
+    @Query("SELECT EXISTS(SELECT 1 FROM stored_recipes WHERE id = :recipeId LIMIT 1)")
+    fun isRecipeExists(recipeId: String): Flow<Boolean>
 }

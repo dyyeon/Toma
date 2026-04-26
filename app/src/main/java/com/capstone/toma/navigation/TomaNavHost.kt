@@ -47,22 +47,32 @@ fun TomaNavHost(
     val homeViewModel: HomeViewModel = viewModel()
     val homeUiState by homeViewModel.uiState.collectAsState()
 
-    val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            homeViewModel.onImageSelected(uri.toString())
-        } else {
-            homeViewModel.showError("이미지를 선택하지 않았어요.")
-        }
-    }
+    val chatViewModel: ChatViewModel = viewModel()
+    val chatUiState by chatViewModel.uiState.collectAsState()
 
     val voiceViewModel: VoiceViewModel = viewModel()
     val voiceUiState by voiceViewModel.uiState.collectAsState()
     val voiceResult by voiceViewModel.searchResult.collectAsState()
 
-    val chatViewModel: ChatViewModel = viewModel()
-    val chatUiState by chatViewModel.uiState.collectAsState()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            // [수정] 가짜 분석 대신 진짜 OpenAI Vision API 연동
+            navController.navigate(TomaDestination.Chat.route)
+            chatViewModel.startLinkAnalysis(
+                userDisplay = "사진으로 레시피 찾기",
+                initialAiText = "사진을 분석하고 있어요. 잠시만 기다려 주세요... 📸"
+            ) { _ ->
+                val openAi = com.capstone.toma.OpenAiManager()
+                openAi.analyzeRecipeImageSuspend(context, uri.toString())
+            }
+        } else {
+            homeViewModel.showError("이미지를 선택하지 않았어요.")
+        }
+    }
 
     NavHost(
         navController = navController,
@@ -106,6 +116,7 @@ fun TomaNavHost(
                                 val (t, d, img) = webPageManager.fetchPageInfoSuspend(link)
                                 
                                 if (t == null && d?.contains("실패") == true) {
+                                    homeViewModel.showError(d, isDialog = true)
                                     return@startLinkAnalysis VoiceRequestResult.Error(d)
                                 }
 
@@ -145,9 +156,17 @@ fun TomaNavHost(
                     imagePickerLauncher.launch("image/*")
                 },
                 onRecentItemClick = { itemId ->
-                    homeViewModel.selectRecentItem(itemId)
+                    // [연결] 최근 항목 클릭 시 해당 제목으로 즉시 AI 채팅/분석 시작
+                    val item = homeUiState.recentItems.find { it.id == itemId }
+                    item?.let {
+                        chatViewModel.sendMessage(it.title)
+                        navController.navigate(TomaDestination.Chat.route)
+                    }
                 },
-                onRecentMoreClick = {},
+                onRecentMoreClick = {
+                    // [연결] 더보기 클릭 시 저장소로 이동
+                    navController.navigateSingleTop(TomaDestination.RecipeStorage.route)
+                },
                 onHomeClick = {
                     navController.navigateSingleTop(TomaDestination.Home.route)
                 },
@@ -159,7 +178,8 @@ fun TomaNavHost(
                 },
                 onPrivacyPolicyClick = {
                     navController.navigateSingleTop(TomaDestination.PrivacyPolicy.route)
-                }
+                },
+                onErrorDismiss = homeViewModel::clearError
             )
         }
 
@@ -228,7 +248,8 @@ fun TomaNavHost(
                 onMicClick = {
                     // 채팅창에서도 음성 인식을 쓰고 싶다면 VoiceGuide로 이동하거나 별도 로직 추가
                     navController.navigate(TomaDestination.VoiceGuide.route)
-                }
+                },
+                onErrorDismiss = chatViewModel::clearErrorEvent
             )
         }
 

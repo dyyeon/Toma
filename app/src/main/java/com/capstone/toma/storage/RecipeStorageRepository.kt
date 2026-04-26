@@ -34,6 +34,14 @@ class RecipeStorageRepository private constructor(
         dao.upsert(recipe.toEntity())
     }
 
+    suspend fun deleteRecipe(recipeId: String) {
+        dao.deleteById(recipeId)
+    }
+
+    fun isRecipeSaved(recipeId: String): Flow<Boolean> {
+        return dao.isRecipeExists(recipeId)
+    }
+
     companion object {
         @Volatile
         private var instance: RecipeStorageRepository? = null

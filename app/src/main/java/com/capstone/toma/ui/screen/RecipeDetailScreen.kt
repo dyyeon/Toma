@@ -48,8 +48,15 @@ import coil.compose.AsyncImage
 import com.capstone.toma.ui.theme.*
 
 
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import org.json.JSONObject
+import com.capstone.toma.viewmodel.RecipeStorageViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun RecipeDetailScreen(
@@ -57,6 +64,8 @@ fun RecipeDetailScreen(
     recipeDataJson: String? = null,
     onBackClick: () -> Unit = {}
 ) {
+    val storageViewModel: RecipeStorageViewModel = viewModel()
+    
     val recipeData = remember(recipeDataJson) {
         recipeDataJson?.let {
             try {
@@ -67,16 +76,18 @@ fun RecipeDetailScreen(
         }
     }
 
+    val title = recipeData?.optString("title", keyword) ?: keyword
+    
+    // [SSOT 적용] DB 상태를 직접 구독하여 경고 및 상태 불일치 해결
+    val isFavorite by storageViewModel.isRecipeSaved(title).collectAsState(initial = false)
+
     val steps = recipeData?.optJSONArray("steps")?.let { array ->
         List(array.length()) { array.getString(it) }
     } ?: emptyList()
 
     val difficulty = recipeData?.optString("difficulty") ?: "보통"
-    val time = recipeData?.optString("time") ?: "20분"
+    val timeStr = recipeData?.optString("time") ?: "20분"
     val imageUrl = recipeData?.optString("image_url")
-
-    // 사용하지 않는 ingredients 변수 제거 또는 로그 추가 (추후 재료 화면 구현 시 활용 가능)
-    // val ingredients = ...
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -87,7 +98,15 @@ fun RecipeDetailScreen(
                 .fillMaxSize()
                 .padding(horizontal = 20.dp, vertical = 30.dp)
         ) {
-            RecipeTopBar(onBackClick, keyword)
+            RecipeTopBar(
+                onBackClick = onBackClick, 
+                keyword = title,
+                isFavorite = isFavorite,
+                onFavoriteClick = {
+                    // ViewModel로 로직 이관하여 중복 코드 제거
+                    storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite)
+                }
+            )
 
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -103,7 +122,7 @@ fun RecipeDetailScreen(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            InfoCardRow(time, difficulty)
+            InfoCardRow(timeStr, difficulty)
 
             Spacer(modifier = Modifier.height(18.dp))
 
@@ -117,7 +136,12 @@ fun RecipeDetailScreen(
 }
 
 @Composable
-private fun RecipeTopBar(onBackClick: () -> Unit, keyword: String) {
+private fun RecipeTopBar(
+    onBackClick: () -> Unit, 
+    keyword: String,
+    isFavorite: Boolean,
+    onFavoriteClick: () -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -136,14 +160,23 @@ private fun RecipeTopBar(onBackClick: () -> Unit, keyword: String) {
         Text(
             text = if (keyword.isNotBlank()) keyword else "To-ma",
             color = if (keyword.isNotBlank()) Color.Black else TomaMainOrange,
-            fontSize = 22.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
 
-        Spacer(modifier = Modifier.width(8.dp))
+        IconButton(onClick = onFavoriteClick) {
+            Icon(
+                imageVector = if (isFavorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                contentDescription = "즐겨찾기",
+                tint = if (isFavorite) TomaMainOrange else Color(0xFF7D7D7D),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(4.dp))
 
         Row(
             modifier = Modifier

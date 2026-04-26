@@ -42,6 +42,7 @@ class HomeViewModel : ViewModel() {
     }
 
     fun submitSearch() {
+        if (_uiState.value.isAnalyzing) return // [추가] 분석 중 중복 클릭 방지
         val query = _uiState.value.searchQuery.trim()
 
         if (query.isBlank()) {
@@ -64,6 +65,7 @@ class HomeViewModel : ViewModel() {
     }
 
     fun submitYoutube() {
+        if (_uiState.value.isAnalyzing) return // [추가] 분석 중 중복 클릭 방지
         val link = _uiState.value.youtubeLink.trim()
 
         if (link.isBlank()) {
@@ -102,6 +104,7 @@ class HomeViewModel : ViewModel() {
     }
 
     fun onImageSelected(uriString: String) {
+        if (_uiState.value.isAnalyzing) return // [추가] 분석 중 중복 클릭 방지
         clearError()
 
         viewModelScope.launch {
@@ -123,11 +126,14 @@ class HomeViewModel : ViewModel() {
     }
 
     fun clearError() {
-        _uiState.update { it.copy(errorMessage = null) }
+        _uiState.update { it.copy(errorMessage = null, errorDialogMessage = null, isAnalyzing = false) }
     }
 
-    fun showError(message: String) {
-        _uiState.update { it.copy(errorMessage = message) }
+    fun showError(message: String, isDialog: Boolean = false) {
+        _uiState.update { 
+            if (isDialog) it.copy(errorDialogMessage = message, isAnalyzing = false)
+            else it.copy(errorMessage = message, isAnalyzing = false)
+        }
     }
 
     private fun addRecentRecipe(item: RecentRecipeItem) {
