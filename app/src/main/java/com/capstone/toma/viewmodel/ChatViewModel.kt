@@ -28,6 +28,19 @@ class ChatViewModel : ViewModel() {
 
     private val timeFormat = SimpleDateFormat("a h:mm", Locale.KOREAN)
 
+    // 분석된 레시피 데이터를 임시 보관 (화면 이동 시 전달용)
+    private var lastAnalyzedRecipeData: String? = null
+
+    /**
+     * 새로운 분석이나 대화를 시작할 때 기존 내역을 초기화합니다.
+     */
+    fun resetChat() {
+        _uiState.update { AiChatUiState() }
+        lastAnalyzedRecipeData = null
+        clearNavigationEvent()
+        clearErrorEvent()
+    }
+
     fun clearNavigationEvent() {
         _navigationEvent.value = null
     }
@@ -120,7 +133,12 @@ class ChatViewModel : ViewModel() {
                         )
                     }
                     if (result.requestType == "recipe_search") {
-                        _navigationEvent.value = result.keyword to result.recipeData
+                        lastAnalyzedRecipeData = result.recipeData
+                    }
+
+                    if (result.requestType == "recipe_navigation") {
+                        val data = result.recipeData ?: lastAnalyzedRecipeData
+                        _navigationEvent.value = result.keyword to data
                     }
                 }
                 is VoiceRequestResult.Error -> {
@@ -182,7 +200,14 @@ class ChatViewModel : ViewModel() {
                         }
                         
                         if (result.requestType == "recipe_search") {
-                            _navigationEvent.value = result.keyword to result.recipeData
+                            // 분석 완료 상태. 데이터 캐싱 후 사용자 응답 대기
+                            lastAnalyzedRecipeData = result.recipeData
+                        }
+
+                        if (result.requestType == "recipe_navigation") {
+                            // 사용자가 시작 의사를 밝힘. 상세 화면으로 이동
+                            val data = result.recipeData ?: lastAnalyzedRecipeData
+                            _navigationEvent.value = result.keyword to data
                         }
                     }
                     is VoiceRequestResult.Error -> {

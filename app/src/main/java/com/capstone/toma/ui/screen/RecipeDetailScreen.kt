@@ -1,62 +1,33 @@
 package com.capstone.toma.ui.screen
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.QuestionMark
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Thermostat
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.capstone.toma.ui.theme.*
-
-
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material3.IconButton
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import org.json.JSONObject
 import com.capstone.toma.viewmodel.RecipeStorageViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
+import org.json.JSONObject
 
 @Composable
 fun RecipeDetailScreen(
@@ -77,17 +48,26 @@ fun RecipeDetailScreen(
     }
 
     val title = recipeData?.optString("title", keyword) ?: keyword
-    
-    // [SSOT 적용] DB 상태를 직접 구독하여 경고 및 상태 불일치 해결
     val isFavorite by storageViewModel.isRecipeSaved(title).collectAsState(initial = false)
 
-    val steps = recipeData?.optJSONArray("steps")?.let { array ->
-        List(array.length()) { array.getString(it) }
-    } ?: emptyList()
+    val steps = remember(recipeData) {
+        recipeData?.optJSONArray("steps")?.let { array ->
+            List(array.length()) { array.getString(it) }
+        } ?: emptyList()
+    }
+
+    val ingredients = remember(recipeData) {
+        recipeData?.optJSONArray("ingredients")?.let { array ->
+            List(array.length()) { array.getString(it) }
+        } ?: emptyList()
+    }
 
     val difficulty = recipeData?.optString("difficulty") ?: "보통"
     val timeStr = recipeData?.optString("time") ?: "20분"
     val imageUrl = recipeData?.optString("image_url")
+
+    // 현재 단계를 관리 (0: 재료 확인, 1~N: 조리 단계)
+    var currentStepIndex by remember { mutableIntStateOf(0) }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -103,7 +83,6 @@ fun RecipeDetailScreen(
                 keyword = title,
                 isFavorite = isFavorite,
                 onFavoriteClick = {
-                    // ViewModel로 로직 이관하여 중복 코드 제거
                     storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite)
                 }
             )
@@ -114,11 +93,22 @@ fun RecipeDetailScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            ProgressSection()
+            val totalSteps = steps.size
+            val progress = if (totalSteps > 0) (currentStepIndex.toFloat() / totalSteps.toFloat()) else 0f
+            ProgressSection(current = currentStepIndex, total = totalSteps, progress = progress)
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            CurrentStepSection(steps.getOrNull(0) ?: "준비된 단계가 없습니다.")
+            Box(modifier = Modifier.weight(1f)) {
+                if (currentStepIndex == 0) {
+                    IngredientsSection(ingredients)
+                } else {
+                    CurrentStepSection(
+                        stepNumber = currentStepIndex,
+                        stepText = steps.getOrNull(currentStepIndex - 1) ?: "준비된 단계가 없습니다."
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(18.dp))
 
@@ -128,9 +118,12 @@ fun RecipeDetailScreen(
 
             AiSuggestionSection()
 
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            BottomControlSection()
+            BottomControlSection(
+                onPrevClick = { if (currentStepIndex > 0) currentStepIndex-- },
+                onNextClick = { if (currentStepIndex < totalSteps) currentStepIndex++ }
+            )
         }
     }
 }
@@ -146,7 +139,7 @@ private fun RecipeTopBar(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        androidx.compose.material3.IconButton(onClick = onBackClick) {
+        IconButton(onClick = onBackClick) {
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = "닫기",
@@ -178,25 +171,27 @@ private fun RecipeTopBar(
 
         Spacer(modifier = Modifier.width(4.dp))
 
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(Color(0xFFFBE9E7))
-                .padding(horizontal = 12.dp, vertical = 7.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = Color(0xFFFBE9E7)
         ) {
-            Icon(
-                imageVector = Icons.Default.Notifications,
-                contentDescription = "주의",
-                tint = Color(0xFFE46A5D),
-                modifier = Modifier.size(14.dp)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = "고온 주의",
-                color = Color(0xFFE46A5D),
-                fontSize = 11.sp
-            )
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Notifications,
+                    contentDescription = "주의",
+                    tint = Color(0xFFE46A5D),
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = "고온 주의",
+                    color = Color(0xFFE46A5D),
+                    fontSize = 11.sp
+                )
+            }
         }
     }
 }
@@ -218,70 +213,98 @@ private fun CookingImageSection(imageUrl: String?) {
                 contentScale = ContentScale.Crop
             )
 
-            Row(
+            Surface(
                 modifier = Modifier
-                    .align(Alignment.TopStart)
                     .padding(12.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(Color(0x99000000))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .align(Alignment.TopStart),
+                shape = RoundedCornerShape(50),
+                color = Color(0x99000000)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(Color.Red)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "LIVE FEED",
-                    color = Color.White,
-                    fontSize = 10.sp
-                )
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color.Red)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "LIVE FEED",
+                        color = Color.White,
+                        fontSize = 10.sp
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun ProgressSection() {
+private fun IngredientsSection(ingredients: List<String>) {
+    Column {
+        Text(
+            text = "🛒 준비할 재료",
+            color = TomaMainOrange,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                if (ingredients.isEmpty()) {
+                    Text("재료 정보가 없습니다.", color = TomaSecondaryText)
+                } else {
+                    ingredients.forEach { ingredient ->
+                        Row(modifier = Modifier.padding(vertical = 4.dp)) {
+                            Text("•", color = TomaMainOrange, modifier = Modifier.padding(end = 8.dp))
+                            Text(text = ingredient, color = TomaPrimaryText, fontSize = 16.sp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProgressSection(current: Int, total: Int, progress: Float) {
     Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "3 / 8",
+                text = if (current == 0) "재료 준비" else "$current / $total",
                 color = TomaSecondaryText,
-                fontSize = 11.sp
-            )
-
-            Spacer(modifier = Modifier.width(6.dp))
-
-            Text(
-                text = "▌▌",
-                color = Color(0xFFB6BDC9),
-                fontSize = 10.sp
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
             )
 
             Spacer(modifier = Modifier.weight(1f))
 
             Text(
-                text = "45%",
+                text = "${(progress * 100).toInt()}%",
                 color = TomaMainOrange,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
             )
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         LinearProgressIndicator(
-            progress = { 0.45f },
+            progress = { progress },
             modifier = Modifier
                 .fillMaxWidth()
-                .height(6.dp)
+                .height(8.dp)
                 .clip(RoundedCornerShape(50)),
             color = TomaMainOrange,
             trackColor = Color(0xFFE5E7EB)
@@ -290,23 +313,22 @@ private fun ProgressSection() {
 }
 
 @Composable
-private fun CurrentStepSection(stepText: String) {
+private fun CurrentStepSection(stepNumber: Int, stepText: String) {
     Column {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "✕ 진행 중인 단계",
-                color = TomaMainOrange,
-                fontSize = 13.sp
-            )
-        }
+        Text(
+            text = "STEP $stepNumber",
+            color = TomaMainOrange,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
 
         Spacer(modifier = Modifier.height(12.dp))
 
         Text(
             text = stepText,
             color = TomaPrimaryText,
-            fontSize = 24.sp,
-            lineHeight = 34.sp,
+            fontSize = 22.sp,
+            lineHeight = 32.sp,
             fontWeight = FontWeight.Medium
         )
     }
@@ -464,28 +486,34 @@ private fun SuggestionChip(
     text: String,
     icon: @Composable () -> Unit
 ) {
-    Row(
-        modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(Color(0xFFF3F4F6))
-            .border(1.dp, Color(0xFFE5E7EB), RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+    Surface(
+        modifier = modifier.clickable { },
+        shape = RoundedCornerShape(50),
+        color = Color(0xFFF3F4F6),
+        border = BorderStroke(1.dp, Color(0xFFE5E7EB))
     ) {
-        icon()
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            text = text,
-            color = TomaPrimaryText,
-            fontSize = 11.sp,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            icon()
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = text,
+                color = TomaPrimaryText,
+                fontSize = 11.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 
 @Composable
-private fun BottomControlSection() {
+private fun BottomControlSection(
+    onPrevClick: () -> Unit,
+    onNextClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -497,6 +525,7 @@ private fun BottomControlSection() {
             containerColor = Color(0xFFF1F3F5),
             iconTint = TomaPrimaryText,
             size = 52.dp,
+            onClick = onPrevClick,
             icon = {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -513,6 +542,7 @@ private fun BottomControlSection() {
                 containerColor = TomaMainOrange,
                 iconTint = Color.White,
                 size = 64.dp,
+                onClick = { /* 음성 인식 시작 */ },
                 icon = {
                     Icon(
                         imageVector = Icons.Default.Mic,
@@ -521,20 +551,15 @@ private fun BottomControlSection() {
                     )
                 }
             )
-
             Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "듣고 있어요",
-                color = TomaMainOrange,
-                fontSize = 11.sp
-            )
+            Text(text = "말씀하세요", color = TomaMainOrange, fontSize = 11.sp)
         }
 
         CircleButton(
             containerColor = TomaLightOrange,
             iconTint = TomaMainOrange,
             size = 52.dp,
+            onClick = onNextClick,
             icon = {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
@@ -551,19 +576,20 @@ private fun CircleButton(
     containerColor: Color,
     iconTint: Color,
     size: androidx.compose.ui.unit.Dp,
+    onClick: () -> Unit = {},
     icon: @Composable () -> Unit
 ) {
-    Box(
+    Surface(
         modifier = Modifier
             .size(size)
             .clip(CircleShape)
-            .background(containerColor),
-        contentAlignment = Alignment.Center
+            .clickable { onClick() },
+        color = containerColor
     ) {
-        androidx.compose.runtime.CompositionLocalProvider(
-            androidx.compose.material3.LocalContentColor provides iconTint
-        ) {
-            icon()
+        Box(contentAlignment = Alignment.Center) {
+            CompositionLocalProvider(LocalContentColor provides iconTint) {
+                icon()
+            }
         }
     }
 }

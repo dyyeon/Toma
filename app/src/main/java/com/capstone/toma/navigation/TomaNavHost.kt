@@ -60,7 +60,7 @@ fun TomaNavHost(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            // [수정] 가짜 분석 대신 진짜 OpenAI Vision API 연동
+            chatViewModel.resetChat() // 기존 채팅 초기화
             navController.navigate(TomaDestination.Chat.route)
             chatViewModel.startLinkAnalysis(
                 userDisplay = "사진으로 레시피 찾기",
@@ -85,6 +85,7 @@ fun TomaNavHost(
                 onSearchSubmit = {
                     val query = homeUiState.searchQuery
                     if (query.isNotBlank()) {
+                        chatViewModel.resetChat() // 기존 채팅 초기화
                         chatViewModel.sendMessage(query)
                         navController.navigate(TomaDestination.Chat.route)
                         homeViewModel.updateSearchQuery("")
@@ -102,6 +103,7 @@ fun TomaNavHost(
                         
                         if (isYoutube || isBlog) {
                             val webPageManager = WebPageManager()
+                            chatViewModel.resetChat() // 기존 채팅 초기화
                             navController.navigate(TomaDestination.Chat.route)
                             
                             val displayMsg = if(isYoutube) "유튜브 분석 중: $link" else "블로그 분석 중: $link"
@@ -125,19 +127,34 @@ fun TomaNavHost(
                                 delay(600)
                                 
                                 val hiddenPrompt = """
-                                    [전문가 분석 모드: 실전 정보 추출]
+                                    [전문가 레시피 분석가 모드]
                                     입력 링크: $link
                                     이미지 URL: ${img ?: "없음"}
                                     페이지 제목: ${t ?: "제목 없음"}
                                     추출된 본문: ${d ?: "본문 없음"}
                                     
                                     지침:
-                                    1. 인사말, 광고, 후기, 잡담은 모두 제외하세요.
-                                    2. 반드시 '행동 중심의 단계별 가이드'로 재구성하세요.
-                                    3. 재료, 도구, 시간 등 수치 정보는 원문에 있을 때만 정확히 기록하세요.
-                                    4. 분석 완료 문구: "분석을 완료했어요! [요리명] 레시피 안내를 시작할까요?"
-                                    5. 반드시 JSON 포함: { "type": "recipe_search", "keyword": "요리명" }
-                                    6. recipe_data 내에 "image_url" 필드를 추가하고 위 '이미지 URL'을 넣으세요.
+                                    1. [중요] 사용자의 안부나 잡담은 짧게 응대하고, 본론인 '레시피 분석'에 집중하세요.
+                                    2. 본문에서 인사말, 후기, 광고 등은 모두 제거하고 실제 조리 정보만 추출하세요.
+                                    3. 출력 형식:
+                                       - 텍스트: "분석을 완료했어요! [요리명]이(가) 맞나요? 
+                                         주요 재료: [추출된 재료 요약]
+                                         이 레시피의 특징: [예: 백종원식 초간단 버전, 매콤한 맛 강조 등]
+                                         
+                                         이 레시피로 안내를 시작할까요?"
+                                       - JSON: 반드시 하단에 아래 형식을 포함하세요.
+                                         {
+                                           "type": "recipe_search",
+                                           "keyword": "요리명",
+                                           "recipe_data": {
+                                             "title": "요리명",
+                                             "ingredients": ["재료1", "재료2"],
+                                             "steps": ["1단계", "2단계"],
+                                             "difficulty": "보통",
+                                             "time": "20분",
+                                             "image_url": "${img ?: ""}"
+                                           }
+                                         }
                                 """.trimIndent()
 
                                 val openAi = com.capstone.toma.OpenAiManager()
