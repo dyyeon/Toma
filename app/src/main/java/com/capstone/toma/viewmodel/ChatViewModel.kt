@@ -12,7 +12,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
+import java.util.UUID
+
+sealed class ChatNavigationEvent {
+    data class ToConfirm(val keyword: String, val recipeData: String?) : ChatNavigationEvent()
+    data class ToDetail(val keyword: String, val recipeData: String?) : ChatNavigationEvent()
+}
 
 class ChatViewModel : ViewModel() {
     private val openAiManager = OpenAiManager()
@@ -20,22 +27,17 @@ class ChatViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(AiChatUiState())
     val uiState: StateFlow<AiChatUiState> = _uiState.asStateFlow()
 
-    private val _navigationEvent = MutableStateFlow<Pair<String, String?>?>(null)
-    val navigationEvent: StateFlow<Pair<String, String?>?> = _navigationEvent.asStateFlow()
+    private val _navigationEvent = MutableStateFlow<ChatNavigationEvent?>(null)
+    val navigationEvent: StateFlow<ChatNavigationEvent?> = _navigationEvent.asStateFlow()
 
     private val _errorEvent = MutableStateFlow<String?>(null)
     val errorEvent: StateFlow<String?> = _errorEvent.asStateFlow()
 
     private val timeFormat = SimpleDateFormat("a h:mm", Locale.KOREAN)
-
-    // 분석된 레시피 데이터를 임시 보관 (화면 이동 시 전달용)
     private var lastAnalyzedRecipeData: String? = null
 
-    /**
-     * 새로운 분석이나 대화를 시작할 때 기존 내역을 초기화합니다.
-     */
     fun resetChat() {
-        _uiState.update { AiChatUiState() }
+        _uiState.value = AiChatUiState()
         lastAnalyzedRecipeData = null
         clearNavigationEvent()
         clearErrorEvent()
@@ -47,12 +49,7 @@ class ChatViewModel : ViewModel() {
 
     fun clearErrorEvent() {
         _errorEvent.value = null
-        _uiState.update { 
-            it.copy(
-                errorDialogMessage = null,
-                isTyping = false 
-            ) 
-        }
+        _uiState.update { it.copy(errorDialogMessage = null, isTyping = false) }
     }
 
     fun onInputTextChange(text: String) {
@@ -60,15 +57,29 @@ class ChatViewModel : ViewModel() {
     }
 
     fun sendMessage(text: String? = null) {
-        if (_uiState.value.isTyping) return // [추가] 분석 중 중복 전송 방지
+        if (_uiState.value.isTyping) return
+
         val messageText = text ?: _uiState.value.inputText
         if (messageText.isBlank()) return
-        sendCustomMessage(messageText)
+
+        val userMessage = ChatMessage(
+            id = UUID.randomUUID().toString(),
+            text = messageText,
+            isUser = true,
+            timestamp = getCurrentTime()
+        )
+
+        _uiState.update {
+            it.copy(
+                messages = it.messages + userMessage,
+                inputText = "",
+                isTyping = true
+            )
+        }
+
+        processAiResponse(messageText)
     }
 
-    /**
-     * 사용자에게 보여지는 텍스트와 실제 AI에게 전달하는 텍스트를 다르게 설정할 수 있습니다.
-     */
     fun sendCustomMessage(displayText: String, hiddenPrompt: String? = null) {
         if (displayText.isBlank()) return
 
@@ -79,7 +90,7 @@ class ChatViewModel : ViewModel() {
             timestamp = getCurrentTime()
         )
 
-        _uiState.update { 
+        _uiState.update {
             it.copy(
                 messages = it.messages + userMessage,
                 inputText = if (hiddenPrompt == null) "" else it.inputText,
@@ -87,65 +98,79 @@ class ChatViewModel : ViewModel() {
             )
         }
 
-        // 실제 AI에게는 hiddenPrompt가 있으면 그걸 보내고, 없으면 displayText를 보냄
         processAiResponse(hiddenPrompt ?: displayText)
     }
 
-    /**
-     * 분석 단계별로 메시지를 업데이트하며 최종 결과를 받아옵니다.
-     */
-    fun startLinkAnalysis(userDisplay: String, initialAiText: String, onAnalyze: suspend (updateStatus: (String) -> Unit) -> VoiceRequestResult) {
-        if (_uiState.value.isTyping) return // [추가] 중복 분석 시작 방지
-        val userMsgId = UUID.randomUUID().toString()
-        val aiMsgId = UUID.randomUUID().toString()
+    fun startLinkAnalysis(
+        userDisplay: String,
+        initialAiText: String,
+        onAnalyze: suspend (updateStatus: (String) -> Unit) -> VoiceRequestResult
+    ) {
+        if (_uiState.value.isTyping) return
 
-        val userMessage = ChatMessage(id = userMsgId, text = userDisplay, isUser = true, timestamp = getCurrentTime())
-        val aiPendingMessage = ChatMessage(id = aiMsgId, text = initialAiText, isUser = false, timestamp = getCurrentTime())
+        val userMessageId = UUID.randomUUID().toString()
+        val aiMessageId = UUID.randomUUID().toString()
 
-        _uiState.update { 
+        val userMessage = ChatMessage(
+            id = userMessageId,
+            text = userDisplay,
+            isUser = true,
+            timestamp = getCurrentTime()
+        )
+        val aiMessage = ChatMessage(
+            id = aiMessageId,
+            text = initialAiText,
+            isUser = false,
+            timestamp = getCurrentTime()
+        )
+
+        _uiState.update {
             it.copy(
-                messages = it.messages + userMessage + aiPendingMessage,
+                messages = it.messages + userMessage + aiMessage,
                 isTyping = true
             )
         }
 
         viewModelScope.launch {
             val result = onAnalyze { status ->
-                // 중간 상태 업데이트
                 _uiState.update { state ->
                     state.copy(
-                        messages = state.messages.map { 
-                            if (it.id == aiMsgId) it.copy(text = status) else it 
+                        messages = state.messages.map { message ->
+                            if (message.id == aiMessageId) {
+                                message.copy(text = status)
+                            } else {
+                                message
+                            }
                         }
                     )
                 }
             }
 
-            // 최종 결과 반영
             when (result) {
                 is VoiceRequestResult.Success -> {
                     _uiState.update { state ->
                         state.copy(
-                            messages = state.messages.map { 
-                                if (it.id == aiMsgId) it.copy(text = result.responseMessage) else it 
+                            messages = state.messages.map { message ->
+                                if (message.id == aiMessageId) {
+                                    message.copy(text = result.responseMessage)
+                                } else {
+                                    message
+                                }
                             },
                             isTyping = false
                         )
                     }
-                    if (result.requestType == "recipe_search") {
-                        lastAnalyzedRecipeData = result.recipeData
-                    }
-
-                    if (result.requestType == "recipe_navigation") {
-                        val data = result.recipeData ?: lastAnalyzedRecipeData
-                        _navigationEvent.value = result.keyword to data
-                    }
+                    handleNavigation(result)
                 }
                 is VoiceRequestResult.Error -> {
                     _uiState.update { state ->
                         state.copy(
-                            messages = state.messages.map { 
-                                if (it.id == aiMsgId) it.copy(text = "죄송해요. 분석 중에 문제가 발생했어요. 😢") else it 
+                            messages = state.messages.map { message ->
+                                if (message.id == aiMessageId) {
+                                    message.copy(text = "분석 중 문제가 발생했습니다.")
+                                } else {
+                                    message
+                                }
                             },
                             isTyping = false,
                             errorDialogMessage = result.message
@@ -173,13 +198,10 @@ class ChatViewModel : ViewModel() {
             timestamp = getCurrentTime()
         )
 
-        _uiState.update { 
-            it.copy(messages = it.messages + userMessage + aiMessage)
-        }
+        _uiState.update { it.copy(messages = it.messages + userMessage + aiMessage) }
     }
 
     private fun processAiResponse(userText: String) {
-        // 대화 내역 추출 (text와 isUser 정보만 추출)
         val history = _uiState.value.messages.map { it.text to it.isUser }
 
         viewModelScope.launch {
@@ -192,35 +214,47 @@ class ChatViewModel : ViewModel() {
                             isUser = false,
                             timestamp = getCurrentTime()
                         )
-                        _uiState.update { 
+
+                        _uiState.update {
                             it.copy(
                                 messages = it.messages + aiMessage,
                                 isTyping = false
                             )
                         }
-                        
-                        if (result.requestType == "recipe_search") {
-                            // 분석 완료 상태. 데이터 캐싱 후 사용자 응답 대기
-                            lastAnalyzedRecipeData = result.recipeData
-                        }
-
-                        if (result.requestType == "recipe_navigation") {
-                            // 사용자가 시작 의사를 밝힘. 상세 화면으로 이동
-                            val data = result.recipeData ?: lastAnalyzedRecipeData
-                            _navigationEvent.value = result.keyword to data
-                        }
+                        handleNavigation(result)
                     }
                     is VoiceRequestResult.Error -> {
-                        _uiState.update { 
+                        _uiState.update {
                             it.copy(
                                 isTyping = false,
-                                errorDialogMessage = "네트워크 연결이 원활하지 않아요. 다시 시도해 주세요."
-                            ) 
+                                errorDialogMessage = result.message
+                            )
                         }
                         _errorEvent.value = result.message
                     }
                 }
             }
+        }
+    }
+
+    private fun handleNavigation(result: VoiceRequestResult.Success) {
+        val latestRecipeData = result.recipeData?.takeIf { it.isNotBlank() }
+        if (latestRecipeData != null) {
+            lastAnalyzedRecipeData = latestRecipeData
+        }
+
+        val effectiveRecipeData = latestRecipeData ?: lastAnalyzedRecipeData
+        val hasRecipeContext = result.keyword.isNotBlank() || !effectiveRecipeData.isNullOrBlank()
+
+        if (hasRecipeContext && (
+                result.requestType == "recipe_search" ||
+                    result.requestType == "recipe_navigation"
+                )
+        ) {
+            _navigationEvent.value = ChatNavigationEvent.ToConfirm(
+                keyword = result.keyword,
+                recipeData = effectiveRecipeData
+            )
         }
     }
 

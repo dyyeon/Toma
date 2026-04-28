@@ -72,19 +72,20 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.model.StoredRecipe
+import com.capstone.toma.ui.theme.TomaBackground
+import com.capstone.toma.ui.theme.TomaCard
 import com.capstone.toma.ui.theme.TomaMainRed
 import com.capstone.toma.ui.theme.TomaPrimaryText
 import com.capstone.toma.ui.theme.TomaSecondaryText
 import com.capstone.toma.viewmodel.RecipeStorageViewModel
 import kotlinx.coroutines.launch
 
-private val StorageBg = Color(0xFFFFFBF7)
+private val StorageBg = TomaBackground
 private val StorageCard = Color.White
 private val StorageChip = Color(0xFFFFEFE3)
 private val StorageAccent = TomaMainRed
 private val StorageInk = TomaPrimaryText
 private val StorageMuted = TomaSecondaryText
-private val StorageLogo = Color(0xFFEE8C2B)
 
 @Composable
 fun RecipeStorageScreen(
@@ -313,67 +314,55 @@ private fun StorageDetail(
 
 @Composable
 private fun StorageHeader(onBackClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onBackClick) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "뒤로",
-                tint = Color.Black
-            )
-        }
-
-        Text(
-            text = "저장소",
-            color = Color.Black,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 8.dp)
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        Text(
-            text = "TOMA",
-            color = StorageLogo,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.ExtraBold
-        )
-    }
+    StorageTopHeader(
+        title = "저장소",
+        onBackClick = onBackClick
+    )
 }
 
 @Composable
 private fun StorageDetailHeader(onBackClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+    StorageTopHeader(
+        title = "레시피 상세",
+        onBackClick = onBackClick
+    )
+}
+
+@Composable
+private fun StorageTopHeader(
+    title: String,
+    onBackClick: () -> Unit
+) {
+    Surface(
+        color = StorageBg,
+        shadowElevation = 0.dp
     ) {
-        IconButton(onClick = onBackClick) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "뒤로",
-                tint = Color.Black
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onBackClick,
+                modifier = Modifier.background(TomaCard, CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "뒤로",
+                    tint = StorageInk
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Text(
+                text = title,
+                color = StorageInk,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold
             )
         }
-
-        Text(
-            text = "레시피 상세",
-            color = Color.Black,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 8.dp)
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        Text(
-            text = "TOMA",
-            color = StorageLogo,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.ExtraBold
-        )
     }
 }
 

@@ -1,37 +1,23 @@
 package com.capstone.toma.viewmodel
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import com.capstone.toma.model.RecipeSourceType
+import com.capstone.toma.storage.RecentHistoryStore
 import com.capstone.toma.ui.screen.HomeUiState
 import com.capstone.toma.ui.screen.RecentRecipeItem
-import com.capstone.toma.ui.screen.RecipeSourceType
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
-class HomeViewModel : ViewModel() {
+class HomeViewModel(application: Application) : AndroidViewModel(application) {
+    private val recentHistoryStore = RecentHistoryStore(application)
 
     private val _uiState = MutableStateFlow(
-        HomeUiState(
-            recentItems = listOf(
-                RecentRecipeItem(
-                    id = "kimchi",
-                    title = "김치볶음밥",
-                    timeText = "2시간 전 분석",
-                    sourceType = RecipeSourceType.YOUTUBE
-                ),
-                RecentRecipeItem(
-                    id = "egg",
-                    title = "계란말이",
-                    timeText = "어제 분석",
-                    sourceType = RecipeSourceType.IMAGE
-                )
-            )
-        )
+        HomeUiState(recentItems = recentHistoryStore.getRecentItems())
     )
-    val uiState: StateFlow<HomeUiState> = _uiState
+    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     fun updateSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
@@ -41,87 +27,23 @@ class HomeViewModel : ViewModel() {
         _uiState.update { it.copy(youtubeLink = link) }
     }
 
-    fun submitSearch() {
-        if (_uiState.value.isAnalyzing) return // [추가] 분석 중 중복 클릭 방지
-        val query = _uiState.value.searchQuery.trim()
-
-        if (query.isBlank()) {
-            showError("검색어를 입력해주세요.")
-            return
-        }
-
-        clearError()
-
-        addRecentRecipe(
-            RecentRecipeItem(
-                id = "text_${System.currentTimeMillis()}",
-                title = query,
-                timeText = "방금 검색",
-                sourceType = RecipeSourceType.TEXT
-            )
-        )
-
-        _uiState.update { it.copy(searchQuery = "") }
+    fun refreshRecentItems() {
+        _uiState.update { it.copy(recentItems = recentHistoryStore.getRecentItems()) }
     }
 
-    fun submitYoutube() {
-        if (_uiState.value.isAnalyzing) return // [추가] 분석 중 중복 클릭 방지
-        val link = _uiState.value.youtubeLink.trim()
-
-        if (link.isBlank()) {
-            showError("유튜브 링크를 입력해주세요.")
-            return
-        }
-
-        if (!isValidYoutubeUrl(link)) {
-            showError("유효한 유튜브 링크를 입력해주세요.")
-            return
-        }
-
-        clearError()
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isAnalyzing = true) }
-
-            delay(1800)
-
-            addRecentRecipe(
-                RecentRecipeItem(
-                    id = "youtube_${System.currentTimeMillis()}",
-                    title = extractYoutubeTitle(link),
-                    timeText = "방금 분석",
-                    sourceType = RecipeSourceType.YOUTUBE
+    fun saveRecentRecipe(
+        keyword: String,
+        recipeDataJson: String?,
+        sourceType: RecipeSourceType = RecipeSourceType.TEXT
+    ) {
+        _uiState.update {
+            it.copy(
+                recentItems = recentHistoryStore.saveRecentRecipe(
+                    keyword = keyword,
+                    recipeDataJson = recipeDataJson,
+                    sourceType = sourceType
                 )
             )
-
-            _uiState.update {
-                it.copy(
-                    youtubeLink = "",
-                    isAnalyzing = false
-                )
-            }
-        }
-    }
-
-    fun onImageSelected(uriString: String) {
-        if (_uiState.value.isAnalyzing) return // [추가] 분석 중 중복 클릭 방지
-        clearError()
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isAnalyzing = true) }
-
-            delay(1200)
-
-            addRecentRecipe(
-                RecentRecipeItem(
-                    id = "image_${System.currentTimeMillis()}",
-                    title = "업로드한 이미지 레시피",
-                    timeText = "방금 분석",
-                    sourceType = RecipeSourceType.IMAGE
-                )
-            )
-
-            _uiState.update { it.copy(isAnalyzing = false) }
         }
     }
 
@@ -130,29 +52,12 @@ class HomeViewModel : ViewModel() {
     }
 
     fun showError(message: String, isDialog: Boolean = false) {
-        _uiState.update { 
-            if (isDialog) it.copy(errorDialogMessage = message, isAnalyzing = false)
-            else it.copy(errorMessage = message, isAnalyzing = false)
-        }
-    }
-
-    private fun addRecentRecipe(item: RecentRecipeItem) {
         _uiState.update {
-            it.copy(recentItems = listOf(item) + it.recentItems)
-        }
-    }
-
-    private fun isValidYoutubeUrl(url: String): Boolean {
-        return url.contains("youtube.com/watch") ||
-                url.contains("youtu.be/") ||
-                url.contains("youtube.com/shorts/")
-    }
-
-    private fun extractYoutubeTitle(link: String): String {
-        return when {
-            link.contains("youtu.be/") -> "Short-form 유튜브 레시피"
-            link.contains("shorts") -> "유튜브 쇼츠 레시피"
-            else -> "유튜브 레시피"
+            if (isDialog) {
+                it.copy(errorDialogMessage = message, isAnalyzing = false)
+            } else {
+                it.copy(errorMessage = message, isAnalyzing = false)
+            }
         }
     }
 

@@ -4,6 +4,14 @@ enum class RecipeSourceType {
     TEXT, YOUTUBE, IMAGE
 }
 
+data class RecentRecipeRecord(
+    val id: String,
+    val title: String,
+    val timeText: String,
+    val sourceType: RecipeSourceType,
+    val recipeDataJson: String?
+)
+
 data class StoredRecipe(
     val id: String,
     val title: String,
