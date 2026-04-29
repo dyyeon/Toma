@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.capstone.toma.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
@@ -18,6 +19,9 @@ import kotlinx.coroutines.launch
 class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow<VoiceUiState>(VoiceUiState.Idle)
     val uiState = _uiState.asStateFlow()
+
+    private val _intentEvent = kotlinx.coroutines.flow.MutableSharedFlow<TomaIntent>()
+    val intentEvent = _intentEvent.asSharedFlow()
 
     private val audioStreamManager = AudioStreamManager()
     private val wakeWordManager = WakeWordManager(application) {
@@ -76,6 +80,10 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = VoiceUiState.Processing
         
         Log.d("VoiceViewModel", "Intent Parsed: $intent")
+
+        viewModelScope.launch {
+            _intentEvent.emit(intent)
+        }
 
         when (intent) {
             is TomaIntent.SET_TIMER -> {

@@ -9,100 +9,182 @@ import android.util.Log
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.util.*
 
 /**
- * CHANGED: openWakeWord migration - ONNX based "Hey Toma" detection
+ * Optimized openWakeWord 3-stage pipeline implementation.
+ * Pipeline: PCM -> MelSpectrogram -> Embedding -> Classifier
  */
 class WakeWordManager(
     private val context: Context,
     private val onWakeWordDetected: () -> Unit
 ) {
     private val TAG = "WakeWord"
-    private var ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
-    private var ortSession: OrtSession? = null
+    
+    // Configuration
+    var detectionThreshold: Float = 0.5f
+    var verboseLogging: Boolean = true
+    
+    private val SAMPLE_RATE = 16000
+    private val CHUNK_SIZE = 1280 // 80ms at 16kHz
+    private val MEL_WINDOW_SIZE = 76
+    private val EMBEDDING_WINDOW_SIZE = 16
+    private val MEL_CHANNELS = 32
+    private val EMBEDDING_DIM = 96
 
-    // openWakeWord config: 16kHz, 16-bit PCM.
-    // The model expects a specific chunk size (e.g., 1280 samples for 80ms)
-    private val THRESHOLD = 0.5f
+    // ONNX Resources
+    private val ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
+    private var melSession: OrtSession? = null
+    private var embSession: OrtSession? = null
+    private var clfSession: OrtSession? = null
+
+    // State Buffers
+    private val pcmBuffer = mutableListOf<Short>()
+    private val melBuffer = mutableListOf<FloatArray>()
+    private val embeddingBuffer = LinkedList<FloatArray>()
 
     init {
-        loadModel()
+        loadModels()
     }
 
-    private fun loadModel() {
+    private fun loadModels() {
         try {
-            // Assume 'hey_toma.onnx' is placed in assets
-            val modelBytes = context.assets.open("hey_toma.onnx").readBytes()
-            ortSession = ortEnv.createSession(modelBytes)
-            Log.d(TAG, "✅ openWakeWord model loaded successfully")
+            melSession = ortEnv.createSession(context.assets.open("melspectrogram.onnx").readBytes())
+            embSession = ortEnv.createSession(context.assets.open("embedding_model.onnx").readBytes())
+            clfSession = ortEnv.createSession(context.assets.open("hey_toma.onnx").readBytes())
+            Log.d(TAG, "✅ 3-Stage ONNX Models loaded successfully")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Model load failed: ${e.message}")
         }
     }
 
-    /**
-     * Process a PCM 16-bit byte array frame
-     */
     fun processFrame(pcmData: ByteArray) {
-        if (ortSession == null) return
+        if (melSession == null || embSession == null || clfSession == null) return
 
-        try {
-            // Convert ByteArray (PCM 16-bit) to FloatArray (-1.0 to 1.0)
-            val shortBuffer = java.nio.ByteBuffer.wrap(pcmData)
-                .order(java.nio.ByteOrder.LITTLE_ENDIAN)
-                .asShortBuffer()
-            
-            val floatArray = FloatArray(shortBuffer.remaining())
-            for (i in floatArray.indices) {
-                floatArray[i] = shortBuffer.get() / 32768f
-            }
+        val shortBuffer = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
+        while (shortBuffer.hasRemaining()) {
+            pcmBuffer.add(shortBuffer.get())
+        }
 
-            val score = predict(floatArray)
-            if (score > THRESHOLD) {
-                Log.d(TAG, "🚨 [Hey Toma] Detected! Score: $score")
-                triggerHaptic()
-                onWakeWordDetected()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Inference error: ${e.message}")
+        while (pcmBuffer.size >= CHUNK_SIZE) {
+            val chunk = pcmBuffer.take(CHUNK_SIZE).toShortArray()
+            repeat(CHUNK_SIZE) { pcmBuffer.removeAt(0) }
+            runPipeline(chunk)
         }
     }
 
-    private fun predict(data: FloatArray): Float {
-        val inputName = ortSession?.inputNames?.iterator()?.next() ?: return 0f
-        
-        // Shape: [1, samples]
-        val shape = longArrayOf(1, data.size.toLong())
-        val tensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(data), shape)
-        
-        ortSession?.use { session ->
-            val result = session.run(Collections.singletonMap(inputName, tensor))
-            val output = result[0].value
+    private fun runPipeline(chunk: ShortArray) {
+        try {
+            val floatPcm = FloatArray(CHUNK_SIZE) { chunk[it].toFloat() / 32768.0f }
+            val pcmTensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(floatPcm), longArrayOf(1, CHUNK_SIZE.toLong()))
             
-            // Handle common ONNX output shapes for openWakeWord
-            return when (output) {
-                is Array<*> -> (output[0] as FloatArray)[0]
-                is FloatArray -> output[0]
-                else -> 0f
+            pcmTensor.use {
+                val melOutput = melSession?.run(Collections.singletonMap("input", pcmTensor))
+                melOutput?.use {
+                    val melValue = it[0].value as Array<Array<Array<FloatArray>>>
+                    val frames = melValue[0][0] // Shape: [1, 1, T, 32] -> frames is [T, 32]
+                    
+                    if (verboseLogging) Log.d(TAG, "[Shape Check] Mel Input: [1, 1280], Output T: ${frames.size}")
+
+                    // Process all mel frames from this chunk and update buffer
+                    for (frame in frames) {
+                        melBuffer.add(frame)
+                        if (melBuffer.size > MEL_WINDOW_SIZE) {
+                            melBuffer.removeAt(0)
+                        }
+                    }
+
+                    // Stride 8: Call embedding/classifier once per 80ms chunk (approx. 12.5Hz)
+                    if (melBuffer.size == MEL_WINDOW_SIZE) {
+                        runEmbedding()
+                    }
+                }
             }
-        } ?: return 0f
+        } catch (e: Exception) {
+            if (verboseLogging) Log.e(TAG, "Pipeline error: ${e.message}")
+        }
+    }
+
+    private fun runEmbedding() {
+        try {
+            val flattenedMel = FloatArray(MEL_WINDOW_SIZE * MEL_CHANNELS)
+            for (i in 0 until MEL_WINDOW_SIZE) {
+                System.arraycopy(melBuffer[i], 0, flattenedMel, i * MEL_CHANNELS, MEL_CHANNELS)
+            }
+            
+            val melInputTensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(flattenedMel), longArrayOf(1, MEL_WINDOW_SIZE.toLong(), MEL_CHANNELS.toLong(), 1))
+            
+            melInputTensor.use {
+                val embOutput = embSession?.run(Collections.singletonMap("input", melInputTensor))
+                embOutput?.use {
+                    val embValue = it[0].value as Array<Array<Array<FloatArray>>>
+                    val embedding = embValue[0][0][0] // [96]
+                    
+                    embeddingBuffer.add(embedding)
+                    if (embeddingBuffer.size > EMBEDDING_WINDOW_SIZE) {
+                        embeddingBuffer.removeFirst()
+                    }
+
+                    if (embeddingBuffer.size == EMBEDDING_WINDOW_SIZE) {
+                        runClassifier()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (verboseLogging) Log.e(TAG, "Embedding error: ${e.message}")
+        }
+    }
+
+    private fun runClassifier() {
+        try {
+            val flattenedEmb = FloatArray(EMBEDDING_WINDOW_SIZE * EMBEDDING_DIM)
+            for (i in 0 until EMBEDDING_WINDOW_SIZE) {
+                System.arraycopy(embeddingBuffer[i], 0, flattenedEmb, i * EMBEDDING_DIM, EMBEDDING_DIM)
+            }
+            
+            val clfInputTensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(flattenedEmb), longArrayOf(1, EMBEDDING_WINDOW_SIZE.toLong(), EMBEDDING_DIM.toLong()))
+            
+            clfInputTensor.use {
+                val clfOutput = clfSession?.run(Collections.singletonMap("input", clfInputTensor))
+                clfOutput?.use {
+                    val scoreData = it[0].value as Array<FloatArray>
+                    val score = scoreData[0][0]
+                    
+                    if (verboseLogging) Log.v(TAG, "Current WakeWord Score: $score")
+                    
+                    if (score >= detectionThreshold) {
+                        Log.d(TAG, "🔥 [Hey Toma] DETECTED! Score: $score")
+                        triggerHaptic()
+                        onWakeWordDetected()
+                        embeddingBuffer.clear()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            if (verboseLogging) Log.e(TAG, "Classifier error: ${e.message}")
+        }
     }
 
     private fun triggerHaptic() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-            vibratorManager.defaultVibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
-        } else {
-            @Suppress("DEPRECATION")
-            val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-            vibrator.vibrate(100)
-        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vibratorManager.defaultVibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                vibrator.vibrate(100)
+            }
+        } catch (e: Exception) {}
     }
 
     fun release() {
-        ortSession?.close()
+        melSession?.close()
+        embSession?.close()
+        clfSession?.close()
         ortEnv.close()
     }
 }
