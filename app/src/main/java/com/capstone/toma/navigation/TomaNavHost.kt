@@ -81,67 +81,82 @@ fun TomaNavHost(
         composable(TomaDestination.Home.route) {
             TomaHomeScreen(
                 uiState = homeUiState,
+
                 onSearchQueryChange = homeViewModel::updateSearchQuery,
+
                 onSearchSubmit = {
                     val query = homeUiState.searchQuery
                     if (query.isNotBlank()) {
-                        chatViewModel.resetChat() // 기존 채팅 초기화
+                        chatViewModel.resetChat()
                         chatViewModel.sendMessage(query)
                         navController.navigate(TomaDestination.Chat.route)
                         homeViewModel.updateSearchQuery("")
                     }
                 },
+
                 onMicClick = {
                     navController.navigateSingleTop(TomaDestination.VoiceGuide.route)
                 },
-                onYoutubeLinkChange = homeViewModel::updateYoutubeLink,
-                onYoutubeSubmit = {
-                    val link = homeUiState.youtubeLink
+
+                // 🔥 핵심 수정
+                onLinkChange = homeViewModel::updateRecipeLink,
+
+                onLinkSubmit = {
+                    val link = homeUiState.recipeLink
+
                     if (link.isNotBlank()) {
                         val isYoutube = link.contains("youtube.com") || link.contains("youtu.be")
-                        val isBlog = link.contains("blog.naver.com") || link.contains("tistory.com")
-                        
+                        val isBlog = link.contains("naver.com") || link.contains("tistory.com")
+
                         if (isYoutube || isBlog) {
                             val webPageManager = WebPageManager()
-                            chatViewModel.resetChat() // 기존 채팅 초기화
+
+                            chatViewModel.resetChat()
                             navController.navigate(TomaDestination.Chat.route)
-                            
-                            val displayMsg = if(isYoutube) "유튜브 분석 중: $link" else "블로그 분석 중: $link"
+
+                            val displayMsg =
+                                if (isYoutube) "유튜브 분석 중: $link"
+                                else "웹 레시피 분석 중: $link"
 
                             chatViewModel.startLinkAnalysis(
                                 userDisplay = displayMsg,
                                 initialAiText = "[1/2] 페이지 본문을 읽어오고 있어요... 📄"
                             ) { updateStatus ->
-                                // Coroutine scope 내에서 실행됨
-                                
-                                // 1단계: 웹 데이터 추출 (suspend 함수 사용)
+
                                 val (t, d, img) = webPageManager.fetchPageInfoSuspend(link)
-                                
+
                                 if (t == null && d?.contains("실패") == true) {
                                     homeViewModel.showError(d, isDialog = true)
                                     return@startLinkAnalysis VoiceRequestResult.Error(d)
                                 }
 
-                                // 2단계: 강화된 전문가 AI 분석 (사용자 지침 반영)
-                                updateStatus("[2/2] 전문가 AI가 실전 정보를 추출 중이에요... ✨")
+                                updateStatus("[2/2] AI가 레시피를 정리 중이에요... ✨")
                                 delay(600)
-                                
+
+                                val openAi = com.capstone.toma.OpenAiManager()
+                                val history = chatViewModel.uiState.value.messages.map { it.text to it.isUser }
+
                                 val hiddenPrompt = """
                                     [전문가 레시피 분석가 모드]
                                     입력 링크: $link
                                     이미지 URL: ${img ?: "없음"}
                                     페이지 제목: ${t ?: "제목 없음"}
                                     추출된 본문: ${d ?: "본문 없음"}
-                                    
+                                
                                     지침:
-                                    1. [중요] 사용자의 안부나 잡담은 짧게 응대하고, 본론인 '레시피 분석'에 집중하세요.
-                                    2. 본문에서 인사말, 후기, 광고 등은 모두 제거하고 실제 조리 정보만 추출하세요.
-                                    3. 출력 형식:
-                                       - 텍스트: "분석을 완료했어요! [요리명]이(가) 맞나요? 
+                                    1. 사용자의 안부나 잡담은 짧게 응대하고, 본론인 '레시피 분석'에 집중하세요.
+                                    2. 본문에서 인사말, 후기, 광고, 협찬 문구는 제거하고 실제 조리 정보만 추출하세요.
+                                    3. 유튜브 링크라면 자막/본문에서 조리 순서와 재료를 중심으로 정리하세요.
+                                    4. 웹페이지 링크라면 본문에서 재료, 양념, 조리 단계, 조리 시간을 중심으로 정리하세요.
+                                    5. 출력 형식:
+                                       - 텍스트:
+                                         "분석을 완료했어요! [요리명]이(가) 맞나요?
+                                
                                          주요 재료: [추출된 재료 요약]
-                                         이 레시피의 특징: [예: 백종원식 초간단 버전, 매콤한 맛 강조 등]
-                                         
+                                         이 레시피의 특징: [예: 초간단 버전, 매콤한 맛 강조 등]
+                                
                                          이 레시피로 안내를 시작할까요?"
+                                
                                        - JSON: 반드시 하단에 아래 형식을 포함하세요.
                                          {
                                            "type": "recipe_search",
@@ -157,45 +172,44 @@ fun TomaNavHost(
                                          }
                                 """.trimIndent()
 
-                                val openAi = com.capstone.toma.OpenAiManager()
-                                val history = chatViewModel.uiState.value.messages.map { it.text to it.isUser }
-                                
-                                // suspend 버전 API 호출
                                 openAi.processChatRequestSuspend(hiddenPrompt, history)
                             }
-                            homeViewModel.updateYoutubeLink("")
+
+                            homeViewModel.updateRecipeLink("")
                         } else {
-                            homeViewModel.showError("유튜브 또는 네이버/티스토리 블로그 링크만 가능합니다.")
+                            homeViewModel.showError("지원되지 않는 링크입니다.")
                         }
                     }
                 },
+
                 onPhotoScanClick = {
                     imagePickerLauncher.launch("image/*")
                 },
+
                 onRecentItemClick = { itemId ->
-                    // [연결] 최근 항목 클릭 시 해당 제목으로 즉시 AI 채팅/분석 시작
                     val item = homeUiState.recentItems.find { it.id == itemId }
                     item?.let {
                         chatViewModel.sendMessage(it.title)
                         navController.navigate(TomaDestination.Chat.route)
                     }
                 },
+
                 onRecentMoreClick = {
-                    // [연결] 더보기 클릭 시 저장소로 이동
                     navController.navigateSingleTop(TomaDestination.RecipeStorage.route)
                 },
-                onHomeClick = {
-                    navController.navigateSingleTop(TomaDestination.Home.route)
-                },
+
                 onStorageClick = {
                     navController.navigateSingleTop(TomaDestination.RecipeStorage.route)
                 },
+
                 onSettingsClick = {
                     navController.navigateSingleTop(TomaDestination.Settings.route)
                 },
+
                 onPrivacyPolicyClick = {
                     navController.navigateSingleTop(TomaDestination.PrivacyPolicy.route)
                 },
+
                 onErrorDismiss = homeViewModel::clearError
             )
         }
@@ -234,7 +248,8 @@ fun TomaNavHost(
                 },
                 onSuggestionClick = { text ->
                     voiceViewModel.onSuggestionClick(text)
-                }
+                },
+                onBackClick = { navController.popBackStack() }
             )
         }
 

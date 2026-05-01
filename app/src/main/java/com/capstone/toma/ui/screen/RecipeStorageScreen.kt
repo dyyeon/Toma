@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Bookmark
@@ -72,6 +71,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.model.StoredRecipe
+import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.ui.theme.TomaMainRed
 import com.capstone.toma.ui.theme.TomaPrimaryText
 import com.capstone.toma.ui.theme.TomaSecondaryText
@@ -84,7 +84,6 @@ private val StorageChip = Color(0xFFFFEFE3)
 private val StorageAccent = TomaMainRed
 private val StorageInk = TomaPrimaryText
 private val StorageMuted = TomaSecondaryText
-private val StorageLogo = Color(0xFFEE8C2B)
 
 @Composable
 fun RecipeStorageScreen(
@@ -147,6 +146,20 @@ fun RecipeStorageScreen(
     Scaffold(
         containerColor = StorageBg,
         snackbarHost = { SnackbarHost(snackbar) },
+        topBar = {
+            TomaTopAppBar(
+                title = if (opened == null) "저장소" else "레시피 상세",
+                showBackButton = true,
+                onBackClick = {
+                    if (opened == null) {
+                        onBackClick()
+                    } else {
+                        showImagePickerDialog = false
+                        openedId = null
+                    }
+                }
+            )
+        },
         floatingActionButton = {
             if (opened == null) {
                 FloatingActionButton(
@@ -164,7 +177,6 @@ fun RecipeStorageScreen(
                 totalCount = recipes.size,
                 query = query,
                 onQueryChange = { query = it },
-                onBackClick = onBackClick,
                 onOpen = { openedId = it.id },
                 onFavoriteToggle = { recipe -> storageViewModel?.toggleFavorite(recipe) }
             )
@@ -205,10 +217,6 @@ fun RecipeStorageScreen(
             StorageDetail(
                 inner = inner,
                 recipe = opened,
-                onBack = {
-                    showImagePickerDialog = false
-                    openedId = null
-                },
                 onFavoriteToggle = { storageViewModel?.toggleFavorite(opened) },
                 onImagePick = { showImagePickerDialog = true }
             )
@@ -223,16 +231,14 @@ private fun StorageList(
     totalCount: Int,
     query: String,
     onQueryChange: (String) -> Unit,
-    onBackClick: () -> Unit,
     onOpen: (StoredRecipe) -> Unit,
     onFavoriteToggle: (StoredRecipe) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(StorageBg),
-        contentPadding = PaddingValues(20.dp, inner.calculateTopPadding() + 12.dp, 20.dp, inner.calculateBottomPadding() + 96.dp),
+        contentPadding = PaddingValues(20.dp, inner.calculateTopPadding() + 16.dp, 20.dp, inner.calculateBottomPadding() + 96.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        item { StorageHeader(onBackClick) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
@@ -266,16 +272,14 @@ private fun StorageList(
 private fun StorageDetail(
     inner: PaddingValues,
     recipe: StoredRecipe,
-    onBack: () -> Unit,
     onFavoriteToggle: () -> Unit,
     onImagePick: () -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(StorageBg),
-        contentPadding = PaddingValues(20.dp, inner.calculateTopPadding() + 12.dp, 20.dp, inner.calculateBottomPadding() + 32.dp),
+        contentPadding = PaddingValues(20.dp, inner.calculateTopPadding() + 16.dp, 20.dp, inner.calculateBottomPadding() + 32.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        item { StorageDetailHeader(onBack) }
         item { HeroCard(recipe, onFavoriteToggle, onImagePick) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -308,72 +312,6 @@ private fun StorageDetail(
         }
         item { SectionTitle("조리 순서") }
         itemsIndexed(recipe.steps) { index, step -> StepCard(index + 1, step) }
-    }
-}
-
-@Composable
-private fun StorageHeader(onBackClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onBackClick) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "뒤로",
-                tint = Color.Black
-            )
-        }
-
-        Text(
-            text = "저장소",
-            color = Color.Black,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 8.dp)
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        Text(
-            text = "TOMA",
-            color = StorageLogo,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.ExtraBold
-        )
-    }
-}
-
-@Composable
-private fun StorageDetailHeader(onBackClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onBackClick) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "뒤로",
-                tint = Color.Black
-            )
-        }
-
-        Text(
-            text = "레시피 상세",
-            color = Color.Black,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(start = 8.dp)
-        )
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        Text(
-            text = "TOMA",
-            color = StorageLogo,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.ExtraBold
-        )
     }
 }
 

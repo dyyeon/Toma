@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.capstone.toma.ui.theme.*
 import androidx.compose.ui.res.painterResource
 import com.capstone.toma.R
+import com.capstone.toma.ui.component.TomaTopAppBar
 
 data class ChatMessage(
     val id: String,
@@ -82,7 +83,13 @@ fun AiChatScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = TomaBackground,
-        topBar = { ChatTopAppBar(onBackClick = onBackClick) }
+        topBar = {
+            TomaTopAppBar(
+                title = "AI 채팅",
+                showBackButton = true,
+                onBackClick = onBackClick
+            )
+        }
     ) { paddingValues ->
         Column(
             modifier = Modifier

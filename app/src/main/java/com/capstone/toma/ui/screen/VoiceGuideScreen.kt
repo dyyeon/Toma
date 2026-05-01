@@ -40,7 +40,8 @@ fun VoiceGuideScreen(
     uiState: VoiceUiState,
     suggestions: List<String>,
     onMicClick: () -> Unit,
-    onSuggestionClick: (String) -> Unit
+    onSuggestionClick: (String) -> Unit,
+    onBackClick: () -> Unit = {}
 ) {
     val statusText = when (uiState) {
         VoiceUiState.Idle -> "READY"
@@ -62,11 +63,15 @@ fun VoiceGuideScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(TomaBackground)
-            .padding(vertical = 24.dp)
+            .padding(bottom = 24.dp)
     ) {
-        TomaTopAppBar()
+        TomaTopAppBar(
+            title = "음성 안내",
+            showBackButton = true,
+            onBackClick = onBackClick
+        )
 
-        Spacer(modifier = Modifier.height(34.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Column(
             modifier = Modifier.padding(horizontal = 24.dp)

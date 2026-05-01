@@ -7,7 +7,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
@@ -19,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.capstone.toma.ui.component.TomaTopAppBar
 
 @Composable
 fun CustomerCenterScreen(onBackClick: () -> Unit = {}) {
@@ -37,21 +37,20 @@ fun CustomerCenterScreen(onBackClick: () -> Unit = {}) {
     // 몇 번째 질문이 펼쳐져 있는지 기억하는 변수 (-1은 모두 접힌 상태)
     var expandedIndex by remember { mutableStateOf(-1) }
 
-    Column(modifier = Modifier.fillMaxSize().background(TomaSettingsBg).padding(top = 48.dp, start = 20.dp, end = 20.dp)) {
-        // 상단 바
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            IconButton(onClick = onBackClick, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.Black)
-            }
-            Text("고객센터", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(modifier = Modifier.height(32.dp))
+    Column(modifier = Modifier.fillMaxSize().background(TomaSettingsBg)) {
+        // 상단 바 (통일된 TopAppBar)
+        TomaTopAppBar(
+            title = "고객센터",
+            showBackButton = true,
+            onBackClick = onBackClick
+        )
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Text("자주 묻는 질문 (FAQ)", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+        Text("자주 묻는 질문 (FAQ)", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 32.dp))
         Spacer(modifier = Modifier.height(12.dp))
 
         // FAQ 리스트 영역
-        Column(modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).verticalScroll(rememberScrollState())) {
             faqList.forEachIndexed { index, faq ->
                 val isExpanded = expandedIndex == index
 
