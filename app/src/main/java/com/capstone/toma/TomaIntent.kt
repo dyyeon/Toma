@@ -11,6 +11,7 @@ sealed class TomaIntent {
     object PREVIOUS_STEP : TomaIntent()
     object REPEAT_STEP : TomaIntent()
     data class SET_TIMER(val durationMin: Int) : TomaIntent()
+    data class RECIPE_SEARCH(val keyword: String) : TomaIntent() // 추가됨
     object INGREDIENT_CHECK : TomaIntent()
     object HELP : TomaIntent()
     object CANCEL : TomaIntent()
@@ -21,7 +22,6 @@ object TomaIntentParser {
     private const val TAG = "TomaParser"
 
     fun parse(text: String): TomaIntent {
-        // 1. Strict JSON Parsing
         try {
             val cleanText = extractJson(text)
             val json = JSONObject(cleanText)
@@ -33,6 +33,7 @@ object TomaIntentParser {
                 "PREVIOUS_STEP" -> TomaIntent.PREVIOUS_STEP
                 "REPEAT_STEP" -> TomaIntent.REPEAT_STEP
                 "SET_TIMER" -> TomaIntent.SET_TIMER(args?.optInt("duration_min") ?: 3)
+                "RECIPE_SEARCH" -> TomaIntent.RECIPE_SEARCH(args?.optString("keyword") ?: "")
                 "INGREDIENT_CHECK" -> TomaIntent.INGREDIENT_CHECK
                 "HELP" -> TomaIntent.HELP
                 "CANCEL" -> TomaIntent.CANCEL
@@ -54,8 +55,8 @@ object TomaIntentParser {
         return when {
             lowerText.contains("다음") || lowerText.contains("넘어가") -> TomaIntent.NEXT_STEP
             lowerText.contains("이전") || lowerText.contains("뒤로") -> TomaIntent.PREVIOUS_STEP
-            lowerText.contains("다시") || lowerText.contains("한 번 더") || lowerText.contains("한번 더") -> TomaIntent.REPEAT_STEP
-            lowerText.contains("타이머") || lowerText.contains("재줘") -> {
+            lowerText.contains("다시") || lowerText.contains("한 번 더") -> TomaIntent.REPEAT_STEP
+            lowerText.contains("타이머") -> {
                 val digits = "\\d+".toRegex().find(text)?.value?.toInt() ?: 3
                 TomaIntent.SET_TIMER(digits)
             }

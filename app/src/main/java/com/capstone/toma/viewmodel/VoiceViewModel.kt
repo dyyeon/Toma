@@ -100,6 +100,9 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             TomaIntent.REPEAT_STEP -> {
                 _uiState.value = VoiceUiState.Result("다시 읽어드릴게요.")
             }
+            is TomaIntent.RECIPE_SEARCH -> {
+                _uiState.value = VoiceUiState.Result("'${intent.keyword}' 레시피를 찾아볼게요.")
+            }
             TomaIntent.CANCEL -> {
                 _uiState.value = VoiceUiState.Idle
                 return

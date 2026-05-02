@@ -74,7 +74,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.10.1")
 
     // ADDED: ONNX Runtime for openWakeWord
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.16.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
