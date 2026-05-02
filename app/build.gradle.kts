@@ -13,6 +13,29 @@ if (localPropertiesFile.exists()) {
     localPropertiesFile.inputStream().use { localProperties.load(it) }
 }
 
+fun resolveOpenAiApiKey(): String {
+    localProperties.getProperty("OPENAI_API_KEY")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+
+    System.getenv("OPENAI_API_KEY")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+
+    val legacyPropertiesFile = file("C:/00_Projects/TomaAI/local.properties")
+    if (legacyPropertiesFile.exists()) {
+        val legacyProperties = Properties()
+        legacyPropertiesFile.inputStream().use { legacyProperties.load(it) }
+        legacyProperties.getProperty("OPENAI_API_KEY")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+    }
+
+    return ""
+}
+
+val resolvedOpenAiApiKey = resolveOpenAiApiKey()
+
 android {
     namespace = "com.capstone.toma"
 
@@ -30,8 +53,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // 2. BuildConfig에 변수 추가
-        val apiKey = localProperties.getProperty("OPENAI_API_KEY") ?: ""
-        buildConfigField("String", "OPENAI_API_KEY", "\"$apiKey\"")
+        buildConfigField("String", "OPENAI_API_KEY", "\"$resolvedOpenAiApiKey\"")
     }
 
     buildTypes {
@@ -43,7 +65,7 @@ android {
             )
         }
         debug {
-            buildConfigField("String", "OPENAI_API_KEY", "\"${localProperties.getProperty("OPENAI_API_KEY") ?: ""}\"")
+            buildConfigField("String", "OPENAI_API_KEY", "\"$resolvedOpenAiApiKey\"")
         }
     }
 

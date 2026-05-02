@@ -1,121 +1,91 @@
 package com.capstone.toma.viewmodel
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import com.capstone.toma.model.RecipeSourceType
+import com.capstone.toma.storage.RecentHistoryStore
 import com.capstone.toma.ui.screen.HomeUiState
 import com.capstone.toma.ui.screen.RecentRecipeItem
-import com.capstone.toma.ui.screen.RecipeSourceType
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
-class HomeViewModel : ViewModel() {
+class HomeViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val recentHistoryStore = RecentHistoryStore(application)
 
     private val _uiState = MutableStateFlow(
         HomeUiState(
-            recentItems = listOf(
-                RecentRecipeItem(
-                    id = "kimchi",
-                    title = "김치볶음밥",
-                    timeText = "2시간 전 분석",
-                    sourceType = RecipeSourceType.YOUTUBE
-                ),
-                RecentRecipeItem(
-                    id = "egg",
-                    title = "계란말이",
-                    timeText = "어제 분석",
-                    sourceType = RecipeSourceType.IMAGE
-                )
-            )
+            recentItems = recentHistoryStore.getRecentItems()
         )
     )
 
-    val uiState: StateFlow<HomeUiState> = _uiState
+    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     fun updateSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
     }
 
+    // 🔥 핵심 추가 (네 기능 유지)
     fun updateRecipeLink(link: String) {
         _uiState.update { it.copy(recipeLink = link) }
     }
 
-    fun submitLink() {
-        if (_uiState.value.isAnalyzing) return
-
-        val link = _uiState.value.recipeLink.trim()
-
-        if (link.isBlank()) {
-            showError("링크를 입력해주세요.")
-            return
+    fun refreshRecentItems() {
+        _uiState.update {
+            it.copy(recentItems = recentHistoryStore.getRecentItems())
         }
+    }
 
-        if (!isValidUrl(link)) {
-            showError("유효한 링크를 입력해주세요.")
-            return
-        }
-
-        clearError()
-
-        val sourceType = when {
-            link.contains("youtube.com") || link.contains("youtu.be") -> RecipeSourceType.YOUTUBE
-            link.contains("naver.com") || link.contains("tistory.com") -> RecipeSourceType.WEB
-            else -> RecipeSourceType.WEB
-        }
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isAnalyzing = true) }
-
-            delay(1500)
-
-            addRecentRecipe(
-                RecentRecipeItem(
-                    id = "link_${System.currentTimeMillis()}",
-                    title = extractLinkTitle(sourceType),
-                    timeText = "방금 분석",
+    fun saveRecentRecipe(
+        keyword: String,
+        recipeDataJson: String?,
+        sourceType: RecipeSourceType = RecipeSourceType.TEXT
+    ) {
+        _uiState.update {
+            it.copy(
+                recentItems = recentHistoryStore.saveRecentRecipe(
+                    keyword = keyword,
+                    recipeDataJson = recipeDataJson,
                     sourceType = sourceType
                 )
             )
-
-            _uiState.update {
-                it.copy(
-                    recipeLink = "",
-                    isAnalyzing = false
-                )
-            }
         }
     }
 
     fun clearError() {
         _uiState.update {
-            it.copy(errorMessage = null, errorDialogMessage = null, isAnalyzing = false)
+            it.copy(
+                errorMessage = null,
+                errorDialogMessage = null,
+                isAnalyzing = false
+            )
         }
     }
 
     fun showError(message: String, isDialog: Boolean = false) {
         _uiState.update {
-            if (isDialog) it.copy(errorDialogMessage = message)
-            else it.copy(errorMessage = message)
+            if (isDialog) {
+                it.copy(errorDialogMessage = message, isAnalyzing = false)
+            } else {
+                it.copy(errorMessage = message, isAnalyzing = false)
+            }
         }
     }
 
-    private fun addRecentRecipe(item: RecentRecipeItem) {
-        _uiState.update {
-            it.copy(recentItems = listOf(item) + it.recentItems)
-        }
+    fun selectRecentItem(itemId: String) {
+        _uiState.update { it.copy(selectedRecentItemId = itemId) }
     }
 
-    private fun isValidUrl(url: String): Boolean {
-        return url.startsWith("http://") || url.startsWith("https://")
+    fun clearSelectedRecentItem() {
+        _uiState.update { it.copy(selectedRecentItemId = null) }
     }
 
-    private fun extractLinkTitle(type: RecipeSourceType): String {
-        return when (type) {
-            RecipeSourceType.YOUTUBE -> "유튜브 레시피"
-            RecipeSourceType.WEB -> "웹 레시피"
-            else -> "레시피"
+    fun getSelectedRecentItem(): RecentRecipeItem? {
+        val current = _uiState.value
+        return current.recentItems.firstOrNull {
+            it.id == current.selectedRecentItemId
         }
     }
 }

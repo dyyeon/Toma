@@ -1,8 +1,16 @@
 package com.capstone.toma.model
 
 enum class RecipeSourceType {
-    TEXT, YOUTUBE, IMAGE
+    TEXT, YOUTUBE, WEB, IMAGE
 }
+
+data class RecentRecipeRecord(
+    val id: String,
+    val title: String,
+    val timeText: String,
+    val sourceType: RecipeSourceType,
+    val recipeDataJson: String?
+)
 
 data class StoredRecipe(
     val id: String,

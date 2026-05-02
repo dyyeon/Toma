@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.ui.component.LoadingSection
 import com.capstone.toma.ui.component.TomaDrawerItem
 import com.capstone.toma.ui.component.TomaDrawerSheet
@@ -65,15 +66,12 @@ import com.capstone.toma.ui.theme.TomaPrimaryText
 import com.capstone.toma.ui.theme.TomaSecondaryText
 import kotlinx.coroutines.launch
 
-enum class RecipeSourceType {
-    TEXT, YOUTUBE, WEB, IMAGE
-}
-
 data class RecentRecipeItem(
     val id: String,
     val title: String,
     val timeText: String,
-    val sourceType: RecipeSourceType
+    val sourceType: RecipeSourceType,
+    val recipeDataJson: String? = null
 )
 
 data class HomeUiState(
@@ -661,7 +659,7 @@ fun RecentAnalysisSection(
                 contentPadding = PaddingValues(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(items, key = { it.id }) { item ->
+                items(items.take(2), key = { it.id }) { item ->
                     RecentAnalysisCard(
                         item = item,
                         onClick = { onItemClick(item.id) }

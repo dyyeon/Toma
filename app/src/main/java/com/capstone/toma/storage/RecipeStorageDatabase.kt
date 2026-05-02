@@ -33,6 +33,16 @@ data class StoredRecipeEntity(
     val updatedAt: Long
 )
 
+@Entity(tableName = "recent_recipe_history")
+data class RecentRecipeHistoryEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val timeText: String,
+    val sourceType: RecipeSourceType,
+    val recipeDataJson: String?,
+    val updatedAt: Long
+)
+
 class RecipeStorageConverters {
     @TypeConverter
     fun fromStringList(value: List<String>): String {
@@ -61,8 +71,8 @@ class RecipeStorageConverters {
 }
 
 @Database(
-    entities = [StoredRecipeEntity::class],
-    version = 3,
+    entities = [StoredRecipeEntity::class, RecentRecipeHistoryEntity::class],
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(RecipeStorageConverters::class)
@@ -79,6 +89,42 @@ abstract class RecipeStorageDatabase : RoomDatabase() {
             }
         }
 
+        private val Migration3To4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS recent_recipe_history (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        timeText TEXT NOT NULL,
+                        sourceType TEXT NOT NULL,
+                        recipeDataJson TEXT,
+                        updatedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        private val Migration4To5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP VIEW IF EXISTS recent_recipe_history")
+                db.execSQL("DROP TABLE IF EXISTS recent_recipe_history")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS recent_recipe_history (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        timeText TEXT NOT NULL,
+                        sourceType TEXT NOT NULL,
+                        recipeDataJson TEXT,
+                        updatedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): RecipeStorageDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -87,6 +133,8 @@ abstract class RecipeStorageDatabase : RoomDatabase() {
                     "recipe-storage.db"
                 )
                     .addMigrations(Migration2To3)
+                    .addMigrations(Migration3To4)
+                    .addMigrations(Migration4To5)
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { instance = it }
