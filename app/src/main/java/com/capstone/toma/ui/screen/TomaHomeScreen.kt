@@ -659,7 +659,7 @@ fun RecentAnalysisSection(
                 contentPadding = PaddingValues(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(items.take(2), key = { it.id }) { item ->
+                items(items.take(4), key = { it.id }) { item ->
                     RecentAnalysisCard(
                         item = item,
                         onClick = { onItemClick(item.id) }

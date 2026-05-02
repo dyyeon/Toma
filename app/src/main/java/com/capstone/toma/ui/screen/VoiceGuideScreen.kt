@@ -47,6 +47,8 @@ fun VoiceGuideScreen(
         VoiceUiState.Idle -> "READY"
         VoiceUiState.Listening -> "LISTENING"
         VoiceUiState.Processing -> "PROCESSING"
+        VoiceUiState.Speaking -> "SPEAKING"
+        VoiceUiState.Recovering -> "RECOVERING"
         is VoiceUiState.Result -> "RESULT"
         is VoiceUiState.Error -> "ERROR"
     }
@@ -55,6 +57,8 @@ fun VoiceGuideScreen(
         VoiceUiState.Idle -> "레시피나 메뉴를 음성으로 요청해보세요"
         VoiceUiState.Listening -> "말씀하시는 내용을 듣고 있어요"
         VoiceUiState.Processing -> "음성을 분석하고 있어요"
+        VoiceUiState.Speaking -> "답변을 들려드리고 있어요"
+        VoiceUiState.Recovering -> "잠시 후 다시 시도할게요"
         is VoiceUiState.Result -> "인식된 요청을 확인해보세요"
         is VoiceUiState.Error -> "다시 한 번 말씀해 주세요"
     }

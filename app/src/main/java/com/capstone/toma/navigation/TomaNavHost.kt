@@ -1,5 +1,8 @@
 package com.capstone.toma.navigation
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -7,31 +10,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.capstone.toma.ui.screen.AiChatScreen
-import com.capstone.toma.ui.screen.ContactUsScreen
-import com.capstone.toma.ui.screen.CustomerCenterScreen
-import com.capstone.toma.ui.screen.EmailSettingScreen
-import com.capstone.toma.ui.screen.PrivacyPolicyScreen
-import com.capstone.toma.ui.screen.PushSettingScreen
-import com.capstone.toma.ui.screen.RecentHistoryScreen
-import com.capstone.toma.ui.screen.RecipeConfirmScreen
-import com.capstone.toma.ui.screen.RecipeDetailScreen
-import com.capstone.toma.ui.screen.RecipeStorageScreen
-import com.capstone.toma.ui.screen.SettingsScreen
-import com.capstone.toma.ui.screen.TomaHomeScreen
-import com.capstone.toma.ui.screen.VoiceGuideScreen
-import com.capstone.toma.viewmodel.ChatNavigationEvent
-import com.capstone.toma.viewmodel.ChatViewModel
-import com.capstone.toma.viewmodel.HomeViewModel
-import com.capstone.toma.viewmodel.VoiceViewModel
+import kotlinx.coroutines.delay
+import androidx.navigation.NavType
+import com.capstone.toma.TomaIntent
 import com.capstone.toma.WebPageManager
 import com.capstone.toma.VoiceRequestResult
-import kotlinx.coroutines.delay
+import com.capstone.toma.ui.screen.*
+import com.capstone.toma.viewmodel.*
 
 private val voiceSuggestions = listOf(
     "메뉴 추천해줘",
@@ -51,9 +40,26 @@ fun TomaNavHost(
 
     val voiceViewModel: VoiceViewModel = viewModel()
     val voiceUiState by voiceViewModel.uiState.collectAsState()
-    val voiceResult by voiceViewModel.searchResult.collectAsState()
 
     val context = LocalContext.current
+
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            chatViewModel.resetChat()
+            navController.navigate(TomaDestination.Chat.route)
+            chatViewModel.startLinkAnalysis(
+                userDisplay = "사진으로 레시피 찾기",
+                initialAiText = "사진을 분석하고 있어요. 잠시만 기다려 주세요... 📸"
+            ) { _ ->
+                val openAi = com.capstone.toma.OpenAiManager()
+                openAi.analyzeRecipeImageSuspend(context, uri.toString())
+            }
+        } else {
+            homeViewModel.showError("이미지를 선택하지 않았어요.")
+        }
+    }
 
     NavHost(
         navController = navController,
@@ -93,7 +99,6 @@ fun TomaNavHost(
 
                         if (isYoutube || isBlog) {
                             val webPageManager = WebPageManager()
-
                             chatViewModel.resetChat()
                             navController.navigate(TomaDestination.Chat.route)
 
@@ -113,49 +118,11 @@ fun TomaNavHost(
                                     return@startLinkAnalysis VoiceRequestResult.Error(d)
                                 }
 
-                                updateStatus("[2/2] AI가 레시피를 정리 중이에요... ✨")
+                                updateStatus("[2/2] 전문가 AI가 실전 정보를 추출 중이에요... ✨")
                                 delay(600)
-
                                 val openAi = com.capstone.toma.OpenAiManager()
                                 val history = chatViewModel.uiState.value.messages.map { it.text to it.isUser }
-
-                                val hiddenPrompt = """
-                                    [전문가 레시피 분석가 모드]
-                                    입력 링크: $link
-                                    이미지 URL: ${img ?: "없음"}
-                                    페이지 제목: ${t ?: "제목 없음"}
-                                    추출된 본문: ${d ?: "본문 없음"}
-                                
-                                    지침:
-                                    1. 사용자의 안부나 잡담은 짧게 응대하고, 본론인 '레시피 분석'에 집중하세요.
-                                    2. 본문에서 인사말, 후기, 광고, 협찬 문구는 제거하고 실제 조리 정보만 추출하세요.
-                                    3. 유튜브 링크라면 자막/본문에서 조리 순서와 재료를 중심으로 정리하세요.
-                                    4. 웹페이지 링크라면 본문에서 재료, 양념, 조리 단계, 조리 시간을 중심으로 정리하세요.
-                                    5. 출력 형식:
-                                       - 텍스트:
-                                         "분석을 완료했어요! [요리명]이(가) 맞나요?
-                                
-                                         주요 재료: [추출된 재료 요약]
-                                         이 레시피의 특징: [예: 초간단 버전, 매콤한 맛 강조 등]
-                                
-                                         이 레시피로 안내를 시작할까요?"
-                                
-                                       - JSON: 반드시 하단에 아래 형식을 포함하세요.
-                                         {
-                                           "type": "recipe_search",
-                                           "keyword": "요리명",
-                                           "recipe_data": {
-                                             "title": "요리명",
-                                             "ingredients": ["재료1", "재료2"],
-                                             "steps": ["1단계", "2단계"],
-                                             "difficulty": "보통",
-                                             "time": "20분",
-                                             "image_url": "${img ?: ""}"
-                                           }
-                                         }
-                                """.trimIndent()
-
-                                openAi.processChatRequestSuspend(hiddenPrompt, history)
+                                openAi.processChatRequestSuspend("분석 요청: $link", history)
                             }
 
                             homeViewModel.updateRecipeLink("")
@@ -164,10 +131,7 @@ fun TomaNavHost(
                         }
                     }
                 },
-
-                onPhotoScanClick = {
-                    homeViewModel.showError("이미지 분석 기능은 아직 다시 연결하지 않았습니다.", isDialog = true)
-                },
+                onPhotoScanClick = { imagePickerLauncher.launch("image/*") },
 
                 onRecentItemClick = { itemId ->
                     val item = homeUiState.recentItems.find { it.id == itemId }
@@ -199,9 +163,7 @@ fun TomaNavHost(
         }
 
         composable(TomaDestination.RecipeStorage.route) {
-            RecipeStorageScreen(
-                onBackClick = { navController.popBackStack() }
-            )
+            RecipeStorageScreen(onBackClick = { navController.popBackStack() })
         }
 
         composable(TomaDestination.RecentHistory.route) {
@@ -221,28 +183,22 @@ fun TomaNavHost(
         }
 
         composable(TomaDestination.VoiceGuide.route) {
-            LaunchedEffect(voiceResult) {
-                voiceResult?.let { result ->
-                    if (result.requestType == "recipe_search") {
-                        navController.navigate(TomaDestination.RecipeConfirm.createRoute(result.keyword, null)) {
-                            popUpTo(TomaDestination.VoiceGuide.route) { inclusive = true }
-                        }
-                    } else {
-                        chatViewModel.addInitialMessages(result.userQuery, result.responseMessage)
-                        navController.navigate(TomaDestination.Chat.route) {
+            LaunchedEffect(Unit) {
+                voiceViewModel.intentEvent.collect { intent ->
+                    if (intent is TomaIntent.RECIPE_SEARCH) {
+                        navController.navigate(TomaDestination.RecipeDetail.createRoute(intent.keyword)) {
                             popUpTo(TomaDestination.VoiceGuide.route) { inclusive = true }
                         }
                     }
-                    voiceViewModel.reset()
                 }
             }
-
             VoiceGuideScreen(
                 uiState = voiceUiState,
                 suggestions = voiceSuggestions,
 
                 onMicClick = { voiceViewModel.onMicClick() },
-                onSuggestionClick = { text -> voiceViewModel.onSuggestionClick(text) }
+                onSuggestionClick = { text -> voiceViewModel.onSuggestionClick(text) },
+                onBackClick = { navController.popBackStack() }
             )
         }
 
@@ -290,9 +246,7 @@ fun TomaNavHost(
                 onBackClick = { navController.popBackStack() },
                 onInputTextChange = chatViewModel::onInputTextChange,
                 onSendMessage = chatViewModel::sendMessage,
-                onMicClick = {
-                    navController.navigate(TomaDestination.VoiceGuide.route)
-                },
+                onMicClick = { navController.navigate(TomaDestination.VoiceGuide.route) },
                 onErrorDismiss = chatViewModel::clearErrorEvent
             )
         }
@@ -307,21 +261,11 @@ fun TomaNavHost(
             )
         }
 
-        composable(TomaDestination.PushSetting.route) {
-            PushSettingScreen(onBackClick = { navController.popBackStack() })
-        }
-
-        composable(TomaDestination.EmailSetting.route) {
-            EmailSettingScreen(onBackClick = { navController.popBackStack() })
-        }
-
-        composable(TomaDestination.CustomerCenter.route) {
-            CustomerCenterScreen(onBackClick = { navController.popBackStack() })
-        }
-
-        composable(TomaDestination.ContactUs.route) {
-            ContactUsScreen(onBackClick = { navController.popBackStack() })
-        }
+        composable(TomaDestination.PushSetting.route) { PushSettingScreen(onBackClick = { navController.popBackStack() }) }
+        composable(TomaDestination.EmailSetting.route) { EmailSettingScreen(onBackClick = { navController.popBackStack() }) }
+        composable(TomaDestination.CustomerCenter.route) { CustomerCenterScreen(onBackClick = { navController.popBackStack() }) }
+        composable(TomaDestination.ContactUs.route) { ContactUsScreen(onBackClick = { navController.popBackStack() }) }
+        composable(TomaDestination.PrivacyPolicy.route) { PrivacyPolicyScreen(onBackClick = { navController.popBackStack() }) }
 
         composable(
             route = TomaDestination.RecipeConfirm.route,
@@ -362,6 +306,7 @@ fun TomaNavHost(
                     nullable = true
                     defaultValue = null
                 }
+
             )
         ) { backStackEntry ->
             val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
@@ -372,15 +317,9 @@ fun TomaNavHost(
                 onBackClick = { navController.popBackStack() }
             )
         }
-
-        composable(TomaDestination.PrivacyPolicy.route) {
-            PrivacyPolicyScreen(onBackClick = { navController.popBackStack() })
-        }
     }
 }
 
 private fun NavHostController.navigateSingleTop(route: String) {
-    navigate(route) {
-        launchSingleTop = true
-    }
+    navigate(route) { launchSingleTop = true }
 }
