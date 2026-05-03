@@ -18,3 +18,7 @@ app/src/main/assets/sync/model-ko/*
 *.mdl
 *.ie
 *.dubm
+
+# .gitignore 파일 하단에 추가
+app/src/main/assets/model-ko/graph/HCLr.fst
+*.fst
