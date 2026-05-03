@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -25,8 +26,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import com.capstone.toma.TomaIntent
 import com.capstone.toma.ui.theme.*
 import com.capstone.toma.viewmodel.RecipeStorageViewModel
+import com.capstone.toma.viewmodel.VoiceViewModel
 import org.json.JSONObject
 
 @Composable
@@ -36,6 +39,8 @@ fun RecipeDetailScreen(
     onBackClick: () -> Unit = {}
 ) {
     val storageViewModel: RecipeStorageViewModel = viewModel()
+    val voiceViewModel: VoiceViewModel = viewModel()
+    val context = LocalContext.current
     
     val recipeData = remember(recipeDataJson) {
         recipeDataJson?.let {
@@ -68,6 +73,25 @@ fun RecipeDetailScreen(
 
     // 현재 단계를 관리 (0: 재료 확인, 1~N: 조리 단계)
     var currentStepIndex by remember { mutableIntStateOf(0) }
+    val totalSteps = steps.size
+
+    // Voice Intent Observer
+    LaunchedEffect(Unit) {
+        voiceViewModel.intentEvent.collect { intent ->
+            when (intent) {
+                is TomaIntent.NEXT_STEP -> {
+                    if (currentStepIndex < totalSteps) currentStepIndex++
+                }
+                is TomaIntent.PREVIOUS_STEP -> {
+                    if (currentStepIndex > 0) currentStepIndex--
+                }
+                is TomaIntent.INGREDIENT_CHECK -> {
+                    currentStepIndex = 0
+                }
+                else -> { /* Other intents handled by VoiceViewModel internally */ }
+            }
+        }
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),

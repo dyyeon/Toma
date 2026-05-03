@@ -20,7 +20,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -46,7 +45,6 @@ data class AiChatUiState(
     val isTyping: Boolean = false,
     val errorDialogMessage: String? = null
 )
-
 
 @Composable
 fun AiChatScreen(
@@ -161,7 +159,7 @@ fun ChatTopAppBar(onBackClick: () -> Unit) {
             Column {
                 Text(
                     text = "To-ma",
-                    color = TomaMainOrange, // 🍅 기존 TomaPrimaryText(검은색)에서 브랜드 컬러로 변경! (TomaMainOrange로 바꿔도 무방해)
+                    color = TomaMainOrange, // 기존 TomaPrimaryText(검은색)에서 브랜드 컬러로 변경! (TomaMainOrange로 바꿔도 무방해)
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -304,7 +302,7 @@ fun ChatInputBar(
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()), // 📜 입력창이 최대 높이(120.dp)를 넘어가면 스크롤되도록 추가!
+                        .verticalScroll(rememberScrollState()), // 입력창이 최대 높이(120.dp)를 넘어가면 스크롤되도록 추가!
                     keyboardOptions = KeyboardOptions(
                         imeAction = ImeAction.Send
                     ),

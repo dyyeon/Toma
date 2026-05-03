@@ -12,23 +12,30 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
+
     private val recentHistoryStore = RecentHistoryStore(application)
 
     private val _uiState = MutableStateFlow(
-        HomeUiState(recentItems = recentHistoryStore.getRecentItems())
+        HomeUiState(
+            recentItems = recentHistoryStore.getRecentItems()
+        )
     )
+
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     fun updateSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
     }
 
-    fun updateYoutubeLink(link: String) {
-        _uiState.update { it.copy(youtubeLink = link) }
+    // 🔥 핵심 추가 (네 기능 유지)
+    fun updateRecipeLink(link: String) {
+        _uiState.update { it.copy(recipeLink = link) }
     }
 
     fun refreshRecentItems() {
-        _uiState.update { it.copy(recentItems = recentHistoryStore.getRecentItems()) }
+        _uiState.update {
+            it.copy(recentItems = recentHistoryStore.getRecentItems())
+        }
     }
 
     fun saveRecentRecipe(
@@ -48,7 +55,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearError() {
-        _uiState.update { it.copy(errorMessage = null, errorDialogMessage = null, isAnalyzing = false) }
+        _uiState.update {
+            it.copy(
+                errorMessage = null,
+                errorDialogMessage = null,
+                isAnalyzing = false
+            )
+        }
     }
 
     fun showError(message: String, isDialog: Boolean = false) {
@@ -71,6 +84,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getSelectedRecentItem(): RecentRecipeItem? {
         val current = _uiState.value
-        return current.recentItems.firstOrNull { it.id == current.selectedRecentItemId }
+        return current.recentItems.firstOrNull {
+            it.id == current.selectedRecentItemId
+        }
     }
 }
