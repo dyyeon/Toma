@@ -1,7 +1,7 @@
 package com.capstone.toma.model
 
 enum class RecipeSourceType {
-    TEXT, YOUTUBE, IMAGE
+    TEXT, YOUTUBE, WEB, IMAGE
 }
 
 data class RecentRecipeRecord(

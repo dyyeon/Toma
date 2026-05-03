@@ -108,8 +108,18 @@ abstract class RecipeStorageDatabase : RoomDatabase() {
 
         private val Migration4To5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("DROP VIEW IF EXISTS recent_recipe_history")
-                db.execSQL("DROP TABLE IF EXISTS recent_recipe_history")
+                // Check if the entity is a table or a view before dropping
+                db.query("SELECT type FROM sqlite_master WHERE name='recent_recipe_history'").use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val type = cursor.getString(0)
+                        if (type == "view") {
+                            db.execSQL("DROP VIEW IF EXISTS recent_recipe_history")
+                        } else {
+                            db.execSQL("DROP TABLE IF EXISTS recent_recipe_history")
+                        }
+                    }
+                }
+
                 db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS recent_recipe_history (
@@ -135,7 +145,7 @@ abstract class RecipeStorageDatabase : RoomDatabase() {
                     .addMigrations(Migration2To3)
                     .addMigrations(Migration3To4)
                     .addMigrations(Migration4To5)
-                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .fallbackToDestructiveMigration()
                     .build()
                     .also { instance = it }
             }

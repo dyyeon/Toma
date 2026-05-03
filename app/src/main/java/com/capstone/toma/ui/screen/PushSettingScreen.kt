@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.capstone.toma.ui.component.TomaTopAppBar
 
 @Composable
 fun PushSettingScreen(onBackClick: () -> Unit = {}) {
@@ -32,43 +31,42 @@ fun PushSettingScreen(onBackClick: () -> Unit = {}) {
     var isNoticeEnabled by remember { mutableStateOf(true) }
 
     Column(
-        modifier = Modifier.fillMaxSize().background(TomaSettingsBg).padding(top = 48.dp, start = 20.dp, end = 20.dp).verticalScroll(rememberScrollState())
+        modifier = Modifier.fillMaxSize().background(TomaSettingsBg).verticalScroll(rememberScrollState())
     ) {
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            IconButton(onClick = onBackClick, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.Black)
-            }
-            Text("푸시 알림 설정", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(modifier = Modifier.height(32.dp))
+        TomaTopAppBar(
+            title = "푸시 알림 설정",
+            showBackButton = true,
+            onBackClick = onBackClick
+        )
+        Spacer(modifier = Modifier.height(16.dp))
 
-        Column(modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
             PushSwitchItem("앱 푸시 알림 전체 허용", "모든 알림을 한 번에 켜고 끌 수 있습니다.", isMasterEnabled, { isMasterEnabled = it }, TomaPointOrange)
         }
         Spacer(modifier = Modifier.height(32.dp))
 
         if (isMasterEnabled) {
-            Text("커뮤니티 알림", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+            Text("커뮤니티 알림", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 32.dp))
             Spacer(modifier = Modifier.height(12.dp))
-            Column(modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
                 PushSwitchItem("내 게시글 댓글 알림", null, isCommentEnabled, { isCommentEnabled = it }, TomaPointOrange)
                 Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
                 PushSwitchItem("내 레시피 좋아요 알림", null, isLikeEnabled, { isLikeEnabled = it }, TomaPointOrange)
             }
             Spacer(modifier = Modifier.height(32.dp))
 
-            Text("맞춤 정보 알림", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+            Text("맞춤 정보 알림", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 32.dp))
             Spacer(modifier = Modifier.height(12.dp))
-            Column(modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
                 PushSwitchItem("오늘의 맞춤 레시피 추천", null, isRecipeRecommendEnabled, { isRecipeRecommendEnabled = it }, TomaPointOrange)
                 Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
                 PushSwitchItem("관심 식재료 알림", null, isIngredientAlertEnabled, { isIngredientAlertEnabled = it }, TomaPointOrange)
             }
             Spacer(modifier = Modifier.height(32.dp))
 
-            Text("이벤트 및 공지", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+            Text("이벤트 및 공지", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 32.dp))
             Spacer(modifier = Modifier.height(12.dp))
-            Column(modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
                 PushSwitchItem("이벤트 및 프로모션 알림", "광고성 정보 수신 동의", isEventEnabled, { isEventEnabled = it }, TomaPointOrange)
                 Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
                 PushSwitchItem("중요 공지사항 알림", null, isNoticeEnabled, { isNoticeEnabled = it }, TomaPointOrange)

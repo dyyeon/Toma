@@ -5,8 +5,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -16,25 +14,26 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.capstone.toma.ui.component.TomaTopAppBar
 
 @Composable
 fun PrivacyPolicyScreen(onBackClick: () -> Unit = {}) {
     val TomaSettingsBg = Color(0xFFFFFBFA)
     val TomaItemGroupBg = Color(0xFFF7F2F0)
 
-    Column(modifier = Modifier.fillMaxSize().background(TomaSettingsBg).padding(top = 48.dp, start = 20.dp, end = 20.dp)) {
-        Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            IconButton(onClick = onBackClick, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.Black)
-            }
-            Text("개인정보 처리방침", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(modifier = Modifier.height(32.dp))
+    Column(modifier = Modifier.fillMaxSize().background(TomaSettingsBg)) {
+        TomaTopAppBar(
+            title = "개인정보 처리방침",
+            showBackButton = true,
+            onBackClick = onBackClick
+        )
+        Spacer(modifier = Modifier.height(16.dp))
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f) // 남은 공간 꽉 채우기
+                .padding(horizontal = 20.dp)
                 .shadow(1.dp, RoundedCornerShape(16.dp))
                 .background(TomaItemGroupBg, RoundedCornerShape(16.dp))
                 .padding(20.dp)

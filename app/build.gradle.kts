@@ -13,47 +13,21 @@ if (localPropertiesFile.exists()) {
     localPropertiesFile.inputStream().use { localProperties.load(it) }
 }
 
-fun resolveOpenAiApiKey(): String {
-    localProperties.getProperty("OPENAI_API_KEY")
-        ?.takeIf { it.isNotBlank() }
-        ?.let { return it }
-
-    System.getenv("OPENAI_API_KEY")
-        ?.takeIf { it.isNotBlank() }
-        ?.let { return it }
-
-    val legacyPropertiesFile = file("C:/00_Projects/TomaAI/local.properties")
-    if (legacyPropertiesFile.exists()) {
-        val legacyProperties = Properties()
-        legacyPropertiesFile.inputStream().use { legacyProperties.load(it) }
-        legacyProperties.getProperty("OPENAI_API_KEY")
-            ?.takeIf { it.isNotBlank() }
-            ?.let { return it }
-    }
-
-    return ""
-}
-
-val resolvedOpenAiApiKey = resolveOpenAiApiKey()
-
 android {
     namespace = "com.capstone.toma"
-
-    // 에러 해결을 위해 35에서 36으로 변경합니다.
     compileSdk = 36
 
     defaultConfig {
         applicationId = "com.capstone.toma"
         minSdk = 24
-        // targetSdk도 36으로 맞춰줍니다.
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // 2. BuildConfig에 변수 추가
-        buildConfigField("String", "OPENAI_API_KEY", "\"$resolvedOpenAiApiKey\"")
+        val apiKey = localProperties.getProperty("OPENAI_API_KEY") ?: ""
+        buildConfigField("String", "OPENAI_API_KEY", "\"$apiKey\"")
     }
 
     buildTypes {
@@ -65,7 +39,7 @@ android {
             )
         }
         debug {
-            buildConfigField("String", "OPENAI_API_KEY", "\"$resolvedOpenAiApiKey\"")
+            buildConfigField("String", "OPENAI_API_KEY", "\"${localProperties.getProperty("OPENAI_API_KEY") ?: ""}\"")
         }
     }
 
@@ -95,9 +69,12 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
 
-    // OpenAI 통신용
+    // OpenAI 및 네트워크
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // ADDED: ONNX Runtime for openWakeWord
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -110,9 +87,8 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
     ksp(libs.androidx.room.compiler)
 
-    // 💡 Vosk 오프라인 음성 인식 라이브러리 추가
-    implementation("com.alphacephei:vosk-android:0.3.32")
+    // REMOVED: Vosk
+    // implementation("com.alphacephei:vosk-android:0.3.32")
 
     implementation("net.java.dev.jna:jna:5.2.0@aar")
-
 }

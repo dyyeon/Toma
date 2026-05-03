@@ -24,22 +24,22 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SmartDisplay
-import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.rememberDrawerState
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -59,7 +59,7 @@ import com.capstone.toma.ui.component.TomaDrawerItem
 import com.capstone.toma.ui.component.TomaDrawerSheet
 import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.ui.theme.TomaBackground
-import com.capstone.toma.ui.theme.TomaLightRed
+import com.capstone.toma.ui.theme.TomaLightOrange
 import com.capstone.toma.ui.theme.TomaMainOrange
 import com.capstone.toma.ui.theme.TomaMainRed
 import com.capstone.toma.ui.theme.TomaPrimaryText
@@ -76,7 +76,7 @@ data class RecentRecipeItem(
 
 data class HomeUiState(
     val searchQuery: String = "",
-    val youtubeLink: String = "",
+    val recipeLink: String = "",
     val isAnalyzing: Boolean = false,
     val recentItems: List<RecentRecipeItem> = emptyList(),
     val selectedRecentItemId: String? = null,
@@ -90,12 +90,11 @@ fun TomaHomeScreen(
     onSearchQueryChange: (String) -> Unit,
     onSearchSubmit: () -> Unit,
     onMicClick: () -> Unit,
-    onYoutubeLinkChange: (String) -> Unit,
-    onYoutubeSubmit: () -> Unit,
+    onLinkChange: (String) -> Unit,
+    onLinkSubmit: () -> Unit,
     onPhotoScanClick: () -> Unit = {},
     onRecentItemClick: (String) -> Unit = {},
     onRecentMoreClick: () -> Unit = {},
-    onHomeClick: () -> Unit = {},
     onStorageClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onPrivacyPolicyClick: () -> Unit = {},
@@ -104,12 +103,15 @@ fun TomaHomeScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    // 에러 다이얼로그 노출
     uiState.errorDialogMessage?.let { message ->
         androidx.compose.material3.AlertDialog(
             onDismissRequest = onErrorDismiss,
-            title = { Text(text = "알림", fontWeight = FontWeight.Bold) },
-            text = { Text(text = message) },
+            title = {
+                Text(text = "알림", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text(text = message)
+            },
             confirmButton = {
                 TextButton(onClick = onErrorDismiss) {
                     Text("확인", color = TomaMainOrange)
@@ -166,7 +168,7 @@ fun TomaHomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(TomaBackground)
-                .padding(top = 24.dp, bottom = 24.dp)
+                .padding(bottom = 24.dp)
         ) {
             TomaTopAppBar(
                 onMenuClick = {
@@ -180,7 +182,7 @@ fun TomaHomeScreen(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 AIRecipeSearchCard(
                     query = uiState.searchQuery,
@@ -205,11 +207,11 @@ fun TomaHomeScreen(
                 } else {
                     ImportSection(
                         modifier = Modifier.padding(horizontal = 24.dp),
-                        youtubeLink = uiState.youtubeLink,
-                        onYoutubeLinkChange = onYoutubeLinkChange,
-                        onYoutubeSubmit = onYoutubeSubmit,
+                        linkText = uiState.recipeLink,
+                        onLinkChange = onLinkChange,
+                        onLinkSubmit = onLinkSubmit,
                         onPhotoScanClick = onPhotoScanClick,
-                        enabled = !uiState.isAnalyzing
+                        enabled = true
                     )
                 }
 
@@ -229,7 +231,6 @@ fun TomaHomeScreen(
                     val selectedItem = uiState.recentItems.firstOrNull { it.id == selectedId }
 
                     if (selectedItem != null) {
-                        Spacer(modifier = Modifier.height(20.dp))
                         SelectedRecentItemCard(
                             title = selectedItem.title,
                             sourceType = selectedItem.sourceType,
@@ -309,7 +310,6 @@ fun AIRecipeSearchCard(
                         .height(42.dp)
                         .clip(RoundedCornerShape(14.dp))
                         .background(TomaBackground)
-                        .clickable(enabled = enabled) { onSearchSubmit() }
                         .padding(horizontal = 14.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
@@ -381,11 +381,12 @@ fun AIRecipeSearchCard(
         }
     }
 }
+
 @Composable
 fun ImportSection(
-    youtubeLink: String,
-    onYoutubeLinkChange: (String) -> Unit,
-    onYoutubeSubmit: () -> Unit,
+    linkText: String,
+    onLinkChange: (String) -> Unit,
+    onLinkSubmit: () -> Unit,
     onPhotoScanClick: () -> Unit,
     enabled: Boolean,
     modifier: Modifier = Modifier
@@ -400,10 +401,10 @@ fun ImportSection(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        YoutubeImportCard(
-            linkText = youtubeLink,
-            onLinkChange = onYoutubeLinkChange,
-            onSubmit = onYoutubeSubmit,
+        LinkImportCard(
+            linkText = linkText,
+            onLinkChange = onLinkChange,
+            onSubmit = onLinkSubmit,
             enabled = enabled
         )
 
@@ -417,7 +418,7 @@ fun ImportSection(
 }
 
 @Composable
-fun YoutubeImportCard(
+fun LinkImportCard(
     linkText: String,
     onLinkChange: (String) -> Unit,
     onSubmit: () -> Unit,
@@ -430,61 +431,87 @@ fun YoutubeImportCard(
         color = Color.White,
         shadowElevation = 4.dp
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(TomaLightRed),
-                contentAlignment = Alignment.Center
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Filled.SmartDisplay,
-                    contentDescription = "유튜브",
-                    tint = TomaMainRed,
-                    modifier = Modifier.size(24.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(TomaLightOrange),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Link,
+                        contentDescription = "레시피 링크",
+                        tint = TomaMainOrange,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "레시피 링크 분석",
+                        color = TomaPrimaryText,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Text(
+                        text = "YouTube · 블로그 · 웹페이지 레시피",
+                        color = TomaSecondaryText,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(36.dp),
-                contentAlignment = Alignment.CenterStart
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                BasicTextField(
-                    value = linkText,
-                    onValueChange = onLinkChange,
-                    enabled = enabled,
-                    singleLine = true,
-                    textStyle = LocalTextStyle.current.copy(
-                        color = TomaPrimaryText,
-                        fontSize = 14.sp
-                    ),
-                    modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onDone = { onSubmit() }
-                    ),
-                    decorationBox = { innerTextField ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 2.dp),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(TomaBackground)
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    BasicTextField(
+                        value = linkText,
+                        onValueChange = onLinkChange,
+                        enabled = enabled,
+                        singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(
+                            color = TomaPrimaryText,
+                            fontSize = 14.sp
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = { onSubmit() }
+                        ),
+                        decorationBox = { innerTextField ->
                             if (linkText.isEmpty()) {
                                 Text(
-                                    text = "유튜브 링크를 붙여넣으세요",
+                                    text = "레시피 링크를 붙여넣으세요",
                                     color = TomaSecondaryText,
                                     fontSize = 14.sp,
                                     maxLines = 1,
@@ -493,25 +520,28 @@ fun YoutubeImportCard(
                             }
                             innerTextField()
                         }
-                    }
-                )
-            }
+                    )
+                }
 
-            Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
-            Box(
-                modifier = Modifier
-                    .size(24.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                    .clickable(enabled = enabled) { onSubmit() },
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.CallMade,
-                    contentDescription = "유튜브 링크 전송",
-                    tint = Color(0xD20A0F23),
-                    modifier = Modifier.size(16.dp)
-                )
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (enabled) TomaMainOrange else Color(0xFFD9D9D9)
+                        )
+                        .clickable(enabled = enabled) { onSubmit() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.CallMade,
+                        contentDescription = "레시피 링크 전송",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }
@@ -546,7 +576,7 @@ fun PhotoImportCard(
             ) {
                 Icon(
                     imageVector = Icons.Default.CameraAlt,
-                    contentDescription = "사진 스캔",
+                    contentDescription = "이미지 업로드",
                     tint = TomaMainOrange,
                     modifier = Modifier.size(24.dp)
                 )
@@ -554,9 +584,7 @@ fun PhotoImportCard(
 
             Spacer(modifier = Modifier.width(14.dp))
 
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "이미지 업로드",
                     color = TomaPrimaryText,
@@ -567,7 +595,7 @@ fun PhotoImportCard(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = "레시피를 바로 추출하세요",
+                    text = "레시피 이미지를 바로 추출하세요",
                     color = TomaSecondaryText,
                     fontSize = 14.sp,
                     maxLines = 1,
@@ -579,7 +607,7 @@ fun PhotoImportCard(
 
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = "사진 스캔 이동",
+                contentDescription = "이미지 업로드 이동",
                 tint = Color(0xFFD0D3DB)
             )
         }
@@ -631,7 +659,7 @@ fun RecentAnalysisSection(
                 contentPadding = PaddingValues(horizontal = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(items.take(2), key = { it.id }) { item ->
+                items(items.take(4), key = { it.id }) { item ->
                     RecentAnalysisCard(
                         item = item,
                         onClick = { onItemClick(item.id) }
@@ -650,18 +678,21 @@ fun RecentAnalysisCard(
     val badgeText = when (item.sourceType) {
         RecipeSourceType.TEXT -> "TEXT"
         RecipeSourceType.YOUTUBE -> "YOUTUBE"
+        RecipeSourceType.WEB -> "WEB"
         RecipeSourceType.IMAGE -> "IMAGE"
     }
 
     val badgeBgColor = when (item.sourceType) {
         RecipeSourceType.TEXT -> TomaMainOrange
         RecipeSourceType.YOUTUBE -> TomaMainOrange
+        RecipeSourceType.WEB -> Color(0xFF3F8CFF)
         RecipeSourceType.IMAGE -> TomaMainRed
     }
 
     val tempColor = when (item.sourceType) {
         RecipeSourceType.TEXT -> Color(0xFFE8F1FF)
         RecipeSourceType.YOUTUBE -> Color(0xFFFFF1E8)
+        RecipeSourceType.WEB -> Color(0xFFEAF3FF)
         RecipeSourceType.IMAGE -> Color(0xFFFFECEC)
     }
 
@@ -733,6 +764,7 @@ fun SelectedRecentItemCard(
     val sourceLabel = when (sourceType) {
         RecipeSourceType.TEXT -> "TEXT"
         RecipeSourceType.YOUTUBE -> "YOUTUBE"
+        RecipeSourceType.WEB -> "WEB"
         RecipeSourceType.IMAGE -> "IMAGE"
     }
 
@@ -798,7 +830,7 @@ fun PreviewTomaHomeScreen() {
     TomaHomeScreen(
         uiState = HomeUiState(
             searchQuery = "",
-            youtubeLink = "",
+            recipeLink = "",
             isAnalyzing = false,
             recentItems = listOf(
                 RecentRecipeItem(
@@ -809,8 +841,14 @@ fun PreviewTomaHomeScreen() {
                 ),
                 RecentRecipeItem(
                     id = "2",
-                    title = "계란말이",
+                    title = "감자조림 블로그 레시피",
                     timeText = "어제 분석",
+                    sourceType = RecipeSourceType.WEB
+                ),
+                RecentRecipeItem(
+                    id = "3",
+                    title = "계란말이",
+                    timeText = "3일 전 분석",
                     sourceType = RecipeSourceType.IMAGE
                 )
             )
@@ -818,12 +856,11 @@ fun PreviewTomaHomeScreen() {
         onSearchQueryChange = {},
         onSearchSubmit = {},
         onMicClick = {},
-        onYoutubeLinkChange = {},
-        onYoutubeSubmit = {},
+        onLinkChange = {},
+        onLinkSubmit = {},
         onPhotoScanClick = {},
         onRecentItemClick = {},
         onRecentMoreClick = {},
-        onHomeClick = {},
         onStorageClick = {},
         onSettingsClick = {},
         onPrivacyPolicyClick = {}
@@ -840,12 +877,11 @@ fun PreviewTomaHomeScreenLoading() {
         onSearchQueryChange = {},
         onSearchSubmit = {},
         onMicClick = {},
-        onYoutubeLinkChange = {},
-        onYoutubeSubmit = {},
+        onLinkChange = {},
+        onLinkSubmit = {},
         onPhotoScanClick = {},
         onRecentItemClick = {},
         onRecentMoreClick = {},
-        onHomeClick = {},
         onStorageClick = {},
         onSettingsClick = {},
         onPrivacyPolicyClick = {}

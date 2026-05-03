@@ -8,7 +8,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -22,6 +21,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.capstone.toma.ui.component.TomaTopAppBar
 
 @Composable
 fun SettingsScreen(
@@ -41,17 +41,17 @@ fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(TomaSettingsBg)
-            .padding(top = 48.dp, start = 20.dp, end = 20.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            // 노란줄 해결: AutoMirrored.Filled.ArrowBack 사용
-            IconButton(onClick = onBackClick) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back", tint = Color.Black) }
-            Text("설정", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp))
-            Spacer(modifier = Modifier.weight(1f))
-            Text("TOMA", color = TomaPointOrange, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
-        }
-        Spacer(modifier = Modifier.height(32.dp))
+        TomaTopAppBar(
+            title = "설정",
+            showBackButton = true,
+            onBackClick = onBackClick
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Column(modifier = Modifier.padding(horizontal = 20.dp)) {
 
         // 알림 섹션
         Text("알림", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
@@ -75,6 +75,7 @@ fun SettingsScreen(
             SettingsItemRow(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "문의하기", TomaPointOrange = TomaPointOrange, TomaSecondaryText = TomaSecondaryText, onClick = onContactClick)
         }
         Spacer(modifier = Modifier.height(48.dp))
+        }
     }
 }
 
