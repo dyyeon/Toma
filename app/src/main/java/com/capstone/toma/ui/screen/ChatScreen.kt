@@ -20,7 +20,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -30,7 +29,8 @@ import androidx.compose.ui.unit.sp
 import com.capstone.toma.ui.theme.*
 import androidx.compose.ui.res.painterResource
 import com.capstone.toma.R
-import com.capstone.toma.ui.component.TomaTopAppBar
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 
 data class ChatMessage(
     val id: String,
@@ -83,13 +83,7 @@ fun AiChatScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = TomaBackground,
-        topBar = {
-            TomaTopAppBar(
-                title = "AI 채팅",
-                showBackButton = true,
-                onBackClick = onBackClick
-            )
-        }
+        topBar = { ChatTopAppBar(onBackClick = onBackClick) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -151,9 +145,7 @@ fun ChatTopAppBar(onBackClick: () -> Unit) {
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            Box(
-
-            ) {
+            Box {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_tomato),
                     contentDescription = "Toma Logo",
@@ -166,8 +158,8 @@ fun ChatTopAppBar(onBackClick: () -> Unit) {
 
             Column {
                 Text(
-                    text = "TOMA",
-                    color = TomaPrimaryText,
+                    text = "To-ma",
+                    color = TomaMainOrange, // 기존 TomaPrimaryText(검은색)에서 브랜드 컬러로 변경! (TomaMainOrange로 바꿔도 무방해)
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -308,7 +300,9 @@ fun ChatInputBar(
                         color = if (isTyping) Color.Gray else TomaPrimaryText,
                         fontSize = 15.sp
                     ),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()), // 입력창이 최대 높이(120.dp)를 넘어가면 스크롤되도록 추가!
                     keyboardOptions = KeyboardOptions(
                         imeAction = ImeAction.Send
                     ),
