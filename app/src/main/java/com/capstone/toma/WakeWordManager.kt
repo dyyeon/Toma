@@ -52,10 +52,39 @@ class WakeWordManager(
 
     private fun loadModels() {
         try {
-            melSession = ortEnv.createSession(context.assets.open("melspectrogram.onnx").readBytes())
-            embSession = ortEnv.createSession(context.assets.open("embedding_model.onnx").readBytes())
-            clfSession = ortEnv.createSession(context.assets.open("hey_toma.onnx").readBytes())
-            Log.d(TAG, "✅ 3-Stage ONNX Models loaded successfully")
+            val modelFiles = listOf("melspectrogram.onnx", "embedding_model.onnx", "hey_toma.onnx")
+            val sessions = mutableListOf<OrtSession>()
+
+            for (fileName in modelFiles) {
+                val file = java.io.File(context.filesDir, fileName)
+                // Always copy from assets to internal storage to ensure accessibility and handle potential .data files
+                context.assets.open(fileName).use { input ->
+                    file.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                
+                // Also check for .data file (some ONNX models have external data)
+                val dataFileName = "$fileName.data"
+                try {
+                    context.assets.open(dataFileName).use { input ->
+                        java.io.File(context.filesDir, dataFileName).outputStream().use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    Log.d(TAG, "Copied external data for $fileName")
+                } catch (e: Exception) {
+                    // Not all models have .data files, so it's okay if this fails
+                }
+
+                sessions.add(ortEnv.createSession(file.absolutePath))
+            }
+
+            melSession = sessions[0]
+            embSession = sessions[1]
+            clfSession = sessions[2]
+            
+            Log.d(TAG, "✅ 3-Stage ONNX Models loaded successfully from internal storage")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Model load failed: ${e.message}")
         }
