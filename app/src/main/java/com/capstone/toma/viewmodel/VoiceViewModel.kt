@@ -1,17 +1,28 @@
 package com.capstone.toma.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.capstone.toma.*
+import com.google.firebase.storage.FirebaseStorage
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.tasks.await
+import java.io.File
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.util.Locale
 
 /**
  * CHANGED: openWakeWord migration - Integrated State Machine & Realtime API
@@ -37,7 +48,15 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         onError = { error -> _uiState.value = VoiceUiState.Error(error) }
     )
 
+    // 등록용 wav 파일 저장 목록 (Thread-safe)
+    private val enrollmentWavFiles = java.util.Collections.synchronizedList(mutableListOf<File>())
+    private val _enrollmentCount = MutableStateFlow(0)
+    val enrollmentCount: StateFlow<Int> = _enrollmentCount.asStateFlow()
+    private val enrollmentBuffer = ByteArrayOutputStream()
+    private val ENROLLMENT_CHUNK_BYTES = 64000 // 2 seconds at 16kHz mono 16-bit
+
     init {
+        wakeWordManager.verboseLogging = true
         audioStreamManager.startCapture()
         realtimeManager.connect()
         observeAudioStream()
@@ -133,8 +152,172 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = VoiceUiState.Result("'$text' 명령을 준비했어요.")
     }
 
+    fun startEnrollmentRecording() {
+        // AudioStreamManager에 enrollment 모드 시작
+        audioStreamManager.startEnrollmentMode { wavBytes ->
+            synchronized(enrollmentBuffer) {
+                if (_enrollmentCount.value < 30) {
+                    enrollmentBuffer.write(wavBytes)
+                    
+                    while (enrollmentBuffer.size() >= ENROLLMENT_CHUNK_BYTES) {
+                        val allBytes = enrollmentBuffer.toByteArray()
+                        val pcmBytes = allBytes.take(ENROLLMENT_CHUNK_BYTES).toByteArray()
+                        
+                        // 남은 데이터 보관
+                        enrollmentBuffer.reset()
+                        if (allBytes.size > ENROLLMENT_CHUNK_BYTES) {
+                            enrollmentBuffer.write(allBytes, ENROLLMENT_CHUNK_BYTES, allBytes.size - ENROLLMENT_CHUNK_BYTES)
+                        }
+                        
+                        val context = getApplication<Application>().applicationContext
+                        val file = File(context.filesDir, "enrollment_${_enrollmentCount.value + 1}.wav")
+                        saveAsWav(pcmBytes, file)
+                        enrollmentWavFiles.add(file)
+                        _enrollmentCount.value += 1
+                        
+                        // 30개가 다 차면 자동으로 중단
+                        if (_enrollmentCount.value >= 30) {
+                            stopEnrollmentRecording()
+                            break
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun saveAsWav(pcmBytes: ByteArray, file: File, sampleRate: Int = 16000) {
+        val numChannels = 1
+        val bitsPerSample = 16
+        val byteRate = sampleRate * numChannels * bitsPerSample / 8
+        val blockAlign = (numChannels * bitsPerSample / 8).toShort()
+        val dataSize = pcmBytes.size
+        val chunkSize = 36 + dataSize
+
+        val outputStream = file.outputStream()
+        val buffer = java.io.ByteArrayOutputStream()
+
+        fun writeInt(value: Int) {
+            buffer.write(value and 0xFF)
+            buffer.write((value shr 8) and 0xFF)
+            buffer.write((value shr 16) and 0xFF)
+            buffer.write((value shr 24) and 0xFF)
+        }
+        fun writeShort(value: Short) {
+            buffer.write(value.toInt() and 0xFF)
+            buffer.write((value.toInt() shr 8) and 0xFF)
+        }
+        fun writeString(s: String) = buffer.write(s.toByteArray(Charsets.US_ASCII))
+
+        // RIFF 헤더
+        writeString("RIFF")
+        writeInt(chunkSize)
+        writeString("WAVE")
+
+        // fmt 청크
+        writeString("fmt ")
+        writeInt(16)                          // Subchunk1Size
+        writeShort(1)                         // AudioFormat (PCM)
+        writeShort(numChannels.toShort())     // NumChannels
+        writeInt(sampleRate)                  // SampleRate
+        writeInt(byteRate)                    // ByteRate
+        writeShort(blockAlign)                // BlockAlign
+        writeShort(bitsPerSample.toShort())   // BitsPerSample
+
+        // data 청크
+        writeString("data")
+        writeInt(dataSize)
+
+        // PCM 데이터
+        buffer.write(pcmBytes)
+
+        outputStream.write(buffer.toByteArray())
+        outputStream.close()
+    }
+
+    fun stopEnrollmentRecording() {
+        audioStreamManager.stopEnrollmentMode()
+        enrollmentBuffer.reset()
+    }
+
+    fun uploadEnrollmentWavs(context: Context, onComplete: () -> Unit, onError: (String) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val userId = UserManager.getUserId(context)
+                val storage = FirebaseStorage.getInstance()
+
+                // 로컬 리스트를 복사하여 작업 (Thread-safety)
+                val filesToUpload = synchronized(enrollmentWavFiles) { enrollmentWavFiles.toList() }
+
+                if (filesToUpload.isEmpty()) {
+                    withContext(Dispatchers.Main) { onError("업로드할 파일이 없습니다.") }
+                    return@launch
+                }
+
+                filesToUpload.forEachIndexed { index, file ->
+                    val fileName = "me_${String.format(Locale.US, "%03d", index + 1)}.wav"
+                    val storageRef = storage.reference
+                        .child("users/$userId/recordings/$fileName")
+
+                    storageRef.putFile(Uri.fromFile(file)).await()
+                    Log.d("Enrollment", "✅ 업로드 성공 (${index + 1}/30): $fileName")
+                }
+
+                Log.d("Enrollment", "✅ 모든 파일 업로드 완료")
+                
+                // 모든 업로드가 성공한 후에만 완료 플래그 설정
+                UserManager.setHasUploaded(context, true)
+                UserManager.setEnrolled(context, true)
+                
+                synchronized(enrollmentWavFiles) { enrollmentWavFiles.clear() }
+                _enrollmentCount.value = 0
+
+                withContext(Dispatchers.Main) { onComplete() }
+            } catch (e: Exception) {
+                Log.e("Enrollment", "❌ 업로드 실패: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    _uiState.value = VoiceUiState.Error("업로드 실패: ${e.message}")
+                    onError(e.message ?: "알 수 없는 오류가 발생했습니다.")
+                }
+            }
+        }
+    }
+
+    private var pollingJob: kotlinx.coroutines.Job? = null
+
+    fun startModelPolling(context: android.content.Context) {
+        val userId = UserManager.getUserId(context)
+        pollingJob?.cancel()
+        pollingJob = viewModelScope.launch {
+            val storageRef = FirebaseStorage.getInstance()
+                .reference
+                .child("users/$userId/models/hey_toma_personal.onnx")
+
+            val localFile = File(context.filesDir, "hey_toma_personal.onnx")
+
+            Log.d("VoiceViewModel", "모델 폴링 시작: users/$userId/models/hey_toma_personal.onnx")
+            _uiState.value = VoiceUiState.Training
+
+            while (this.isActive) {
+                try {
+                    storageRef.getFile(localFile).await()
+                    // 여기까지 왔으면 다운로드 성공
+                    Log.d("VoiceViewModel", "✅ 개인 모델 다운로드 완료")
+                    wakeWordManager.loadPersonalModel(localFile.absolutePath)
+                    UserManager.setEnrolled(context, true)
+                    _uiState.value = VoiceUiState.Idle
+                    break // 폴링 중단
+                } catch (e: Exception) {
+                    Log.d("VoiceViewModel", "모델 아직 없음, 대기 중... (${e.message})")
+                    delay(10000) // 10초 대기 후 재시도
+                }
+            }
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
+        pollingJob?.cancel()
         audioStreamManager.stopCapture()
         realtimeManager.disconnect()
         wakeWordManager.release()

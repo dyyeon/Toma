@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,6 +50,7 @@ fun VoiceGuideScreen(
         VoiceUiState.Processing -> "PROCESSING"
         VoiceUiState.Speaking -> "SPEAKING"
         VoiceUiState.Recovering -> "RECOVERING"
+        VoiceUiState.Training -> "TRAINING"
         is VoiceUiState.Result -> "RESULT"
         is VoiceUiState.Error -> "ERROR"
     }
@@ -59,6 +61,7 @@ fun VoiceGuideScreen(
         VoiceUiState.Processing -> "음성을 분석하고 있어요"
         VoiceUiState.Speaking -> "답변을 들려드리고 있어요"
         VoiceUiState.Recovering -> "잠시 후 다시 시도할게요"
+        VoiceUiState.Training -> "개인화 모델을 준비하고 있어요"
         is VoiceUiState.Result -> "인식된 요청을 확인해보세요"
         is VoiceUiState.Error -> "다시 한 번 말씀해 주세요"
     }
@@ -121,6 +124,19 @@ fun VoiceGuideScreen(
                 color = TomaSecondaryText,
                 modifier = Modifier.align(Alignment.CenterHorizontally)
             )
+
+            AnimatedVisibility(visible = uiState == VoiceUiState.Training) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(32.dp),
+                        color = TomaMainOrange,
+                        strokeWidth = 3.dp
+                    )
+                }
+            }
 
             AnimatedVisibility(visible = uiState == VoiceUiState.Listening) {
                 Column(
@@ -406,6 +422,28 @@ private fun TomaVoiceGuideProcessingPreview() {
 private fun TomaVoiceGuideResultPreview() {
     VoiceGuideScreen(
         uiState = VoiceUiState.Result("김치볶음밥 레시피를 찾아드릴게요."),
+        suggestions = previewSuggestions,
+        onMicClick = {},
+        onSuggestionClick = {}
+    )
+}
+
+@Preview(name = "Training", showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun TomaVoiceGuideTrainingPreview() {
+    VoiceGuideScreen(
+        uiState = VoiceUiState.Training,
+        suggestions = previewSuggestions,
+        onMicClick = {},
+        onSuggestionClick = {}
+    )
+}
+
+@Preview(name = "Speaking", showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun TomaVoiceGuideSpeakingPreview() {
+    VoiceGuideScreen(
+        uiState = VoiceUiState.Speaking,
         suggestions = previewSuggestions,
         onMicClick = {},
         onSuggestionClick = {}

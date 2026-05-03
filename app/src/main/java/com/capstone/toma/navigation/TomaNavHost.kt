@@ -17,6 +17,7 @@ import androidx.navigation.navArgument
 import kotlinx.coroutines.delay
 import androidx.navigation.NavType
 import com.capstone.toma.TomaIntent
+import com.capstone.toma.UserManager
 import com.capstone.toma.WebPageManager
 import com.capstone.toma.VoiceRequestResult
 import com.capstone.toma.ui.screen.*
@@ -67,6 +68,17 @@ fun TomaNavHost(
     ) {
         composable(TomaDestination.Home.route) {
             LaunchedEffect(Unit) {
+                val enrolled = UserManager.isEnrolled(context)
+                val skipped = UserManager.hasSkipped(context)
+                if (!enrolled && !skipped) {
+                    navController.navigate(TomaDestination.SpeakerEnrollment.route)
+                } else if (enrolled) {
+                    // 이미 등록 및 업로드된 경우, 개인화 모델이 로컬에 없으면 폴링 시작 (다운로드 대기)
+                    val modelFile = java.io.File(context.filesDir, "hey_toma_personal.onnx")
+                    if (!modelFile.exists()) {
+                        voiceViewModel.startModelPolling(context)
+                    }
+                }
                 homeViewModel.refreshRecentItems()
             }
 
@@ -152,6 +164,10 @@ fun TomaNavHost(
 
                 onSettingsClick = {
                     navController.navigateSingleTop(TomaDestination.Settings.route)
+                },
+
+                onSpeakerEnrollmentClick = {
+                    navController.navigateSingleTop(TomaDestination.SpeakerEnrollment.route)
                 },
 
                 onPrivacyPolicyClick = {
@@ -257,7 +273,8 @@ fun TomaNavHost(
                 onPushClick = { navController.navigate(TomaDestination.PushSetting.route) },
                 onEmailClick = { navController.navigate(TomaDestination.EmailSetting.route) },
                 onCustomerCenterClick = { navController.navigate(TomaDestination.CustomerCenter.route) },
-                onContactClick = { navController.navigate(TomaDestination.ContactUs.route) }
+                onContactClick = { navController.navigate(TomaDestination.ContactUs.route) },
+                onSpeakerEnrollmentClick = { navController.navigate(TomaDestination.SpeakerEnrollment.route) }
             )
         }
 
@@ -266,6 +283,15 @@ fun TomaNavHost(
         composable(TomaDestination.CustomerCenter.route) { CustomerCenterScreen(onBackClick = { navController.popBackStack() }) }
         composable(TomaDestination.ContactUs.route) { ContactUsScreen(onBackClick = { navController.popBackStack() }) }
         composable(TomaDestination.PrivacyPolicy.route) { PrivacyPolicyScreen(onBackClick = { navController.popBackStack() }) }
+
+        composable(TomaDestination.SpeakerEnrollment.route) {
+            SpeakerEnrollmentScreen(
+                voiceViewModel = voiceViewModel,
+                onEnrollmentComplete = {
+                    navController.popBackStack()
+                }
+            )
+        }
 
         composable(
             route = TomaDestination.RecipeConfirm.route,

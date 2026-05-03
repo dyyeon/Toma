@@ -23,11 +23,21 @@ class AudioStreamManager {
     
     // Channel for PCM data (Backpressure handled by CONFLATED or BUFFERED)
     val pcmChannel = Channel<ByteArray>(Channel.CONFLATED)
-    
+
+    private var onEnrollmentData: ((ByteArray) -> Unit)? = null
+
+    fun startEnrollmentMode(callback: (ByteArray) -> Unit) {
+        onEnrollmentData = callback
+    }
+
+    fun stopEnrollmentMode() {
+        onEnrollmentData = null
+    }
+
     @SuppressLint("MissingPermission")
     fun startCapture() {
         if (isRunning) return
-        
+
         val minBufSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
         audioRecord = AudioRecord(
             MediaRecorder.AudioSource.VOICE_RECOGNITION, // Optimized for STT/WakeWord
@@ -53,7 +63,9 @@ class AudioStreamManager {
             while (isRunning) {
                 val read = audioRecord?.read(buffer, 0, buffer.size) ?: -1
                 if (read > 0) {
-                    pcmChannel.trySend(buffer.copyOfRange(0, read))
+                    val data = buffer.copyOfRange(0, read)
+                    pcmChannel.trySend(data)
+                    onEnrollmentData?.invoke(data)
                 }
             }
         }

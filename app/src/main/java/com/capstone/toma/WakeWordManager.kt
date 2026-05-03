@@ -9,6 +9,7 @@ import android.util.Log
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -40,6 +41,7 @@ class WakeWordManager(
     private var melSession: OrtSession? = null
     private var embSession: OrtSession? = null
     private var clfSession: OrtSession? = null
+    private var isPersonalModel = false
 
     // State Buffers
     private val pcmBuffer = mutableListOf<Short>()
@@ -52,41 +54,52 @@ class WakeWordManager(
 
     private fun loadModels() {
         try {
-            val modelFiles = listOf("melspectrogram.onnx", "embedding_model.onnx", "hey_toma.onnx")
-            val sessions = mutableListOf<OrtSession>()
+            // Load Base Models (Mel & Embedding) directly from assets as ByteArrays
+            melSession = ortEnv.createSession(context.assets.open("melspectrogram.onnx").readBytes())
+            embSession = ortEnv.createSession(context.assets.open("embedding_model.onnx").readBytes())
+            Log.d(TAG, "✅ Base models (Mel, Embedding) loaded from assets")
 
-            for (fileName in modelFiles) {
-                val file = java.io.File(context.filesDir, fileName)
-                // Always copy from assets to internal storage to ensure accessibility and handle potential .data files
-                context.assets.open(fileName).use { input ->
-                    file.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                
-                // Also check for .data file (some ONNX models have external data)
-                val dataFileName = "$fileName.data"
-                try {
-                    context.assets.open(dataFileName).use { input ->
-                        java.io.File(context.filesDir, dataFileName).outputStream().use { output ->
-                            input.copyTo(output)
-                        }
-                    }
-                    Log.d(TAG, "Copied external data for $fileName")
-                } catch (e: Exception) {
-                    // Not all models have .data files, so it's okay if this fails
-                }
-
-                sessions.add(ortEnv.createSession(file.absolutePath))
+            // Load Classifier Model (Check Personal first, then Default)
+            val personalModel = File(context.filesDir, "hey_toma_personal.onnx")
+            if (personalModel.exists()) {
+                loadPersonalModel(personalModel.absolutePath)
+            } else {
+                loadDefaultModel(context)
             }
-
-            melSession = sessions[0]
-            embSession = sessions[1]
-            clfSession = sessions[2]
             
-            Log.d(TAG, "✅ 3-Stage ONNX Models loaded successfully from internal storage")
+            Log.d(TAG, "✅ 3-Stage ONNX Pipeline initialized")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Model load failed: ${e.message}")
+        }
+    }
+
+    private fun loadDefaultModel(context: Context) {
+        try {
+            val modelBytes = context.assets.open("hey_toma.onnx").readBytes()
+            clfSession?.close()
+            clfSession = ortEnv.createSession(modelBytes)
+            isPersonalModel = false
+            Log.d(TAG, "✅ Default model loaded from assets")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Default model load failed: ${e.message}")
+        }
+    }
+
+    fun loadPersonalModel(path: String) {
+        try {
+            val modelFile = File(path)
+            if (!modelFile.exists()) {
+                Log.e(TAG, "❌ Personal model file not found: $path")
+                return
+            }
+            val modelBytes = modelFile.readBytes()
+            val newSession = ortEnv.createSession(modelBytes)
+            clfSession?.close()
+            clfSession = newSession
+            isPersonalModel = true
+            Log.d(TAG, "✅ Personal model loaded: $path")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Personal model load failed: ${e.message}")
         }
     }
 
@@ -111,29 +124,20 @@ class WakeWordManager(
             val pcmTensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(floatPcm), longArrayOf(1, CHUNK_SIZE.toLong()))
             
             pcmTensor.use {
-                val melOutput = melSession?.run(Collections.singletonMap("input", pcmTensor))
+                val melInputName = melSession?.inputNames?.iterator()?.next() ?: "input"
+                val melOutput = melSession?.run(Collections.singletonMap(melInputName, pcmTensor))
                 melOutput?.use {
                     val melValue = it[0].value as Array<Array<Array<FloatArray>>>
-                    val frames = melValue[0][0] // Shape: [1, 1, T, 32] -> frames is [T, 32]
-                    
-                    if (verboseLogging) Log.d(TAG, "[Shape Check] Mel Input: [1, 1280], Output T: ${frames.size}")
-
-                    // Process all mel frames from this chunk and update buffer
+                    val frames = melValue[0][0]
                     for (frame in frames) {
                         melBuffer.add(frame)
-                        if (melBuffer.size > MEL_WINDOW_SIZE) {
-                            melBuffer.removeAt(0)
-                        }
+                        if (melBuffer.size > MEL_WINDOW_SIZE) melBuffer.removeAt(0)
                     }
-
-                    // Stride 8: Call embedding/classifier once per 80ms chunk (approx. 12.5Hz)
-                    if (melBuffer.size == MEL_WINDOW_SIZE) {
-                        runEmbedding()
-                    }
+                    if (melBuffer.size == MEL_WINDOW_SIZE) runEmbedding()
                 }
             }
         } catch (e: Exception) {
-            if (verboseLogging) Log.e(TAG, "Pipeline error: ${e.message}")
+            if (verboseLogging) Log.e(TAG, "Pipeline error (Mel): ${e.message}")
         }
     }
 
@@ -143,57 +147,112 @@ class WakeWordManager(
             for (i in 0 until MEL_WINDOW_SIZE) {
                 System.arraycopy(melBuffer[i], 0, flattenedMel, i * MEL_CHANNELS, MEL_CHANNELS)
             }
-            
             val melInputTensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(flattenedMel), longArrayOf(1, MEL_WINDOW_SIZE.toLong(), MEL_CHANNELS.toLong(), 1))
-            
             melInputTensor.use {
-                val embOutput = embSession?.run(Collections.singletonMap("input", melInputTensor))
+                val embInputName = embSession?.inputNames?.iterator()?.next() ?: "input"
+                val embOutput = embSession?.run(Collections.singletonMap(embInputName, melInputTensor))
                 embOutput?.use {
                     val embValue = it[0].value as Array<Array<Array<FloatArray>>>
-                    val embedding = embValue[0][0][0] // [96]
-                    
+                    val embedding = embValue[0][0][0]
                     embeddingBuffer.add(embedding)
-                    if (embeddingBuffer.size > EMBEDDING_WINDOW_SIZE) {
-                        embeddingBuffer.removeFirst()
-                    }
-
-                    if (embeddingBuffer.size == EMBEDDING_WINDOW_SIZE) {
-                        runClassifier()
-                    }
+                    if (embeddingBuffer.size > EMBEDDING_WINDOW_SIZE) embeddingBuffer.removeFirst()
+                    if (embeddingBuffer.size == EMBEDDING_WINDOW_SIZE) runClassifier()
                 }
             }
         } catch (e: Exception) {
-            if (verboseLogging) Log.e(TAG, "Embedding error: ${e.message}")
+            if (verboseLogging) Log.e(TAG, "Pipeline error (Embedding): ${e.message}")
         }
     }
 
     private fun runClassifier() {
+        if (embeddingBuffer.size < EMBEDDING_WINDOW_SIZE) return
+        
+        if (verboseLogging) {
+            Log.v(TAG, "runClassifier() triggered [isPersonal=$isPersonalModel]")
+        }
+
+        val embArray = embeddingBuffer.takeLast(EMBEDDING_WINDOW_SIZE).toTypedArray()
+        var score = 0f
+
         try {
-            val flattenedEmb = FloatArray(EMBEDDING_WINDOW_SIZE * EMBEDDING_DIM)
-            for (i in 0 until EMBEDDING_WINDOW_SIZE) {
-                System.arraycopy(embeddingBuffer[i], 0, flattenedEmb, i * EMBEDDING_DIM, EMBEDDING_DIM)
-            }
-            
-            val clfInputTensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(flattenedEmb), longArrayOf(1, EMBEDDING_WINDOW_SIZE.toLong(), EMBEDDING_DIM.toLong()))
-            
-            clfInputTensor.use {
-                val clfOutput = clfSession?.run(Collections.singletonMap("input", clfInputTensor))
-                clfOutput?.use {
-                    val scoreData = it[0].value as Array<FloatArray>
-                    val score = scoreData[0][0]
-                    
-                    if (verboseLogging) Log.v(TAG, "Current WakeWord Score: $score")
-                    
-                    if (score >= detectionThreshold) {
-                        Log.d(TAG, "🔥 [Hey Toma] DETECTED! Score: $score")
-                        triggerHaptic()
-                        onWakeWordDetected()
-                        embeddingBuffer.clear()
+            if (isPersonalModel) {
+                // Personal model: flatten [16, 96] → [1, 1536]
+                val flat = embArray.flatMap { it.toList() }.toFloatArray()
+                val inputTensor = OnnxTensor.createTensor(
+                    ortEnv,
+                    FloatBuffer.wrap(flat),
+                    longArrayOf(1, (EMBEDDING_WINDOW_SIZE * EMBEDDING_DIM).toLong())
+                )
+                inputTensor.use {
+                    val clfInputName = clfSession?.inputNames?.iterator()?.next() ?: "input"
+                    clfSession?.run(mapOf(clfInputName to it))?.use { res ->
+                        val probValue = res.get("output_probability")
+                        if (probValue.isPresent) {
+                            val rawValue = probValue.get().value
+
+                            // rawValue is List<OnnxMap> — need to unwrap
+                            val onnxMap = when (rawValue) {
+                                is List<*> -> rawValue.firstOrNull()
+                                else -> rawValue
+                            }
+
+                            // OnnxMap has a getValue() method that returns Map<K,V>
+                            val innerMap = when (onnxMap) {
+                                is ai.onnxruntime.OnnxMap -> onnxMap.value
+                                is Map<*, *> -> onnxMap
+                                else -> null
+                            }
+
+                            score = innerMap?.let { map ->
+                                (map[1L]
+                                    ?: map[1]
+                                    ?: map.entries.find { it.key.toString() == "1" }?.value
+                                )?.let {
+                                    when (it) {
+                                        is Float -> it
+                                        is Double -> it.toFloat()
+                                        is Number -> it.toFloat()
+                                        else -> 0f
+                                    }
+                                }
+                            } ?: 0f
+
+                            if (verboseLogging) {
+                                Log.d(TAG, "innerMap: $innerMap, score: $score")
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Default model: [1, 16, 96]
+                val data = embArray.flatMap { it.toList() }.toFloatArray()
+                val inputTensor = OnnxTensor.createTensor(
+                    ortEnv,
+                    FloatBuffer.wrap(data),
+                    longArrayOf(1, EMBEDDING_WINDOW_SIZE.toLong(), EMBEDDING_DIM.toLong())
+                )
+                inputTensor.use {
+                    val clfInputName = clfSession?.inputNames?.iterator()?.next()
+                    if (clfInputName != null) {
+                        clfSession?.run(mapOf(clfInputName to it))?.use { res ->
+                            score = (res.get(0).value as? Array<FloatArray>)?.get(0)?.get(0) ?: 0f
+                        }
                     }
                 }
             }
+
+            if (verboseLogging) {
+                Log.v(TAG, "Score: $score")
+            }
+
+            if (score >= detectionThreshold) {
+                Log.d(TAG, "🔥 [Hey Toma] DETECTED! score=$score")
+                triggerHaptic()
+                onWakeWordDetected()
+                embeddingBuffer.clear()
+            }
         } catch (e: Exception) {
-            if (verboseLogging) Log.e(TAG, "Classifier error: ${e.message}")
+            Log.e(TAG, "Classifier error: ${e.message}")
         }
     }
 

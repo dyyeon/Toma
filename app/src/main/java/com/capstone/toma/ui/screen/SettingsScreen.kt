@@ -1,5 +1,6 @@
 package com.capstone.toma.ui.screen
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -9,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,9 +20,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.capstone.toma.UserManager
 import com.capstone.toma.ui.component.TomaTopAppBar
 
 @Composable
@@ -29,7 +33,8 @@ fun SettingsScreen(
     onPushClick: () -> Unit = {},
     onEmailClick: () -> Unit = {},
     onCustomerCenterClick: () -> Unit = {},
-    onContactClick: () -> Unit = {}
+    onContactClick: () -> Unit = {},
+    onSpeakerEnrollmentClick: () -> Unit = {}
 ) {
     // 색상 변수들
     val TomaPointOrange = Color(0xFFEE8C2B)
@@ -74,6 +79,30 @@ fun SettingsScreen(
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
             SettingsItemRow(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "문의하기", TomaPointOrange = TomaPointOrange, TomaSecondaryText = TomaSecondaryText, onClick = onContactClick)
         }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // 보안 및 계정 섹션
+        Text("음성 인식", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 12.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+        Column(modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
+            SettingsItemRow(icon = Icons.Default.RecordVoiceOver, title = "화자 등록 (개인화)", TomaPointOrange = TomaPointOrange, TomaSecondaryText = TomaSecondaryText, onClick = onSpeakerEnrollmentClick)
+        }
+
+        // 개발/테스트용 초기화 버튼
+        Spacer(modifier = Modifier.height(32.dp))
+        val context = LocalContext.current
+        Button(
+            onClick = {
+                UserManager.reset(context)
+                Toast.makeText(context, "등록 초기화됨", Toast.LENGTH_SHORT).show()
+            },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Color.LightGray)
+        ) {
+            Text("등록 상태 초기화 (테스트용)", color = Color.DarkGray)
+        }
+
         Spacer(modifier = Modifier.height(48.dp))
         }
     }

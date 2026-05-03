@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PrivacyTip
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.DrawerValue
@@ -97,6 +98,7 @@ fun TomaHomeScreen(
     onRecentMoreClick: () -> Unit = {},
     onStorageClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onSpeakerEnrollmentClick: () -> Unit = {},
     onPrivacyPolicyClick: () -> Unit = {},
     onErrorDismiss: () -> Unit = {}
 ) {
@@ -142,6 +144,17 @@ fun TomaHomeScreen(
                 scope.launch {
                     drawerState.close()
                     onSettingsClick()
+                }
+            }
+        ),
+        TomaDrawerItem(
+            label = "화자 등록",
+            subtitle = "나의 목소리를 등록합니다",
+            icon = Icons.Default.RecordVoiceOver,
+            onClick = {
+                scope.launch {
+                    drawerState.close()
+                    onSpeakerEnrollmentClick()
                 }
             }
         ),
@@ -863,6 +876,7 @@ fun PreviewTomaHomeScreen() {
         onRecentMoreClick = {},
         onStorageClick = {},
         onSettingsClick = {},
+        onSpeakerEnrollmentClick = {},
         onPrivacyPolicyClick = {}
     )
 }
@@ -884,6 +898,7 @@ fun PreviewTomaHomeScreenLoading() {
         onRecentMoreClick = {},
         onStorageClick = {},
         onSettingsClick = {},
+        onSpeakerEnrollmentClick = {},
         onPrivacyPolicyClick = {}
     )
 }
