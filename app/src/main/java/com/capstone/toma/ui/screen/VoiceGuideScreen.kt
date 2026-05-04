@@ -304,7 +304,7 @@ private fun VoiceMicButton(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Tap to say To-ma",
+                    text = if (isListening) "말씀해 주세요..." else "부르면 대답해요: '헤이 토마'",
                     color = Color.White,
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Medium

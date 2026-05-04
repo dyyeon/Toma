@@ -23,11 +23,28 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.util.Locale
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.asRequestBody
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * CHANGED: openWakeWord migration - Integrated State Machine & Realtime API
  */
 class VoiceViewModel(application: Application) : AndroidViewModel(application) {
+    // Enrollment Status
+    sealed interface EnrollmentStatus {
+        data object Idle : EnrollmentStatus
+        data object Recording : EnrollmentStatus
+        data object Verifying : EnrollmentStatus
+        data class Success(val count: Int) : EnrollmentStatus
+        data object Failed : EnrollmentStatus
+    }
+
+    private val _enrollmentStatus = MutableStateFlow<EnrollmentStatus>(EnrollmentStatus.Idle)
+    val enrollmentStatus = _enrollmentStatus.asStateFlow()
+
     private val _uiState = MutableStateFlow<VoiceUiState>(VoiceUiState.Idle)
     val uiState = _uiState.asStateFlow()
 
@@ -153,36 +170,97 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startEnrollmentRecording() {
+        _enrollmentStatus.value = EnrollmentStatus.Recording
         // AudioStreamManager에 enrollment 모드 시작
         audioStreamManager.startEnrollmentMode { wavBytes ->
             synchronized(enrollmentBuffer) {
                 if (_enrollmentCount.value < 30) {
                     enrollmentBuffer.write(wavBytes)
                     
-                    while (enrollmentBuffer.size() >= ENROLLMENT_CHUNK_BYTES) {
+                    if (enrollmentBuffer.size() >= ENROLLMENT_CHUNK_BYTES) {
                         val allBytes = enrollmentBuffer.toByteArray()
                         val pcmBytes = allBytes.take(ENROLLMENT_CHUNK_BYTES).toByteArray()
                         
-                        // 남은 데이터 보관
+                        // 남은 데이터 보관 (일단 리셋, 2초 단위로 끊어서 처리하므로 남은건 버리거나 다음으로 넘김)
                         enrollmentBuffer.reset()
                         if (allBytes.size > ENROLLMENT_CHUNK_BYTES) {
                             enrollmentBuffer.write(allBytes, ENROLLMENT_CHUNK_BYTES, allBytes.size - ENROLLMENT_CHUNK_BYTES)
                         }
                         
-                        val context = getApplication<Application>().applicationContext
-                        val file = File(context.filesDir, "enrollment_${_enrollmentCount.value + 1}.wav")
-                        saveAsWav(pcmBytes, file)
-                        enrollmentWavFiles.add(file)
-                        _enrollmentCount.value += 1
-                        
-                        // 30개가 다 차면 자동으로 중단
-                        if (_enrollmentCount.value >= 30) {
-                            stopEnrollmentRecording()
-                            break
+                        // 검증 및 저장 로직을 코루틴에서 실행
+                        viewModelScope.launch(Dispatchers.IO) {
+                            val context = getApplication<Application>().applicationContext
+                            val tempFile = File(context.cacheDir, "enroll_verify_temp.wav")
+                            saveAsWav(pcmBytes, tempFile)
+
+                            _enrollmentStatus.value = EnrollmentStatus.Verifying
+                            val isValid = verifyWithWhisper(tempFile)
+
+                            if (isValid) {
+                                val count = _enrollmentCount.value
+                                val file = File(context.filesDir, "enrollment_${count + 1}.wav")
+                                tempFile.copyTo(file, overwrite = true)
+                                synchronized(enrollmentWavFiles) { enrollmentWavFiles.add(file) }
+                                _enrollmentCount.value = count + 1
+                                _enrollmentStatus.value = EnrollmentStatus.Success(count + 1)
+                                Log.d("Enrollment", "✅ 샘플 ${count + 1}/30 저장")
+                            } else {
+                                _enrollmentStatus.value = EnrollmentStatus.Failed
+                                Log.d("Enrollment", "❌ 거부 — 다시 말씀해주세요")
+                            }
+
+                            // 30개가 다 차면 자동으로 중단
+                            if (_enrollmentCount.value >= 30) {
+                                withContext(Dispatchers.Main) {
+                                    stopEnrollmentRecording()
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+
+    private suspend fun verifyWithWhisper(wavFile: File): Boolean {
+        return try {
+            val client = OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(15, TimeUnit.SECONDS)
+                .build()
+
+            val requestBody = MultipartBody.Builder()
+                .setType(MultipartBody.FORM)
+                .addFormDataPart(
+                    "file", wavFile.name,
+                    wavFile.asRequestBody("audio/wav".toMediaType())
+                )
+                .addFormDataPart("model", "whisper-1")
+                .addFormDataPart("language", "ko")
+                .build()
+
+            val request = Request.Builder()
+                .url("https://api.openai.com/v1/audio/transcriptions")
+                .header("Authorization", "Bearer ${BuildConfig.OPENAI_API_KEY}")
+                .post(requestBody)
+                .build()
+
+            val response = client.newCall(request).execute()
+            val body = response.body?.string() ?: return false
+            val text = JSONObject(body).getString("text").lowercase()
+
+            Log.d("Enrollment", "Whisper: \"$text\"")
+
+            // "헤이 토마" 다양한 표기 허용
+            val keywords = listOf("토마", "toma", "thoma", "토 마")
+            val isValid = keywords.any { text.contains(it) }
+
+            if (!isValid) Log.d("Enrollment", "❌ 거부됨: \"$text\"")
+            isValid
+
+        } catch (e: Exception) {
+            Log.e("Enrollment", "Whisper 에러: ${e.message}")
+            true // 에러 시 통과 (네트워크 문제로 인한 거부 방지)
         }
     }
 
@@ -254,8 +332,9 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                     return@launch
                 }
 
+                val timestamp = System.currentTimeMillis()
                 filesToUpload.forEachIndexed { index, file ->
-                    val fileName = "me_${String.format(Locale.US, "%03d", index + 1)}.wav"
+                    val fileName = "me_${timestamp}_${String.format(Locale.US, "%03d", index + 1)}.wav"
                     val storageRef = storage.reference
                         .child("users/$userId/recordings/$fileName")
 
@@ -264,6 +343,11 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 Log.d("Enrollment", "✅ 모든 파일 업로드 완료")
+
+                // 재학습 트리거 파일 업로드 (빈 파일)
+                val triggerRef = storage.reference.child("users/$userId/retrain_trigger")
+                triggerRef.putBytes(ByteArray(0)).await()
+                Log.d("Enrollment", "✅ 재학습 트리거 업로드")
                 
                 // 모든 업로드가 성공한 후에만 완료 플래그 설정
                 UserManager.setHasUploaded(context, true)

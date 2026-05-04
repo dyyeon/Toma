@@ -26,8 +26,10 @@ class WakeWordManager(
     private val TAG = "WakeWord"
     
     // Configuration
-    var detectionThreshold: Float = 0.5f
+    var detectionThreshold: Float = 0.05f
     var verboseLogging: Boolean = true
+    private var consecutiveDetections = 0
+    private val requiredConsecutive = 3  // 3 frames (approx 240ms) must be above threshold
     
     private val SAMPLE_RATE = 16000
     private val CHUNK_SIZE = 1280 // 80ms at 16kHz
@@ -217,8 +219,8 @@ class WakeWordManager(
                                 }
                             } ?: 0f
 
-                            if (verboseLogging) {
-                                Log.d(TAG, "innerMap: $innerMap, score: $score")
+                            if (verboseLogging && score > 0.001f) {
+                                Log.d(TAG, "🎤 Personal Score spike: $score (innerMap=$innerMap)")
                             }
                         }
                     }
@@ -241,15 +243,25 @@ class WakeWordManager(
                 }
             }
 
-            if (verboseLogging) {
-                Log.v(TAG, "Score: $score")
+            if (verboseLogging && score > 0.001f) {
+                Log.d(TAG, "🎤 Score spike: $score")
             }
 
             if (score >= detectionThreshold) {
-                Log.d(TAG, "🔥 [Hey Toma] DETECTED! score=$score")
-                triggerHaptic()
-                onWakeWordDetected()
-                embeddingBuffer.clear()
+                consecutiveDetections++
+                if (verboseLogging) {
+                    Log.v(TAG, "Consecutive hits: $consecutiveDetections/3 (Score: $score)")
+                }
+
+                if (consecutiveDetections >= requiredConsecutive) {
+                    consecutiveDetections = 0
+                    Log.d(TAG, "🔥 [Hey Toma] DETECTED! score=$score")
+                    triggerHaptic()
+                    onWakeWordDetected()
+                    embeddingBuffer.clear()
+                }
+            } else {
+                consecutiveDetections = 0
             }
         } catch (e: Exception) {
             Log.e(TAG, "Classifier error: ${e.message}")
