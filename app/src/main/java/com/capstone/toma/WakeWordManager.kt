@@ -21,6 +21,7 @@ import java.util.*
  */
 class WakeWordManager(
     private val context: Context,
+    private val personalizer: OnDevicePersonalizer,
     private val onWakeWordDetected: () -> Unit
 ) {
     private val TAG = "WakeWord"
@@ -44,11 +45,20 @@ class WakeWordManager(
     private var embSession: OrtSession? = null
     private var clfSession: OrtSession? = null
     private var isPersonalModel = false
+    
+    // On-device personalizer
+    var useOnDevicePersonalizer = false
+        private set
+    private var lastDetectionTime = 0L
+    private val detectionCooldownMs = 3000L  // 3초 쿨다운
 
     // State Buffers
     private val pcmBuffer = mutableListOf<Short>()
     private val melBuffer = mutableListOf<FloatArray>()
     private val embeddingBuffer = LinkedList<FloatArray>()
+    
+    // 최근 1536차원 embedding 캐시 (Personalizer 학습용)
+    private var lastEmbedding: FloatArray? = null
 
     init {
         loadModels()
@@ -62,11 +72,21 @@ class WakeWordManager(
             Log.d(TAG, "✅ Base models (Mel, Embedding) loaded from assets")
 
             // Load Classifier Model (Check Personal first, then Default)
-            val personalModel = File(context.filesDir, "hey_toma_personal.onnx")
-            if (personalModel.exists()) {
-                loadPersonalModel(personalModel.absolutePath)
-            } else {
-                loadDefaultModel(context)
+            val personalWeights = File(context.filesDir, "personal_weights.bin")
+            if (personalWeights.exists()) {
+                if (personalizer.loadFromFile(personalWeights)) {
+                    useOnDevicePersonalizer = true
+                    Log.d(TAG, "✅ Existing on-device weights activated on startup")
+                }
+            }
+
+            if (!useOnDevicePersonalizer) {
+                val personalModel = File(context.filesDir, "hey_toma_personal.onnx")
+                if (personalModel.exists()) {
+                    loadPersonalModel(personalModel.absolutePath)
+                } else {
+                    loadDefaultModel(context)
+                }
             }
             
             Log.d(TAG, "✅ 3-Stage ONNX Pipeline initialized")
@@ -105,8 +125,9 @@ class WakeWordManager(
         }
     }
 
-    fun processFrame(pcmData: ByteArray) {
-        if (melSession == null || embSession == null || clfSession == null) return
+    fun processFrame(pcmData: ByteArray) = synchronized(this) {
+        if (melSession == null || embSession == null) return@synchronized
+        if (!useOnDevicePersonalizer && clfSession == null) return@synchronized
 
         val shortBuffer = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
         while (shortBuffer.hasRemaining()) {
@@ -134,8 +155,8 @@ class WakeWordManager(
                     for (frame in frames) {
                         melBuffer.add(frame)
                         if (melBuffer.size > MEL_WINDOW_SIZE) melBuffer.removeAt(0)
+                        if (melBuffer.size == MEL_WINDOW_SIZE) runEmbedding()
                     }
-                    if (melBuffer.size == MEL_WINDOW_SIZE) runEmbedding()
                 }
             }
         } catch (e: Exception) {
@@ -166,20 +187,53 @@ class WakeWordManager(
         }
     }
 
+    fun loadPersonalWeights(personalizer: OnDevicePersonalizer) {
+        // The personalizer is already the one passed in constructor
+        this.useOnDevicePersonalizer = true
+        Log.d(TAG, "✅ On-device personal model weights activated")
+    }
+
+    /**
+     * Returns the most recently computed 1536-dimensional embedding.
+     */
+    fun getLastEmbedding(): FloatArray? = lastEmbedding
+
+    /**
+     * Clears the cached embedding and all internal pipeline buffers to prevent bias or stuck detections.
+     */
+    fun clearLastEmbedding() = synchronized(this) {
+        lastEmbedding = null
+        pcmBuffer.clear()
+        melBuffer.clear()
+        embeddingBuffer.clear()
+        consecutiveDetections = 0
+        Log.d(TAG, "🧹 All buffers and cached embedding cleared")
+    }
+
     private fun runClassifier() {
         if (embeddingBuffer.size < EMBEDDING_WINDOW_SIZE) return
         
+        val currentEmb = embeddingBuffer.takeLast(EMBEDDING_WINDOW_SIZE).flatMap { it.toList() }.toFloatArray()
+        lastEmbedding = currentEmb
+
         if (verboseLogging) {
-            Log.v(TAG, "runClassifier() triggered [isPersonal=$isPersonalModel]")
+            Log.v(TAG, "runClassifier() triggered [ONNX_Personal=$isPersonalModel, OnDevice_Personal=$useOnDevicePersonalizer]")
         }
 
-        val embArray = embeddingBuffer.takeLast(EMBEDDING_WINDOW_SIZE).toTypedArray()
         var score = 0f
 
         try {
-            if (isPersonalModel) {
+            if (useOnDevicePersonalizer) {
+                if (verboseLogging) Log.v(TAG, "Executing: On-Device Personalizer (Logistic Regression)")
+                score = personalizer?.predict(currentEmb) ?: 0f
+                if (verboseLogging && score > 0.001f) {
+                    Log.d(TAG, "🎤 On-Device Personal Score: $score")
+                }
+            } else if (isPersonalModel) {
+                if (verboseLogging) Log.v(TAG, "Executing: ONNX Personal Model")
+                val lastWindow = embeddingBuffer.takeLast(EMBEDDING_WINDOW_SIZE)
                 // Personal model: flatten [16, 96] → [1, 1536]
-                val flat = embArray.flatMap { it.toList() }.toFloatArray()
+                val flat = lastWindow.flatMap { it.toList() }.toFloatArray()
                 val inputTensor = OnnxTensor.createTensor(
                     ortEnv,
                     FloatBuffer.wrap(flat),
@@ -226,8 +280,10 @@ class WakeWordManager(
                     }
                 }
             } else {
+                if (verboseLogging) Log.v(TAG, "Executing: Default Base Model")
+                val lastWindow = embeddingBuffer.takeLast(EMBEDDING_WINDOW_SIZE)
                 // Default model: [1, 16, 96]
-                val data = embArray.flatMap { it.toList() }.toFloatArray()
+                val data = lastWindow.flatMap { it.toList() }.toFloatArray()
                 val inputTensor = OnnxTensor.createTensor(
                     ortEnv,
                     FloatBuffer.wrap(data),
@@ -254,11 +310,18 @@ class WakeWordManager(
                 }
 
                 if (consecutiveDetections >= requiredConsecutive) {
-                    consecutiveDetections = 0
-                    Log.d(TAG, "🔥 [Hey Toma] DETECTED! score=$score")
-                    triggerHaptic()
-                    onWakeWordDetected()
-                    embeddingBuffer.clear()
+                    val now = System.currentTimeMillis()
+                    if (now - lastDetectionTime > detectionCooldownMs) {
+                        lastDetectionTime = now
+                        consecutiveDetections = 0
+                        Log.d(TAG, "🔥 [Hey Toma] DETECTED! score=$score")
+                        triggerHaptic()
+                        onWakeWordDetected()
+                        embeddingBuffer.clear()
+                    } else {
+                        consecutiveDetections = 0  // 쿨다운 중엔 카운터만 리셋
+                        if (verboseLogging) Log.d(TAG, "Cooldown active, ignoring detection")
+                    }
                 }
             } else {
                 consecutiveDetections = 0

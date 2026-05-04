@@ -52,7 +52,8 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     val intentEvent = _intentEvent.asSharedFlow()
 
     private val audioStreamManager = AudioStreamManager()
-    private val wakeWordManager = WakeWordManager(application) {
+    private val onDevicePersonalizer = OnDevicePersonalizer(application)
+    private val wakeWordManager = WakeWordManager(application, onDevicePersonalizer) {
         onWakeWordDetected()
     }
     private val timerManager = TimerManager(application)
@@ -62,7 +63,16 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val realtimeManager = OpenAiRealtimeManager(
         apiKey = BuildConfig.OPENAI_API_KEY,
         onResult = { jsonResponse -> handleAiIntent(jsonResponse) },
-        onError = { error -> _uiState.value = VoiceUiState.Error(error) }
+        onError = { error -> 
+            _uiState.value = VoiceUiState.Error(error)
+            // Error 상태에서도 3초 후 Idle로 복귀하여 다시 웨이크워드 대기
+            viewModelScope.launch {
+                delay(3000)
+                if (_uiState.value is VoiceUiState.Error) {
+                    _uiState.value = VoiceUiState.Idle
+                }
+            }
+        }
     )
 
     // 등록용 wav 파일 저장 목록 (Thread-safe)
@@ -71,6 +81,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     val enrollmentCount: StateFlow<Int> = _enrollmentCount.asStateFlow()
     private val enrollmentBuffer = ByteArrayOutputStream()
     private val ENROLLMENT_CHUNK_BYTES = 64000 // 2 seconds at 16kHz mono 16-bit
+    private val MAX_ENROLLMENT_SAMPLES = 10 // Reduced for on-device personalization
 
     init {
         wakeWordManager.verboseLogging = true
@@ -170,49 +181,87 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startEnrollmentRecording() {
+        if (_enrollmentStatus.value != EnrollmentStatus.Idle && _enrollmentStatus.value !is EnrollmentStatus.Success && _enrollmentStatus.value != EnrollmentStatus.Failed) return
+
         _enrollmentStatus.value = EnrollmentStatus.Recording
+        
         // AudioStreamManager에 enrollment 모드 시작
         audioStreamManager.startEnrollmentMode { wavBytes ->
             synchronized(enrollmentBuffer) {
-                if (_enrollmentCount.value < 30) {
+                if (_enrollmentCount.value < MAX_ENROLLMENT_SAMPLES) {
                     enrollmentBuffer.write(wavBytes)
                     
                     if (enrollmentBuffer.size() >= ENROLLMENT_CHUNK_BYTES) {
                         val allBytes = enrollmentBuffer.toByteArray()
                         val pcmBytes = allBytes.take(ENROLLMENT_CHUNK_BYTES).toByteArray()
                         
-                        // 남은 데이터 보관 (일단 리셋, 2초 단위로 끊어서 처리하므로 남은건 버리거나 다음으로 넘김)
                         enrollmentBuffer.reset()
-                        if (allBytes.size > ENROLLMENT_CHUNK_BYTES) {
-                            enrollmentBuffer.write(allBytes, ENROLLMENT_CHUNK_BYTES, allBytes.size - ENROLLMENT_CHUNK_BYTES)
-                        }
                         
-                        // 검증 및 저장 로직을 코루틴에서 실행
+                        // Stop recording immediately after capturing 2 seconds
+                        audioStreamManager.stopEnrollmentMode()
+
                         viewModelScope.launch(Dispatchers.IO) {
+                            // Ensure "Recording" state is visible for at least some time if needed, 
+                            // but here the callback happens after 2s of audio is collected.
+                            
+                            withContext(Dispatchers.Main) {
+                                _enrollmentStatus.value = EnrollmentStatus.Verifying
+                            }
+
                             val context = getApplication<Application>().applicationContext
                             val tempFile = File(context.cacheDir, "enroll_verify_temp.wav")
                             saveAsWav(pcmBytes, tempFile)
 
-                            _enrollmentStatus.value = EnrollmentStatus.Verifying
                             val isValid = verifyWithWhisper(tempFile)
 
-                            if (isValid) {
-                                val count = _enrollmentCount.value
-                                val file = File(context.filesDir, "enrollment_${count + 1}.wav")
-                                tempFile.copyTo(file, overwrite = true)
-                                synchronized(enrollmentWavFiles) { enrollmentWavFiles.add(file) }
-                                _enrollmentCount.value = count + 1
-                                _enrollmentStatus.value = EnrollmentStatus.Success(count + 1)
-                                Log.d("Enrollment", "✅ 샘플 ${count + 1}/30 저장")
-                            } else {
-                                _enrollmentStatus.value = EnrollmentStatus.Failed
-                                Log.d("Enrollment", "❌ 거부 — 다시 말씀해주세요")
-                            }
+                            withContext(Dispatchers.Main) {
+                                if (isValid) {
+                                    val embedding = wakeWordManager.getLastEmbedding()
+                                    if (embedding != null) {
+                                        onDevicePersonalizer.addPositiveSample(embedding)
+                                        Log.d("OnDevice", "✅ Embedding added from cache. Size: ${onDevicePersonalizer.positiveEmbeddings.size}")
+                                    } else {
+                                        Log.e("OnDevice", "❌ No cached embedding available")
+                                    }
 
-                            // 30개가 다 차면 자동으로 중단
-                            if (_enrollmentCount.value >= 30) {
-                                withContext(Dispatchers.Main) {
-                                    stopEnrollmentRecording()
+                                    val count = _enrollmentCount.value + 1
+                                    val file = File(context.filesDir, "enrollment_$count.wav")
+                                    tempFile.copyTo(file, overwrite = true)
+                                    synchronized(enrollmentWavFiles) { enrollmentWavFiles.add(file) }
+                                    
+                                    _enrollmentCount.value = count
+                                    _enrollmentStatus.value = EnrollmentStatus.Success(count)
+                                    
+                                    delay(1500) // Show success for 1.5s
+                                    
+                                    if (count >= MAX_ENROLLMENT_SAMPLES) {
+                                        // Final training
+                                        Log.d("Enrollment", "🎓 Starting on-device training...")
+                                        
+                                        val negLoaded = onDevicePersonalizer.loadNegativeSamplesFromAssets()
+                                        Log.d("Enrollment", "Negative samples loaded: $negLoaded")
+
+                                        Log.d("OnDevice", "Before train: positives=${onDevicePersonalizer.positiveEmbeddings.size}, negatives=${onDevicePersonalizer.negativeEmbeddings.size}")
+                                        
+                                        if (negLoaded && onDevicePersonalizer.train()) {
+                                            val weightsFile = File(context.filesDir, "personal_weights.bin")
+                                            onDevicePersonalizer.saveToFile(weightsFile)
+                                            wakeWordManager.loadPersonalWeights(onDevicePersonalizer)
+                                            wakeWordManager.clearLastEmbedding()
+                                            Log.d("Enrollment", "✅ On-device personalizer activated and cache cleared!")
+                                            
+                                            _enrollmentStatus.value = EnrollmentStatus.Idle
+                                        } else {
+                                            Log.e("Enrollment", "❌ Training failed (Load: $negLoaded, Pos: ${onDevicePersonalizer.positiveEmbeddings.size})")
+                                            _enrollmentStatus.value = EnrollmentStatus.Failed
+                                        }
+                                    } else {
+                                        _enrollmentStatus.value = EnrollmentStatus.Idle
+                                    }
+                                } else {
+                                    _enrollmentStatus.value = EnrollmentStatus.Failed
+                                    delay(1000) // Show failure for 1s
+                                    _enrollmentStatus.value = EnrollmentStatus.Idle
                                 }
                             }
                         }
@@ -339,7 +388,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                         .child("users/$userId/recordings/$fileName")
 
                     storageRef.putFile(Uri.fromFile(file)).await()
-                    Log.d("Enrollment", "✅ 업로드 성공 (${index + 1}/30): $fileName")
+                    Log.d("Enrollment", "✅ 업로드 성공 (${index + 1}/$MAX_ENROLLMENT_SAMPLES): $fileName")
                 }
 
                 Log.d("Enrollment", "✅ 모든 파일 업로드 완료")
