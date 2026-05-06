@@ -52,6 +52,11 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val _intentEvent = kotlinx.coroutines.flow.MutableSharedFlow<TomaIntent>()
     val intentEvent = _intentEvent.asSharedFlow()
 
+    private val _recognizedTextEvent = kotlinx.coroutines.flow.MutableSharedFlow<String>()
+    val recognizedTextEvent = _recognizedTextEvent.asSharedFlow()
+
+    private val openAiManager = OpenAiManager()
+
     private val audioStreamManager = AudioStreamManager()
     private val onDevicePersonalizer = OnDevicePersonalizer(application)
     private val wakeWordManager = WakeWordManager(application, onDevicePersonalizer) {
@@ -64,10 +69,10 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val realtimeManager = OpenAiRealtimeManager(
         apiKey = BuildConfig.OPENAI_API_KEY,
         onResult = { jsonResponse -> handleAiIntent(jsonResponse) },
-        onError = { error -> 
-            _uiState.value = VoiceUiState.Error(error)
-            // Error 상태에서도 3초 후 Idle로 복귀하여 다시 웨이크워드 대기
+        onError = { error ->
             viewModelScope.launch {
+                _uiState.value = VoiceUiState.Error(error)
+                // Error 상태에서도 3초 후 Idle로 복귀하여 다시 웨이크워드 대기
                 delay(3000)
                 if (_uiState.value is VoiceUiState.Error) {
                     _uiState.value = VoiceUiState.Idle
@@ -111,7 +116,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun observeAudioStream() {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             for (pcmData in audioStreamManager.pcmChannel) {
                 // 1. Always process for WakeWord if in IDLE
                 if (_uiState.value == VoiceUiState.Idle) {
@@ -127,13 +132,13 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun onWakeWordDetected() {
-        if (_uiState.value == VoiceUiState.Idle) {
-            _uiState.value = VoiceUiState.Listening
-            // Play earcon to notify user
-            toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
-            
-            // Auto-timeout if no speech detected for 5 seconds
-            viewModelScope.launch {
+        viewModelScope.launch {
+            if (_uiState.value == VoiceUiState.Idle) {
+                _uiState.value = VoiceUiState.Listening
+                // Play earcon to notify user
+                toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
+
+                // Auto-timeout if no speech detected for 5 seconds
                 delay(5000)
                 if (_uiState.value == VoiceUiState.Listening) {
                     _uiState.value = VoiceUiState.Idle
@@ -146,20 +151,22 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.Default) {
             try {
                 val intent = TomaIntentParser.parse(jsonResponse)
-                
+
                 withContext(Dispatchers.Main) {
                     _uiState.value = VoiceUiState.Processing
-                    Log.d("VoiceViewModel", "Intent Parsed: $intent")
-                    _intentEvent.emit(intent)
+                }
 
+                Log.d("VoiceViewModel", "Intent Parsed: $intent")
+                _intentEvent.emit(intent)
+
+                withContext(Dispatchers.Main) {
                     when (intent) {
                         is TomaIntent.SET_TIMER -> {
-                            timerManager.setTimer(intent.durationMin)
                             _uiState.value = VoiceUiState.Result("${intent.durationMin}분 타이머를 맞췄어요.")
+                            timerManager.setTimer(intent.durationMin)
                         }
                         TomaIntent.NEXT_STEP -> {
                             _uiState.value = VoiceUiState.Result("다음 단계로 넘어갑니다.")
-                            // TODO: Link with RecipeDetail screen action
                         }
                         TomaIntent.PREVIOUS_STEP -> {
                             _uiState.value = VoiceUiState.Result("이전 단계로 돌아갑니다.")
@@ -177,11 +184,16 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                             _uiState.value = VoiceUiState.Error("명령을 이해하지 못했어요.")
                         }
                     }
+                }
 
-                    // Transition to SPEAKING then back to IDLE after a short delay
-                    if (_uiState.value !is VoiceUiState.Error && _uiState.value !is VoiceUiState.Idle) {
+                // Transition to SPEAKING then back to IDLE after a short delay
+                val currentState = withContext(Dispatchers.Main) { _uiState.value }
+                if (currentState !is VoiceUiState.Error && currentState !is VoiceUiState.Idle) {
+                    withContext(Dispatchers.Main) {
                         _uiState.value = VoiceUiState.Speaking
-                        delay(3000)
+                    }
+                    delay(3000)
+                    withContext(Dispatchers.Main) {
                         _uiState.value = VoiceUiState.Idle
                     }
                 }
@@ -194,6 +206,23 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+
+    private fun normalizeRecognizedText(text: String): String {
+        return text.trim()
+    }
+
+    fun transcribeAudioAndProcess(audioFile: File) {
+        openAiManager.transcribeAudio(audioFile) { recognizedText ->
+            viewModelScope.launch(Dispatchers.Default) {
+                val text = normalizeRecognizedText(recognizedText.orEmpty())
+                withContext(Dispatchers.Main) {
+                    _uiState.value = VoiceUiState.Result(text)
+                }
+                delay(900)
+                _recognizedTextEvent.emit(text)
+            }
+        }
+    }
 
     fun onMicClick() {
         // Manual trigger (optional, keeps current UI working)
