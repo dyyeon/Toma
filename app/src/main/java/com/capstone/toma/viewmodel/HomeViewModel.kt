@@ -2,26 +2,30 @@ package com.capstone.toma.viewmodel
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.storage.RecentHistoryStore
 import com.capstone.toma.ui.screen.HomeUiState
 import com.capstone.toma.ui.screen.RecentRecipeItem
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val recentHistoryStore = RecentHistoryStore(application)
 
-    private val _uiState = MutableStateFlow(
-        HomeUiState(
-            recentItems = recentHistoryStore.getRecentItems()
-        )
-    )
+    private val _uiState = MutableStateFlow(HomeUiState())
 
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
+
+    init {
+        refreshRecentItems()
+    }
 
     fun updateSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
@@ -33,8 +37,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun refreshRecentItems() {
-        _uiState.update {
-            it.copy(recentItems = recentHistoryStore.getRecentItems())
+        viewModelScope.launch(Dispatchers.IO) {
+            val items = recentHistoryStore.getRecentItems()
+            withContext(Dispatchers.Main) {
+                _uiState.update {
+                    it.copy(recentItems = items)
+                }
+            }
         }
     }
 
@@ -43,14 +52,17 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         recipeDataJson: String?,
         sourceType: RecipeSourceType = RecipeSourceType.TEXT
     ) {
-        _uiState.update {
-            it.copy(
-                recentItems = recentHistoryStore.saveRecentRecipe(
-                    keyword = keyword,
-                    recipeDataJson = recipeDataJson,
-                    sourceType = sourceType
-                )
+        viewModelScope.launch(Dispatchers.IO) {
+            val items = recentHistoryStore.saveRecentRecipe(
+                keyword = keyword,
+                recipeDataJson = recipeDataJson,
+                sourceType = sourceType
             )
+            withContext(Dispatchers.Main) {
+                _uiState.update {
+                    it.copy(recentItems = items)
+                }
+            }
         }
     }
 

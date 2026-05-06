@@ -6,6 +6,7 @@ import com.capstone.toma.OpenAiManager
 import com.capstone.toma.VoiceRequestResult
 import com.capstone.toma.ui.screen.AiChatUiState
 import com.capstone.toma.ui.screen.ChatMessage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -214,33 +215,35 @@ class ChatViewModel : ViewModel() {
     private fun processAiResponse(userText: String) {
         val history = _uiState.value.messages.map { it.text to it.isUser }
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             openAiManager.processChatRequest(userText, history) { result ->
-                when (result) {
-                    is VoiceRequestResult.Success -> {
-                        val aiMessage = ChatMessage(
-                            id = UUID.randomUUID().toString(),
-                            text = result.responseMessage,
-                            isUser = false,
-                            timestamp = getCurrentTime()
-                        )
+                viewModelScope.launch {
+                    when (result) {
+                        is VoiceRequestResult.Success -> {
+                            val aiMessage = ChatMessage(
+                                id = UUID.randomUUID().toString(),
+                                text = result.responseMessage,
+                                isUser = false,
+                                timestamp = getCurrentTime()
+                            )
 
-                        _uiState.update {
-                            it.copy(
-                                messages = it.messages + aiMessage,
-                                isTyping = false
-                            )
+                            _uiState.update {
+                                it.copy(
+                                    messages = it.messages + aiMessage,
+                                    isTyping = false
+                                )
+                            }
+                            handleNavigation(result)
                         }
-                        handleNavigation(result)
-                    }
-                    is VoiceRequestResult.Error -> {
-                        _uiState.update {
-                            it.copy(
-                                isTyping = false,
-                                errorDialogMessage = result.message
-                            )
+                        is VoiceRequestResult.Error -> {
+                            _uiState.update {
+                                it.copy(
+                                    isTyping = false,
+                                    errorDialogMessage = result.message
+                                )
+                            }
+                            _errorEvent.value = result.message
                         }
-                        _errorEvent.value = result.message
                     }
                 }
             }

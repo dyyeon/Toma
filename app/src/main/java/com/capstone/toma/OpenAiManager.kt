@@ -6,7 +6,9 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
 import com.capstone.toma.model.normalizeRecipeCategory
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
@@ -36,66 +38,61 @@ class OpenAiManager {
 
     private fun hasApiKey(): Boolean = apiKey.isNotBlank()
 
-    private fun parseApiError(response: Response, responseBody: String?): String {
-        val message = runCatching {
-            JSONObject(responseBody ?: "")
-                .optJSONObject("error")
-                ?.optString("message")
-                .orEmpty()
-        }.getOrDefault("")
-
-        return if (message.isNotBlank()) {
-            "API 응답 실패 (${response.code}): $message"
-        } else {
-            "API 응답 실패 (${response.code})"
+    private fun parseApiError(response: Response, body: String?): String {
+        return try {
+            val json = JSONObject(body ?: "")
+            val error = json.optJSONObject("error")
+            error?.optString("message") ?: "API 요청 실패 (${response.code})"
+        } catch (e: Exception) {
+            "API 요청 실패 (${response.code})"
         }
     }
 
-    private fun buildChatSystemPrompt(): String = """
-        You are TOMA, a professional cooking assistant.
-        Respond in Korean.
-
-        [Task]
-        1. Discuss menus, ingredients, cooking methods, substitutions, time, or difficulty helpfully.
-        2. Analyze provided text (scraped from web/YouTube) or user messages to extract structured recipe data.
-        3. If a concrete recipe is ready (either from text provided or user request), return type "recipe_search".
-        4. If the user agrees to proceed with a recipe, return type "recipe_navigation".
-        5. Otherwise return type "chat".
-
-        [Rules]
-        - ALWAYS return JSON only.
-        - When "recipe_search" is returned, you MUST fill the "recipe_data" object based on the context.
-        - If text is provided with "URL", "제목", and "내용", prioritize extracting the recipe from that "내용".
-
-        [JSON format]
-        {
-          "type": "chat" | "recipe_search" | "recipe_navigation",
-          "keyword": "dish name",
-          "response": "Brief Korean response for the user",
-          "recipe_data": {
-            "title": "dish name",
-            "category": "한식/양식/중식/일식/디저트/기타",
-            "ingredients": ["item 1", "item 2"],
-            "steps": ["step 1", "step 2"],
-            "difficulty": "쉬움/보통/어려움",
-            "time": "20분",
-            "image_url": "optional image url"
-          }
-        }
-    """.trimIndent()
+    private fun buildChatSystemPrompt(): String {
+        return """
+            You are 'Toma', a friendly and helpful AI cooking assistant.
+            Your goal is to help users find recipes, suggest menus, and answer cooking questions.
+            
+            Guidelines:
+            1. Respond in Korean in a friendly, helpful tone.
+            2. If the user asks for a recipe, provide a brief description and then return a structured JSON object.
+            3. Always identify the intent. If it's a recipe search, ensure the 'recipe_data' field is populated.
+            4. Structured Output: When you provide a recipe, ensure the 'recipe_data' contains 'title', 'ingredients' (list), 'steps' (list), 'difficulty', and 'time'.
+            5. Keep the conversation natural. Don't just return JSON; talk to the user first.
+            6. Response Format:
+               If you are providing a recipe, your response MUST be a JSON object with:
+               {
+                 "type": "recipe_search",
+                 "keyword": "dish name",
+                 "response": "Brief friendly response in Korean",
+                 "recipe_data": {
+                    "title": "dish name",
+                    "category": "한식/양식/중식/일식/디저트/기타 중 하나",
+                    "ingredients": ["..."],
+                    "steps": ["..."],
+                    "difficulty": "쉬움/보통/어려움",
+                    "time": "20분"
+                 }
+               }
+               If it's just a conversation:
+               {
+                 "type": "chat",
+                 "response": "Your friendly response"
+               }
+        """.trimIndent()
+    }
 
     fun transcribeAudio(audioFile: File, onResult: (String?) -> Unit) {
-        if (!audioFile.exists() || !hasApiKey()) {
+        if (!hasApiKey()) {
             onResult(null)
             return
         }
 
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
-            .addFormDataPart("file", audioFile.name, audioFile.asRequestBody("audio/mpeg".toMediaType()))
+            .addFormDataPart("file", audioFile.name, audioFile.asRequestBody("audio/wav".toMediaType()))
             .addFormDataPart("model", "whisper-1")
             .addFormDataPart("language", "ko")
-            .addFormDataPart("prompt", "요리, 레시피, 식재료, 조리법, 타이머, TOMA")
             .build()
 
         val request = Request.Builder()
@@ -110,9 +107,10 @@ class OpenAiManager {
             }
 
             override fun onResponse(call: Call, response: Response) {
-                val responseBody = response.body?.string()
-                if (response.isSuccessful && responseBody != null) {
-                    onResult(JSONObject(responseBody).optString("text"))
+                val body = response.body?.string()
+                if (response.isSuccessful && body != null) {
+                    val json = JSONObject(body)
+                    onResult(json.optString("text"))
                 } else {
                     onResult(null)
                 }
@@ -123,9 +121,11 @@ class OpenAiManager {
     suspend fun processChatRequestSuspend(
         userText: String,
         history: List<Pair<String, Boolean>>
-    ): VoiceRequestResult = suspendCancellableCoroutine { continuation ->
-        processChatRequest(userText, history) { result ->
-            if (continuation.isActive) continuation.resume(result)
+    ): VoiceRequestResult = withContext(Dispatchers.IO) {
+        suspendCancellableCoroutine { continuation ->
+            processChatRequest(userText, history) { result ->
+                continuation.resume(result)
+            }
         }
     }
 
@@ -157,9 +157,8 @@ class OpenAiManager {
         }
 
         val requestJson = JSONObject().apply {
-            put("model", "gpt-4o-mini")
+            put("model", "gpt-4o")
             put("messages", messages)
-            put("temperature", 0.5)
             put("response_format", JSONObject().apply {
                 put("type", "json_object")
             })
@@ -190,14 +189,17 @@ class OpenAiManager {
                         .getJSONObject(0)
                         .getJSONObject("message")
                         .getString("content")
-
                     val resultJson = JSONObject(content)
+                    val type = resultJson.optString("type", "chat")
+                    val responseMsg = resultJson.optString("response", "")
+                    
                     val normalizedRecipeData = normalizeRecipeData(resultJson.optJSONObject("recipe_data"))
+                    
                     onResult(
                         VoiceRequestResult.Success(
-                            requestType = resultJson.optString("type", "chat"),
+                            requestType = type,
                             keyword = resultJson.optString("keyword", ""),
-                            responseMessage = resultJson.optString("response", ""),
+                            responseMessage = responseMsg,
                             recipeData = normalizedRecipeData?.toString()
                         )
                     )
@@ -208,13 +210,13 @@ class OpenAiManager {
         })
     }
 
-    fun processVoiceRequest(userText: String, onResult: (VoiceRequestResult) -> Unit) {
-        processChatRequest(userText, emptyList(), onResult)
+    fun processVoiceRequest(text: String, onResult: (VoiceRequestResult) -> Unit) {
+        processChatRequest(text, emptyList(), onResult)
     }
 
-    fun analyzeIntent(userText: String, onResult: (String?) -> Unit) {
+    fun analyzeIntent(text: String, onResult: (String?) -> Unit) {
         if (!hasApiKey()) {
-            onResult("오류")
+            onResult(null)
             return
         }
 
@@ -223,14 +225,13 @@ class OpenAiManager {
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "system")
-                    put("content", "요리 단계 진행 의도를 분석하세요. [다음, 이전, 타이머, 재료확인, 알수없음] 중 하나만 답하세요.")
+                    put("content", "Identify the intent of the user's message. Reply with a single word: RECIPE_SEARCH, TIMER_SET, or OTHER.")
                 })
                 put(JSONObject().apply {
                     put("role", "user")
-                    put("content", userText)
+                    put("content", text)
                 })
             })
-            put("temperature", 0.1)
         }
 
         val request = Request.Builder()
@@ -242,21 +243,20 @@ class OpenAiManager {
 
         client.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                onResult("오류")
+                onResult(null)
             }
 
             override fun onResponse(call: Call, response: Response) {
-                val responseBody = response.body?.string()
-                if (response.isSuccessful && responseBody != null) {
-                    val content = JSONObject(responseBody)
+                val body = response.body?.string()
+                if (response.isSuccessful && body != null) {
+                    val content = JSONObject(body)
                         .getJSONArray("choices")
                         .getJSONObject(0)
                         .getJSONObject("message")
                         .getString("content")
-                        .trim()
-                    onResult(content)
+                    onResult(content.trim())
                 } else {
-                    onResult("오류")
+                    onResult(null)
                 }
             }
         })
@@ -265,131 +265,133 @@ class OpenAiManager {
     suspend fun analyzeRecipeImageSuspend(
         context: Context,
         imageUri: String
-    ): VoiceRequestResult = suspendCancellableCoroutine { continuation ->
-        if (!hasApiKey()) {
-            if (continuation.isActive) {
-                continuation.resume(VoiceRequestResult.Error("OPENAI_API_KEY가 설정되어 있지 않습니다."))
+    ): VoiceRequestResult = withContext(Dispatchers.IO) {
+        suspendCancellableCoroutine { continuation ->
+            if (!hasApiKey()) {
+                if (continuation.isActive) {
+                    continuation.resume(VoiceRequestResult.Error("OPENAI_API_KEY가 설정되어 있지 않습니다."))
+                }
+                return@suspendCancellableCoroutine
             }
-            return@suspendCancellableCoroutine
-        }
 
-        try {
-            val uri = Uri.parse(imageUri)
-            val bitmap = decodeImageForAnalysis(context, uri)
-                ?: throw IllegalStateException("이미지를 불러올 수 없습니다.")
+            try {
+                val uri = Uri.parse(imageUri)
+                val bitmap = decodeImageForAnalysis(context, uri)
+                    ?: throw IllegalStateException("이미지를 불러올 수 없습니다.")
 
-            val outputStream = ByteArrayOutputStream()
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
-            val base64Image = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
+                val outputStream = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, outputStream)
+                val base64Image = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
 
-            val requestJson = JSONObject().apply {
-                put("model", "gpt-4o")
-                put("messages", JSONArray().apply {
-                    put(JSONObject().apply {
-                        put("role", "user")
-                        put("content", JSONArray().apply {
-                            put(JSONObject().apply {
-                                put("type", "text")
-                                put(
-                                    "text",
-                                    """
-                                    Analyze this cooking image and return JSON only.
-                                    Respond in Korean.
-                                    Return exactly this shape:
-                                    {
-                                      "type": "recipe_search",
-                                      "keyword": "dish name",
-                                      "response": "short Korean message",
-                                      "recipe_data": {
-                                        "title": "dish name",
-                                        "category": "한식/양식/중식/일식/디저트/기타 중 하나",
-                                        "ingredients": ["ingredient"],
-                                        "steps": ["step"],
-                                        "difficulty": "쉬움/보통/어려움",
-                                        "time": "20분",
-                                        "image_url": "$imageUri"
-                                      }
-                                    }
-                                    If the image is a recipe text image, extract the recipe.
-                                    If the image is food without text, infer a likely recipe.
-                                    """.trimIndent()
-                                )
-                            })
-                            put(JSONObject().apply {
-                                put("type", "image_url")
-                                put(
-                                    "image_url",
-                                    JSONObject().apply {
-                                        put("url", "data:image/jpeg;base64,$base64Image")
-                                    }
-                                )
+                val requestJson = JSONObject().apply {
+                    put("model", "gpt-4o")
+                    put("messages", JSONArray().apply {
+                        put(JSONObject().apply {
+                            put("role", "user")
+                            put("content", JSONArray().apply {
+                                put(JSONObject().apply {
+                                    put("type", "text")
+                                    put(
+                                        "text",
+                                        """
+                                        Analyze this cooking image and return JSON only.
+                                        Respond in Korean.
+                                        Return exactly this shape:
+                                        {
+                                          "type": "recipe_search",
+                                          "keyword": "dish name",
+                                          "response": "short Korean message",
+                                          "recipe_data": {
+                                            "title": "dish name",
+                                            "category": "한식/양식/중식/일식/디저트/기타 중 하나",
+                                            "ingredients": ["ingredient"],
+                                            "steps": ["step"],
+                                            "difficulty": "쉬움/보통/어려움",
+                                            "time": "20분",
+                                            "image_url": "$imageUri"
+                                          }
+                                        }
+                                        If the image is a recipe text image, extract the recipe.
+                                        If the image is food without text, infer a likely recipe.
+                                        """.trimIndent()
+                                    )
+                                })
+                                put(JSONObject().apply {
+                                    put("type", "image_url")
+                                    put(
+                                        "image_url",
+                                        JSONObject().apply {
+                                            put("url", "data:image/jpeg;base64,$base64Image")
+                                        }
+                                    )
+                                })
                             })
                         })
                     })
-                })
-                put("response_format", JSONObject().apply {
-                    put("type", "json_object")
-                })
-            }
-
-            val request = Request.Builder()
-                .url("https://api.openai.com/v1/chat/completions")
-                .header("Authorization", "Bearer $apiKey")
-                .header("Content-Type", "application/json")
-                .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
-                .build()
-
-            client.newCall(request).enqueue(object : Callback {
-                override fun onFailure(call: Call, e: IOException) {
-                    if (continuation.isActive) {
-                        continuation.resume(VoiceRequestResult.Error("네트워크 오류: ${e.message ?: "unknown"}"))
-                    }
+                    put("response_format", JSONObject().apply {
+                        put("type", "json_object")
+                    })
                 }
 
-                override fun onResponse(call: Call, response: Response) {
-                    val responseBody = response.body?.string()
-                    if (!response.isSuccessful || responseBody == null) {
+                val request = Request.Builder()
+                    .url("https://api.openai.com/v1/chat/completions")
+                    .header("Authorization", "Bearer $apiKey")
+                    .header("Content-Type", "application/json")
+                    .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
+                    .build()
+
+                client.newCall(request).enqueue(object : Callback {
+                    override fun onFailure(call: Call, e: IOException) {
                         if (continuation.isActive) {
-                            continuation.resume(VoiceRequestResult.Error(parseApiError(response, responseBody)))
+                            continuation.resume(VoiceRequestResult.Error("네트워크 오류: ${e.message ?: "unknown"}"))
                         }
-                        return
                     }
 
-                    try {
-                        val content = JSONObject(responseBody)
-                            .getJSONArray("choices")
-                            .getJSONObject(0)
-                            .getJSONObject("message")
-                            .getString("content")
-                        val resultJson = JSONObject(content)
-                        val recipeJson = normalizeRecipeImageResult(resultJson, imageUri)
-                        val keyword = resultJson.optString("keyword")
-                            .ifBlank { recipeJson.optString("title") }
-                            .ifBlank { "이미지 레시피" }
+                    override fun onResponse(call: Call, response: Response) {
+                        val responseBody = response.body?.string()
+                        if (!response.isSuccessful || responseBody == null) {
+                            if (continuation.isActive) {
+                                continuation.resume(VoiceRequestResult.Error(parseApiError(response, responseBody)))
+                            }
+                            return
+                        }
 
-                        if (continuation.isActive) {
-                            continuation.resume(
-                                VoiceRequestResult.Success(
-                                    requestType = resultJson.optString("type", "recipe_search"),
-                                    keyword = keyword,
-                                    responseMessage = resultJson.optString(
-                                        "response",
-                                        "이미지에서 레시피를 분석했어요."
-                                    ),
-                                    recipeData = recipeJson.toString()
+                        try {
+                            val content = JSONObject(responseBody)
+                                .getJSONArray("choices")
+                                .getJSONObject(0)
+                                .getJSONObject("message")
+                                .getString("content")
+                            val resultJson = JSONObject(content)
+                            val recipeJson = normalizeRecipeImageResult(resultJson, imageUri)
+                            val keyword = resultJson.optString("keyword")
+                                .ifBlank { recipeJson.optString("title") }
+                                .ifBlank { "이미지 레시피" }
+
+                            if (continuation.isActive) {
+                                continuation.resume(
+                                    VoiceRequestResult.Success(
+                                        requestType = resultJson.optString("type", "recipe_search"),
+                                        keyword = keyword,
+                                        responseMessage = resultJson.optString(
+                                            "response",
+                                            "이미지에서 레시피를 분석했어요."
+                                        ),
+                                        recipeData = recipeJson.toString()
+                                    )
                                 )
-                            )
-                        }
-                    } catch (e: Exception) {
-                        if (continuation.isActive) {
-                            continuation.resume(VoiceRequestResult.Error("응답 파싱 실패: ${e.message ?: "unknown"}"))
+                            }
+                        } catch (e: Exception) {
+                            if (continuation.isActive) {
+                                continuation.resume(VoiceRequestResult.Error("응답 파싱 실패: ${e.message ?: "unknown"}"))
+                            }
                         }
                     }
+                })
+            } catch (e: Exception) {
+                if (continuation.isActive) {
+                    continuation.resume(VoiceRequestResult.Error("이미지 처리 실패: ${e.message ?: "unknown"}"))
                 }
-            })
-        } catch (e: Exception) {
-            if (continuation.isActive) {
-                continuation.resume(VoiceRequestResult.Error("이미지 처리 실패: ${e.message ?: "unknown"}"))
             }
         }
     }
@@ -408,31 +410,22 @@ class OpenAiManager {
 
         val maxDimension = 1024
         var sampleSize = 1
-        while (
-            bounds.outWidth / sampleSize > maxDimension ||
-            bounds.outHeight / sampleSize > maxDimension
-        ) {
+        while (bounds.outWidth / sampleSize > maxDimension || bounds.outHeight / sampleSize > maxDimension) {
             sampleSize *= 2
         }
 
-        val decodeOptions = BitmapFactory.Options().apply {
+        val options = BitmapFactory.Options().apply {
             inSampleSize = sampleSize
-            inPreferredConfig = Bitmap.Config.RGB_565
         }
 
         val decoded = resolver.openInputStream(uri)?.use { input ->
-            BitmapFactory.decodeStream(input, null, decodeOptions)
+            BitmapFactory.decodeStream(input, null, options)
         } ?: return null
 
-        if (decoded.width <= maxDimension && decoded.height <= maxDimension) {
-            return decoded
-        }
-
-        val scale = maxDimension.toFloat() / maxOf(decoded.width, decoded.height)
         return Bitmap.createScaledBitmap(
             decoded,
-            (decoded.width * scale).toInt().coerceAtLeast(1),
-            (decoded.height * scale).toInt().coerceAtLeast(1),
+            if (decoded.width > decoded.height) maxDimension else (decoded.width * maxDimension / decoded.height),
+            if (decoded.height > decoded.width) maxDimension else (decoded.height * maxDimension / decoded.width),
             true
         ).also {
             if (it != decoded) decoded.recycle()

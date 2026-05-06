@@ -87,19 +87,27 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     init {
         wakeWordManager.verboseLogging = true
         // audioStreamManager.startCapture() // Removed from init to start only when needed
-        realtimeManager.connect()
+        // realtimeManager.connect() // Moved to startWakeWord to avoid main thread load on launch
         observeAudioStream()
     }
 
     fun startWakeWord() {
         Log.d("VoiceViewModel", "Starting WakeWord sensing")
-        audioStreamManager.startCapture()
+        viewModelScope.launch(Dispatchers.IO) {
+            realtimeManager.connect()
+            audioStreamManager.startCapture()
+        }
     }
 
     fun stopWakeWord() {
         Log.d("VoiceViewModel", "Stopping WakeWord sensing")
-        audioStreamManager.stopCapture()
-        _uiState.value = VoiceUiState.Idle
+        viewModelScope.launch(Dispatchers.IO) {
+            audioStreamManager.stopCapture()
+            realtimeManager.disconnect()
+            withContext(Dispatchers.Main) {
+                _uiState.value = VoiceUiState.Idle
+            }
+        }
     }
 
     private fun observeAudioStream() {
@@ -135,49 +143,57 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun handleAiIntent(jsonResponse: String) {
-        val intent = TomaIntentParser.parse(jsonResponse)
-        _uiState.value = VoiceUiState.Processing
-        
-        Log.d("VoiceViewModel", "Intent Parsed: $intent")
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                val intent = TomaIntentParser.parse(jsonResponse)
+                
+                withContext(Dispatchers.Main) {
+                    _uiState.value = VoiceUiState.Processing
+                    Log.d("VoiceViewModel", "Intent Parsed: $intent")
+                    _intentEvent.emit(intent)
 
-        viewModelScope.launch {
-            _intentEvent.emit(intent)
-        }
+                    when (intent) {
+                        is TomaIntent.SET_TIMER -> {
+                            timerManager.setTimer(intent.durationMin)
+                            _uiState.value = VoiceUiState.Result("${intent.durationMin}분 타이머를 맞췄어요.")
+                        }
+                        TomaIntent.NEXT_STEP -> {
+                            _uiState.value = VoiceUiState.Result("다음 단계로 넘어갑니다.")
+                            // TODO: Link with RecipeDetail screen action
+                        }
+                        TomaIntent.PREVIOUS_STEP -> {
+                            _uiState.value = VoiceUiState.Result("이전 단계로 돌아갑니다.")
+                        }
+                        TomaIntent.REPEAT_STEP -> {
+                            _uiState.value = VoiceUiState.Result("다시 읽어드릴게요.")
+                        }
+                        is TomaIntent.RECIPE_SEARCH -> {
+                            _uiState.value = VoiceUiState.Result("'${intent.keyword}' 레시피를 찾아볼게요.")
+                        }
+                        TomaIntent.CANCEL -> {
+                            _uiState.value = VoiceUiState.Idle
+                        }
+                        else -> {
+                            _uiState.value = VoiceUiState.Error("명령을 이해하지 못했어요.")
+                        }
+                    }
 
-        when (intent) {
-            is TomaIntent.SET_TIMER -> {
-                timerManager.setTimer(intent.durationMin)
-                _uiState.value = VoiceUiState.Result("${intent.durationMin}분 타이머를 맞췄어요.")
+                    // Transition to SPEAKING then back to IDLE after a short delay
+                    if (_uiState.value !is VoiceUiState.Error && _uiState.value !is VoiceUiState.Idle) {
+                        _uiState.value = VoiceUiState.Speaking
+                        delay(3000)
+                        _uiState.value = VoiceUiState.Idle
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("VoiceViewModel", "Intent parsing error: ${e.message}")
+                withContext(Dispatchers.Main) {
+                    _uiState.value = VoiceUiState.Error("오류가 발생했습니다.")
+                }
             }
-            TomaIntent.NEXT_STEP -> {
-                _uiState.value = VoiceUiState.Result("다음 단계로 넘어갑니다.")
-                // TODO: Link with RecipeDetail screen action
-            }
-            TomaIntent.PREVIOUS_STEP -> {
-                _uiState.value = VoiceUiState.Result("이전 단계로 돌아갑니다.")
-            }
-            TomaIntent.REPEAT_STEP -> {
-                _uiState.value = VoiceUiState.Result("다시 읽어드릴게요.")
-            }
-            is TomaIntent.RECIPE_SEARCH -> {
-                _uiState.value = VoiceUiState.Result("'${intent.keyword}' 레시피를 찾아볼게요.")
-            }
-            TomaIntent.CANCEL -> {
-                _uiState.value = VoiceUiState.Idle
-                return
-            }
-            else -> {
-                _uiState.value = VoiceUiState.Error("명령을 이해하지 못했어요.")
-            }
-        }
-
-        // Transition to SPEAKING then back to IDLE after a short delay
-        viewModelScope.launch {
-            _uiState.value = VoiceUiState.Speaking
-            delay(3000)
-            _uiState.value = VoiceUiState.Idle
         }
     }
+
 
     fun onMicClick() {
         // Manual trigger (optional, keeps current UI working)
