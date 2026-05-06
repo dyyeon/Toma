@@ -704,19 +704,18 @@ fun RecentAnalysisCard(
     }
 
     val badgeBgColor = when (item.sourceType) {
-        RecipeSourceType.TEXT -> TomaMainOrange
-        RecipeSourceType.YOUTUBE -> TomaMainOrange
-        RecipeSourceType.WEB -> Color(0xFF3F8CFF)
-        RecipeSourceType.IMAGE -> TomaMainRed
+        RecipeSourceType.YOUTUBE -> Color(0xFFE53935) // Red
+        RecipeSourceType.WEB -> Color(0xFF43A047)    // Green
+        RecipeSourceType.TEXT -> Color(0xFF757575)    // Gray
+        RecipeSourceType.IMAGE -> TomaMainOrange
     }
 
     val tempColor = when (item.sourceType) {
-        RecipeSourceType.TEXT -> Color(0xFFE8F1FF)
-        RecipeSourceType.YOUTUBE -> Color(0xFFFFF1E8)
-        RecipeSourceType.WEB -> Color(0xFFEAF3FF)
-        RecipeSourceType.IMAGE -> Color(0xFFFFECEC)
+        RecipeSourceType.YOUTUBE -> Color(0xFFFFEBEE)
+        RecipeSourceType.WEB -> Color(0xFFE8F5E9)
+        RecipeSourceType.TEXT -> Color(0xFFF5F5F5)
+        RecipeSourceType.IMAGE -> Color(0xFFFFF3E8)
     }
-    val imageUrl = extractRecentImageUrl(item.recipeDataJson)
     val fallbackImageRes = recentFallbackImageRes(item)
 
     Surface(
@@ -739,23 +738,14 @@ fun RecentAnalysisCard(
                     .clip(RoundedCornerShape(18.dp))
                     .background(tempColor)
             ) {
-                if (imageUrl.isNullOrBlank()) {
-                    Image(
-                        painter = painterResource(id = fallbackImageRes),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(64.dp),
-                        contentScale = ContentScale.Fit
-                    )
-                } else {
-                    AsyncImage(
-                        model = imageUrl,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
+                Image(
+                    painter = painterResource(id = fallbackImageRes),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(64.dp),
+                    contentScale = ContentScale.Fit
+                )
 
                 Box(
                     modifier = Modifier
@@ -932,7 +922,7 @@ fun PreviewTomaHomeScreen() {
                 ),
                 RecentRecipeItem(
                     id = "2",
-                    title = "감자조림 블로그 레시피",
+                    title = "감자조림 웹 레시피",
                     timeText = "어제 분석",
                     sourceType = RecipeSourceType.WEB,
                     recipeDataJson = """{"title":"creamy pasta","category":"western"}"""

@@ -53,7 +53,8 @@ fun TomaNavHost(
             navController.navigate(TomaDestination.Chat.route)
             chatViewModel.startLinkAnalysis(
                 userDisplay = "사진으로 레시피 찾기",
-                initialAiText = "사진을 분석하고 있어요. 잠시만 기다려 주세요... 📸"
+                initialAiText = "사진을 분석하고 있어요. 잠시만 기다려 주세요... 📸",
+                fixedSourceType = com.capstone.toma.model.RecipeSourceType.IMAGE
             ) { _ ->
                 val openAi = com.capstone.toma.OpenAiManager()
                 openAi.analyzeRecipeImageSuspend(context, uri.toString())
@@ -69,6 +70,7 @@ fun TomaNavHost(
     ) {
         composable(TomaDestination.Home.route) {
             LaunchedEffect(Unit) {
+                voiceViewModel.stopWakeWord() // Ensure wake word is off on Home
                 val enrolled = UserManager.isEnrolled(context)
                 val skipped = UserManager.hasSkipped(context)
                 if (!enrolled && !skipped) {
@@ -117,7 +119,8 @@ fun TomaNavHost(
 
                             chatViewModel.startLinkAnalysis(
                                 userDisplay = displayMsg,
-                                initialAiText = "[1/2] 페이지 본문을 읽어오고 있어요... 📄"
+                                initialAiText = "[1/2] 페이지 본문을 읽어오고 있어요... 📄",
+                                fixedSourceType = if (isYoutube) com.capstone.toma.model.RecipeSourceType.YOUTUBE else com.capstone.toma.model.RecipeSourceType.WEB
                             ) { updateStatus ->
                                 // Step 1: Scraping (YouTube or Web)
                                 val (t, d, img) = if (isYoutube) {
@@ -161,7 +164,7 @@ fun TomaNavHost(
                     val item = homeUiState.recentItems.find { it.id == itemId }
                     item?.let {
                         navController.navigate(
-                            TomaDestination.RecipeDetail.createRoute(it.title, it.recipeDataJson)
+                            TomaDestination.RecipeDetail.createRoute(it.title, it.sourceType, it.recipeDataJson)
                         )
                     }
                 },
@@ -198,7 +201,7 @@ fun TomaNavHost(
                 onBackClick = { navController.popBackStack() },
                 onItemClick = { item ->
                     navController.navigate(
-                        TomaDestination.RecipeDetail.createRoute(item.title, item.recipeDataJson)
+                        TomaDestination.RecipeDetail.createRoute(item.title, item.sourceType, item.recipeDataJson)
                     )
                 }
             )
@@ -206,9 +209,10 @@ fun TomaNavHost(
 
         composable(TomaDestination.VoiceGuide.route) {
             LaunchedEffect(Unit) {
+                voiceViewModel.startWakeWord()
                 voiceViewModel.intentEvent.collect { intent ->
                     if (intent is TomaIntent.RECIPE_SEARCH) {
-                        navController.navigate(TomaDestination.RecipeDetail.createRoute(intent.keyword)) {
+                        navController.navigate(TomaDestination.RecipeDetail.createRoute(intent.keyword, com.capstone.toma.model.RecipeSourceType.TEXT)) {
                             popUpTo(TomaDestination.VoiceGuide.route) { inclusive = true }
                         }
                     }
@@ -224,6 +228,9 @@ fun TomaNavHost(
         }
 
         composable(TomaDestination.Chat.route) {
+            LaunchedEffect(Unit) {
+                voiceViewModel.stopWakeWord()
+            }
             val navEvent by chatViewModel.navigationEvent.collectAsState()
             val errorEvent by chatViewModel.errorEvent.collectAsState()
 
@@ -233,6 +240,7 @@ fun TomaNavHost(
                         navController.navigate(
                             TomaDestination.RecipeConfirm.createRoute(
                                 event.keyword,
+                                event.sourceType,
                                 event.recipeData
                             )
                         )
@@ -242,6 +250,7 @@ fun TomaNavHost(
                         navController.navigate(
                             TomaDestination.RecipeDetail.createRoute(
                                 event.keyword,
+                                event.sourceType,
                                 event.recipeData
                             )
                         )
@@ -302,6 +311,7 @@ fun TomaNavHost(
             route = TomaDestination.RecipeConfirm.route,
             arguments = listOf(
                 navArgument("keyword") { type = NavType.StringType },
+                navArgument("sourceType") { type = NavType.StringType },
                 navArgument("recipeData") {
                     type = NavType.StringType
                     nullable = true
@@ -310,6 +320,8 @@ fun TomaNavHost(
             )
         ) { backStackEntry ->
             val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
+            val sourceTypeStr = backStackEntry.arguments?.getString("sourceType") ?: "TEXT"
+            val sourceType = com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr)
             val recipeData = backStackEntry.arguments?.getString("recipeData")
             RecipeConfirmScreen(
                 keyword = keyword,
@@ -318,9 +330,10 @@ fun TomaNavHost(
                 onConfirmClick = {
                     homeViewModel.saveRecentRecipe(
                         keyword = keyword,
-                        recipeDataJson = recipeData
+                        recipeDataJson = recipeData,
+                        sourceType = sourceType
                     )
-                    navController.navigate(TomaDestination.RecipeDetail.createRoute(keyword, recipeData)) {
+                    navController.navigate(TomaDestination.RecipeDetail.createRoute(keyword, sourceType, recipeData)) {
                         popUpTo(TomaDestination.RecipeConfirm.route) { inclusive = true }
                     }
                 },
@@ -332,6 +345,7 @@ fun TomaNavHost(
             route = TomaDestination.RecipeDetail.route,
             arguments = listOf(
                 navArgument("keyword") { type = NavType.StringType },
+                navArgument("sourceType") { type = NavType.StringType },
                 navArgument("recipeData") {
                     type = NavType.StringType
                     nullable = true
@@ -341,6 +355,8 @@ fun TomaNavHost(
             )
         ) { backStackEntry ->
             val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
+            val sourceTypeStr = backStackEntry.arguments?.getString("sourceType") ?: "TEXT"
+            val sourceType = com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr)
             val recipeData = backStackEntry.arguments?.getString("recipeData")
             RecipeDetailScreen(
                 keyword = keyword,

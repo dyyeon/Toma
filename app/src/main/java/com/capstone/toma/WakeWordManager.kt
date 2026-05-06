@@ -9,6 +9,10 @@ import android.util.Log
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -65,7 +69,9 @@ class WakeWordManager(
     private var isCollectingAmbient = false
 
     init {
-        loadModels()
+        CoroutineScope(Dispatchers.IO).launch {
+            loadModels()
+        }
     }
 
     private fun loadModels() {
@@ -141,7 +147,13 @@ class WakeWordManager(
         while (pcmBuffer.size >= CHUNK_SIZE) {
             val chunk = pcmBuffer.take(CHUNK_SIZE).toShortArray()
             repeat(CHUNK_SIZE) { pcmBuffer.removeAt(0) }
-            runPipeline(chunk)
+            
+            // Move processing to a background thread to avoid blocking the audio thread or UI
+            CoroutineScope(Dispatchers.Default).launch {
+                runPipeline(chunk)
+                // Small sleep to prevent busy-looping on low-end devices
+                Thread.sleep(80)
+            }
         }
     }
 

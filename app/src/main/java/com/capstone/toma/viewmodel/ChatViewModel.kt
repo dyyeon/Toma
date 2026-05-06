@@ -17,8 +17,17 @@ import java.util.Locale
 import java.util.UUID
 
 sealed class ChatNavigationEvent {
-    data class ToConfirm(val keyword: String, val recipeData: String?) : ChatNavigationEvent()
-    data class ToDetail(val keyword: String, val recipeData: String?) : ChatNavigationEvent()
+    data class ToConfirm(
+        val keyword: String,
+        val sourceType: com.capstone.toma.model.RecipeSourceType,
+        val recipeData: String?
+    ) : ChatNavigationEvent()
+
+    data class ToDetail(
+        val keyword: String,
+        val sourceType: com.capstone.toma.model.RecipeSourceType,
+        val recipeData: String?
+    ) : ChatNavigationEvent()
 }
 
 class ChatViewModel : ViewModel() {
@@ -104,6 +113,7 @@ class ChatViewModel : ViewModel() {
     fun startLinkAnalysis(
         userDisplay: String,
         initialAiText: String,
+        fixedSourceType: com.capstone.toma.model.RecipeSourceType? = null,
         onAnalyze: suspend (updateStatus: (String) -> Unit) -> VoiceRequestResult
     ) {
         if (_uiState.value.isTyping) return
@@ -160,7 +170,7 @@ class ChatViewModel : ViewModel() {
                             isTyping = false
                         )
                     }
-                    handleNavigation(result)
+                    handleNavigation(result, fixedSourceType)
                 }
                 is VoiceRequestResult.Error -> {
                     _uiState.update { state ->
@@ -237,7 +247,10 @@ class ChatViewModel : ViewModel() {
         }
     }
 
-    private fun handleNavigation(result: VoiceRequestResult.Success) {
+    private fun handleNavigation(
+        result: VoiceRequestResult.Success,
+        fixedSourceType: com.capstone.toma.model.RecipeSourceType? = null
+    ) {
         val latestRecipeData = result.recipeData?.takeIf { it.isNotBlank() }
         if (latestRecipeData != null) {
             lastAnalyzedRecipeData = latestRecipeData
@@ -251,8 +264,20 @@ class ChatViewModel : ViewModel() {
                     result.requestType == "recipe_navigation"
                 )
         ) {
+            val keyword = result.keyword
+            val sourceType = fixedSourceType ?: if (keyword.startsWith("http")) {
+                if (keyword.contains("youtube.com") || keyword.contains("youtu.be")) {
+                    com.capstone.toma.model.RecipeSourceType.YOUTUBE
+                } else {
+                    com.capstone.toma.model.RecipeSourceType.WEB
+                }
+            } else {
+                com.capstone.toma.model.RecipeSourceType.TEXT
+            }
+
             _navigationEvent.value = ChatNavigationEvent.ToConfirm(
-                keyword = result.keyword,
+                keyword = keyword,
+                sourceType = sourceType,
                 recipeData = effectiveRecipeData
             )
         }

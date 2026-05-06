@@ -13,25 +13,27 @@ sealed class TomaDestination(val route: String) {
     object Chat : TomaDestination("ai_chat")
     object RecentHistory : TomaDestination("recent_history")
     object SpeakerEnrollment : TomaDestination("speaker_enrollment")
-    object RecipeConfirm : TomaDestination("recipe_confirm/{keyword}?recipeData={recipeData}") {
-        fun createRoute(keyword: String, recipeData: String? = null): String {
+    object RecipeConfirm : TomaDestination("recipe_confirm/{keyword}/{sourceType}?recipeData={recipeData}") {
+        fun createRoute(keyword: String, sourceType: com.capstone.toma.model.RecipeSourceType, recipeData: String? = null): String {
             val encodedKeyword = android.net.Uri.encode(keyword)
+            val sourceTypeStr = sourceType.name
             return if (recipeData != null) {
                 val encodedData = android.net.Uri.encode(recipeData)
-                "recipe_confirm/$encodedKeyword?recipeData=$encodedData"
+                "recipe_confirm/$encodedKeyword/$sourceTypeStr?recipeData=$encodedData"
             } else {
-                "recipe_confirm/$encodedKeyword"
+                "recipe_confirm/$encodedKeyword/$sourceTypeStr"
             }
         }
     }
-    object RecipeDetail : TomaDestination("recipe_detail/{keyword}?recipeData={recipeData}") {
-        fun createRoute(keyword: String, recipeData: String? = null): String {
+    object RecipeDetail : TomaDestination("recipe_detail/{keyword}/{sourceType}?recipeData={recipeData}") {
+        fun createRoute(keyword: String, sourceType: com.capstone.toma.model.RecipeSourceType, recipeData: String? = null): String {
             val encodedKeyword = android.net.Uri.encode(keyword)
+            val sourceTypeStr = sourceType.name
             return if (recipeData != null) {
                 val encodedData = android.net.Uri.encode(recipeData)
-                "recipe_detail/$encodedKeyword?recipeData=$encodedData"
+                "recipe_detail/$encodedKeyword/$sourceTypeStr?recipeData=$encodedData"
             } else {
-                "recipe_detail/$encodedKeyword"
+                "recipe_detail/$encodedKeyword/$sourceTypeStr"
             }
         }
     }

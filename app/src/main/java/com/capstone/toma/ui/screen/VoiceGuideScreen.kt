@@ -34,6 +34,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.capstone.toma.ui.component.TomaTopAppBar
+import androidx.compose.material3.TextButton
+import com.capstone.toma.BuildConfig
 import com.capstone.toma.ui.theme.*
 import com.capstone.toma.VoiceUiState
 @Composable
@@ -124,6 +126,17 @@ fun VoiceGuideScreen(
                 color = TomaSecondaryText,
                 modifier = Modifier.align(Alignment.CenterHorizontally)
             )
+
+            // Debug Skip Button
+            if (BuildConfig.DEBUG) {
+                Spacer(modifier = Modifier.height(16.dp))
+                TextButton(
+                    onClick = onMicClick,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text("(DEBUG) 웨이크워드 스킵", color = Color.Gray, fontSize = 12.sp)
+                }
+            }
 
             AnimatedVisibility(visible = uiState == VoiceUiState.Training) {
                 Column(

@@ -29,11 +29,24 @@ class RecentHistoryStore(context: Context) {
             return getRecentItems()
         }
 
+        // Automatic Source Type mapping
+        val finalSourceType = if (keyword.startsWith("http")) {
+            if (keyword.contains("youtube.com") || keyword.contains("youtu.be")) {
+                RecipeSourceType.YOUTUBE
+            } else {
+                RecipeSourceType.WEB
+            }
+        } else if (sourceType == RecipeSourceType.IMAGE) {
+            RecipeSourceType.IMAGE
+        } else {
+            RecipeSourceType.TEXT
+        }
+
         val savedAt = System.currentTimeMillis()
         val entry = RecentHistoryEntry(
             id = buildRecordId(title),
             title = title,
-            sourceType = sourceType,
+            sourceType = finalSourceType,
             recipeDataJson = recipeDataJson?.takeIf { it.isNotBlank() },
             savedAt = savedAt
         )

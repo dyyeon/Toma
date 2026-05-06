@@ -77,6 +77,7 @@ fun RecipeDetailScreen(
 
     // Voice Intent Observer
     LaunchedEffect(Unit) {
+        voiceViewModel.startWakeWord()
         voiceViewModel.intentEvent.collect { intent ->
             when (intent) {
                 is TomaIntent.NEXT_STEP -> {

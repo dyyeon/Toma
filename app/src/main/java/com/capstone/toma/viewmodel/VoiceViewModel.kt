@@ -86,9 +86,20 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         wakeWordManager.verboseLogging = true
-        audioStreamManager.startCapture()
+        // audioStreamManager.startCapture() // Removed from init to start only when needed
         realtimeManager.connect()
         observeAudioStream()
+    }
+
+    fun startWakeWord() {
+        Log.d("VoiceViewModel", "Starting WakeWord sensing")
+        audioStreamManager.startCapture()
+    }
+
+    fun stopWakeWord() {
+        Log.d("VoiceViewModel", "Stopping WakeWord sensing")
+        audioStreamManager.stopCapture()
+        _uiState.value = VoiceUiState.Idle
     }
 
     private fun observeAudioStream() {
