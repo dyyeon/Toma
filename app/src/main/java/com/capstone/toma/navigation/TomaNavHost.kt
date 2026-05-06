@@ -19,6 +19,7 @@ import androidx.navigation.NavType
 import com.capstone.toma.TomaIntent
 import com.capstone.toma.UserManager
 import com.capstone.toma.WebPageManager
+import com.capstone.toma.YoutubeManager
 import com.capstone.toma.VoiceRequestResult
 import com.capstone.toma.ui.screen.*
 import com.capstone.toma.viewmodel.*
@@ -73,7 +74,6 @@ fun TomaNavHost(
                 if (!enrolled && !skipped) {
                     navController.navigate(TomaDestination.SpeakerEnrollment.route)
                 } else if (enrolled) {
-                    // 이미 등록 및 업로드된 경우, 개인화 모델이 로컬에 없으면 폴링 시작 (다운로드 대기)
                     val modelFile = java.io.File(context.filesDir, "hey_toma_personal.onnx")
                     if (!modelFile.exists()) {
                         voiceViewModel.startModelPolling(context)
@@ -84,9 +84,7 @@ fun TomaNavHost(
 
             TomaHomeScreen(
                 uiState = homeUiState,
-
                 onSearchQueryChange = homeViewModel::updateSearchQuery,
-
                 onSearchSubmit = {
                     val query = homeUiState.searchQuery
                     if (query.isNotBlank()) {
@@ -96,21 +94,20 @@ fun TomaNavHost(
                         homeViewModel.updateSearchQuery("")
                     }
                 },
-
                 onMicClick = {
                     navController.navigateSingleTop(TomaDestination.VoiceGuide.route)
                 },
                 onLinkChange = homeViewModel::updateRecipeLink,
-
                 onLinkSubmit = {
                     val link = homeUiState.recipeLink
 
                     if (link.isNotBlank()) {
                         val isYoutube = link.contains("youtube.com") || link.contains("youtu.be")
-                        val isBlog = link.contains("naver.com") || link.contains("tistory.com")
+                        val isValidUrl = link.startsWith("http://") || link.startsWith("https://")
 
-                        if (isYoutube || isBlog) {
+                        if (isValidUrl) {
                             val webPageManager = WebPageManager()
+                            val youtubeManager = YoutubeManager()
                             chatViewModel.resetChat()
                             navController.navigate(TomaDestination.Chat.route)
 
@@ -122,29 +119,44 @@ fun TomaNavHost(
                                 userDisplay = displayMsg,
                                 initialAiText = "[1/2] 페이지 본문을 읽어오고 있어요... 📄"
                             ) { updateStatus ->
-
-                                val (t, d, img) = webPageManager.fetchPageInfoSuspend(link)
+                                // Step 1: Scraping (YouTube or Web)
+                                val (t, d, img) = if (isYoutube) {
+                                    youtubeManager.fetchVideoInfoSuspend(link)
+                                } else {
+                                    webPageManager.fetchPageInfoSuspend(link)
+                                }
 
                                 if (t == null && d?.contains("실패") == true) {
                                     homeViewModel.showError(d, isDialog = true)
                                     return@startLinkAnalysis VoiceRequestResult.Error(d)
                                 }
 
+                                // Step 2: AI Analysis with full context
                                 updateStatus("[2/2] 전문가 AI가 실전 정보를 추출 중이에요... ✨")
                                 delay(600)
+                                
                                 val openAi = com.capstone.toma.OpenAiManager()
                                 val history = chatViewModel.uiState.value.messages.map { it.text to it.isUser }
-                                openAi.processChatRequestSuspend("분석 요청: $link", history)
+                                
+                                val prompt = """
+                                    다음 웹페이지 내용을 분석해서 레시피 정보를 추출해주세요.
+                                    
+                                    URL: $link
+                                    제목: ${t ?: "제목 없음"}
+                                    내용:
+                                    ${d ?: "내용 없음"}
+                                """.trimIndent()
+
+                                openAi.processChatRequestSuspend(prompt, history)
                             }
 
                             homeViewModel.updateRecipeLink("")
                         } else {
-                            homeViewModel.showError("지원되지 않는 링크입니다.")
+                            homeViewModel.showError("올바른 링크를 입력해주세요.")
                         }
                     }
                 },
                 onPhotoScanClick = { imagePickerLauncher.launch("image/*") },
-
                 onRecentItemClick = { itemId ->
                     val item = homeUiState.recentItems.find { it.id == itemId }
                     item?.let {
@@ -153,27 +165,21 @@ fun TomaNavHost(
                         )
                     }
                 },
-
                 onRecentMoreClick = {
                     navController.navigateSingleTop(TomaDestination.RecentHistory.route)
                 },
-
                 onStorageClick = {
                     navController.navigateSingleTop(TomaDestination.RecipeStorage.route)
                 },
-
                 onSettingsClick = {
                     navController.navigateSingleTop(TomaDestination.Settings.route)
                 },
-
                 onSpeakerEnrollmentClick = {
                     navController.navigateSingleTop(TomaDestination.SpeakerEnrollment.route)
                 },
-
                 onPrivacyPolicyClick = {
                     navController.navigateSingleTop(TomaDestination.PrivacyPolicy.route)
                 },
-
                 onErrorDismiss = homeViewModel::clearError
             )
         }
@@ -211,7 +217,6 @@ fun TomaNavHost(
             VoiceGuideScreen(
                 uiState = voiceUiState,
                 suggestions = voiceSuggestions,
-
                 onMicClick = { voiceViewModel.onMicClick() },
                 onSuggestionClick = { text -> voiceViewModel.onSuggestionClick(text) },
                 onBackClick = { navController.popBackStack() }

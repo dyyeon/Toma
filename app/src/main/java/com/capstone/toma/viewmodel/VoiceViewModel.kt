@@ -205,9 +205,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                         enrollmentBuffer.write(wavBytes)
                         
                         if (enrollmentBuffer.size() >= ENROLLMENT_CHUNK_BYTES) {
-                            val allBytes = enrollmentBuffer.toByteArray()
-                            val pcmBytes = allBytes.take(ENROLLMENT_CHUNK_BYTES).toByteArray()
-                            
+                            val pcmBytes = enrollmentBuffer.toByteArray().take(ENROLLMENT_CHUNK_BYTES).toByteArray()
                             enrollmentBuffer.reset()
                             
                             // Stop recording immediately after capturing enough audio
@@ -306,7 +304,8 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             isValid
 
         } catch (e: Exception) {
-            Log.e(Log.getStackTraceString(e))
+            // FIXED: Corrected Log.e() call argument by adding "VoiceViewModel" tag
+            Log.e("VoiceViewModel", e.toString())
             true // 에러 시 통과 (네트워크 문제로 인한 거부 방지)
         }
     }
