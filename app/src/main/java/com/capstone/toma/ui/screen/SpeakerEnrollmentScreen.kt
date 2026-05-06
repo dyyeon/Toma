@@ -35,6 +35,7 @@ fun SpeakerEnrollmentScreen(
     // Bixby-style sequential UI: calm, focused, single-state
     val mainText = when (enrollmentStatus) {
         VoiceViewModel.EnrollmentStatus.Idle -> "\"헤이 토마\" 라고\n말해주세요"
+        VoiceViewModel.EnrollmentStatus.CollectingAmbient -> "잠시 조용히 해주세요...\n(주변 소음 수집 중 5초)"
         VoiceViewModel.EnrollmentStatus.Recording -> "🔴 듣고 있어요..."
         VoiceViewModel.EnrollmentStatus.Verifying -> "⏳ 확인 중..."
         is VoiceViewModel.EnrollmentStatus.Success -> "✅ 인식됨! ($enrollmentCount/10)"
@@ -118,7 +119,7 @@ fun SpeakerEnrollmentScreen(
                                      enrollmentStatus == VoiceViewModel.EnrollmentStatus.Failed
 
                 Button(
-                    onClick = { voiceViewModel.startEnrollmentRecording() },
+                    onClick = { voiceViewModel.startEnrollmentRecording(context) },
                     enabled = isButtonActive,
                     shape = CircleShape,
                     colors = ButtonDefaults.buttonColors(

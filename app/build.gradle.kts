@@ -16,6 +16,8 @@ if (localPropertiesFile.exists()) {
 
 android {
     namespace = "com.capstone.toma"
+    
+    // 최신 라이브러리 요구사항에 따라 36으로 설정
     compileSdk = 36
 
     defaultConfig {
@@ -79,7 +81,7 @@ dependencies {
     implementation("com.google.firebase:firebase-storage-ktx")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
-    // ADDED: ONNX Runtime for openWakeWord
+    // ONNX Runtime for openWakeWord
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
 
     testImplementation(libs.junit)
@@ -93,7 +95,7 @@ dependencies {
     implementation("androidx.core:core-splashscreen:1.0.1")
     ksp(libs.androidx.room.compiler)
 
-    // REMOVED: Vosk
+    // Vosk 관련 의존성 완전 제거 (오류 방지)
     // implementation("com.alphacephei:vosk-android:0.3.32")
 
     implementation("net.java.dev.jna:jna:5.2.0@aar")

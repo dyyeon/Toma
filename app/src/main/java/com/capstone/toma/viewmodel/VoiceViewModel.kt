@@ -36,6 +36,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     // Enrollment Status
     sealed interface EnrollmentStatus {
         data object Idle : EnrollmentStatus
+        data object CollectingAmbient : EnrollmentStatus // NEW: Step 1 of enrollment
         data object Recording : EnrollmentStatus
         data object Verifying : EnrollmentStatus
         data class Success(val count: Int) : EnrollmentStatus
@@ -180,88 +181,85 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.value = VoiceUiState.Result("'$text' 명령을 준비했어요.")
     }
 
-    fun startEnrollmentRecording() {
+    fun startEnrollmentRecording(context: Context) {
         if (_enrollmentStatus.value != EnrollmentStatus.Idle && _enrollmentStatus.value !is EnrollmentStatus.Success && _enrollmentStatus.value != EnrollmentStatus.Failed) return
 
-        _enrollmentStatus.value = EnrollmentStatus.Recording
-        
-        // AudioStreamManager에 enrollment 모드 시작
-        audioStreamManager.startEnrollmentMode { wavBytes ->
-            synchronized(enrollmentBuffer) {
-                if (_enrollmentCount.value < MAX_ENROLLMENT_SAMPLES) {
-                    enrollmentBuffer.write(wavBytes)
-                    
-                    if (enrollmentBuffer.size() >= ENROLLMENT_CHUNK_BYTES) {
-                        val allBytes = enrollmentBuffer.toByteArray()
-                        val pcmBytes = allBytes.take(ENROLLMENT_CHUNK_BYTES).toByteArray()
-                        
-                        enrollmentBuffer.reset()
-                        
-                        // Stop recording immediately after capturing 2 seconds
-                        audioStreamManager.stopEnrollmentMode()
+        viewModelScope.launch {
+            // Step 1: Collect ambient noise if starting a new session
+            if (_enrollmentCount.value == 0) {
+                _enrollmentStatus.value = EnrollmentStatus.CollectingAmbient
+                wakeWordManager.startAmbientCollection()
+                delay(5000) // Collect for 5 seconds
+                val negatives = wakeWordManager.stopAmbientCollection()
+                onDevicePersonalizer.setNegativeSamples(negatives)
+                Log.d("OnDevice", "✅ Collected ${negatives.size} native ambient samples")
+            }
 
-                        viewModelScope.launch(Dispatchers.IO) {
-                            // Ensure "Recording" state is visible for at least some time if needed, 
-                            // but here the callback happens after 2s of audio is collected.
+            // Step 2: Proceed to record positive samples
+            _enrollmentStatus.value = EnrollmentStatus.Recording
+            
+            // AudioStreamManager에 enrollment 모드 시작
+            audioStreamManager.startEnrollmentMode { wavBytes ->
+                synchronized(enrollmentBuffer) {
+                    if (_enrollmentCount.value < MAX_ENROLLMENT_SAMPLES) {
+                        enrollmentBuffer.write(wavBytes)
+                        
+                        if (enrollmentBuffer.size() >= ENROLLMENT_CHUNK_BYTES) {
+                            val allBytes = enrollmentBuffer.toByteArray()
+                            val pcmBytes = allBytes.take(ENROLLMENT_CHUNK_BYTES).toByteArray()
                             
-                            withContext(Dispatchers.Main) {
-                                _enrollmentStatus.value = EnrollmentStatus.Verifying
-                            }
+                            enrollmentBuffer.reset()
+                            
+                            // Stop recording immediately after capturing enough audio
+                            audioStreamManager.stopEnrollmentMode()
 
-                            val context = getApplication<Application>().applicationContext
-                            val tempFile = File(context.cacheDir, "enroll_verify_temp.wav")
-                            saveAsWav(pcmBytes, tempFile)
+                            viewModelScope.launch(Dispatchers.IO) {
+                                withContext(Dispatchers.Main) {
+                                    _enrollmentStatus.value = EnrollmentStatus.Verifying
+                                }
 
-                            val isValid = verifyWithWhisper(tempFile)
+                                val tempFile = File(context.cacheDir, "enroll_verify_temp.wav")
+                                saveAsWav(pcmBytes, tempFile)
 
-                            withContext(Dispatchers.Main) {
-                                if (isValid) {
-                                    val embedding = wakeWordManager.getLastEmbedding()
-                                    if (embedding != null) {
-                                        onDevicePersonalizer.addPositiveSample(embedding)
-                                        Log.d("OnDevice", "✅ Embedding added from cache. Size: ${onDevicePersonalizer.positiveEmbeddings.size}")
-                                    } else {
-                                        Log.e("OnDevice", "❌ No cached embedding available")
-                                    }
+                                val isValid = verifyWithWhisper(tempFile)
 
-                                    val count = _enrollmentCount.value + 1
-                                    val file = File(context.filesDir, "enrollment_$count.wav")
-                                    tempFile.copyTo(file, overwrite = true)
-                                    synchronized(enrollmentWavFiles) { enrollmentWavFiles.add(file) }
-                                    
-                                    _enrollmentCount.value = count
-                                    _enrollmentStatus.value = EnrollmentStatus.Success(count)
-                                    
-                                    delay(1500) // Show success for 1.5s
-                                    
-                                    if (count >= MAX_ENROLLMENT_SAMPLES) {
-                                        // Final training
-                                        Log.d("Enrollment", "🎓 Starting on-device training...")
+                                withContext(Dispatchers.Main) {
+                                    if (isValid) {
+                                        val embedding = wakeWordManager.getLastEmbedding()
+                                        if (embedding != null) {
+                                            onDevicePersonalizer.addPositiveSample(embedding)
+                                        }
+
+                                        val count = _enrollmentCount.value + 1
+                                        val file = File(context.filesDir, "enrollment_$count.wav")
+                                        tempFile.copyTo(file, overwrite = true)
+                                        synchronized(enrollmentWavFiles) { enrollmentWavFiles.add(file) }
                                         
-                                        val negLoaded = onDevicePersonalizer.loadNegativeSamplesFromAssets()
-                                        Log.d("Enrollment", "Negative samples loaded: $negLoaded")
-
-                                        Log.d("OnDevice", "Before train: positives=${onDevicePersonalizer.positiveEmbeddings.size}, negatives=${onDevicePersonalizer.negativeEmbeddings.size}")
+                                        _enrollmentCount.value = count
+                                        _enrollmentStatus.value = EnrollmentStatus.Success(count)
                                         
-                                        if (negLoaded && onDevicePersonalizer.train()) {
-                                            val weightsFile = File(context.filesDir, "personal_weights.bin")
-                                            onDevicePersonalizer.saveToFile(weightsFile)
-                                            wakeWordManager.loadPersonalWeights(onDevicePersonalizer)
-                                            wakeWordManager.clearLastEmbedding()
-                                            Log.d("Enrollment", "✅ On-device personalizer activated and cache cleared!")
-                                            
-                                            _enrollmentStatus.value = EnrollmentStatus.Idle
+                                        delay(1500) // Show success
+                                        
+                                        if (count >= MAX_ENROLLMENT_SAMPLES) {
+                                            // Final training
+                                            Log.d("Enrollment", "🎓 Starting on-device training...")
+                                            if (onDevicePersonalizer.train()) {
+                                                val weightsFile = File(context.filesDir, "personal_weights.bin")
+                                                onDevicePersonalizer.saveToFile(weightsFile)
+                                                wakeWordManager.loadPersonalWeights(onDevicePersonalizer)
+                                                wakeWordManager.clearLastEmbedding()
+                                                _enrollmentStatus.value = EnrollmentStatus.Idle
+                                            } else {
+                                                _enrollmentStatus.value = EnrollmentStatus.Failed
+                                            }
                                         } else {
-                                            Log.e("Enrollment", "❌ Training failed (Load: $negLoaded, Pos: ${onDevicePersonalizer.positiveEmbeddings.size})")
-                                            _enrollmentStatus.value = EnrollmentStatus.Failed
+                                            _enrollmentStatus.value = EnrollmentStatus.Idle
                                         }
                                     } else {
+                                        _enrollmentStatus.value = EnrollmentStatus.Failed
+                                        delay(1000)
                                         _enrollmentStatus.value = EnrollmentStatus.Idle
                                     }
-                                } else {
-                                    _enrollmentStatus.value = EnrollmentStatus.Failed
-                                    delay(1000) // Show failure for 1s
-                                    _enrollmentStatus.value = EnrollmentStatus.Idle
                                 }
                             }
                         }
@@ -308,7 +306,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             isValid
 
         } catch (e: Exception) {
-            Log.e("Enrollment", "Whisper 에러: ${e.message}")
+            Log.e(Log.getStackTraceString(e))
             true // 에러 시 통과 (네트워크 문제로 인한 거부 방지)
         }
     }

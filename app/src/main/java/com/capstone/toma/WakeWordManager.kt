@@ -60,6 +60,10 @@ class WakeWordManager(
     // 최근 1536차원 embedding 캐시 (Personalizer 학습용)
     private var lastEmbedding: FloatArray? = null
 
+    // Ambient collection for negative samples
+    private val ambientEmbeddings = mutableListOf<FloatArray>()
+    private var isCollectingAmbient = false
+
     init {
         loadModels()
     }
@@ -210,11 +214,34 @@ class WakeWordManager(
         Log.d(TAG, "🧹 All buffers and cached embedding cleared")
     }
 
+    fun startAmbientCollection() {
+        synchronized(this) {
+            ambientEmbeddings.clear()
+            isCollectingAmbient = true
+        }
+        Log.d(TAG, "🎙️ Collecting ambient samples...")
+    }
+
+    fun stopAmbientCollection(): List<FloatArray> {
+        return synchronized(this) {
+            isCollectingAmbient = false
+            Log.d(TAG, "✅ Collected ${ambientEmbeddings.size} ambient samples")
+            ambientEmbeddings.toList()
+        }
+    }
+
     private fun runClassifier() {
         if (embeddingBuffer.size < EMBEDDING_WINDOW_SIZE) return
         
         val currentEmb = embeddingBuffer.takeLast(EMBEDDING_WINDOW_SIZE).flatMap { it.toList() }.toFloatArray()
         lastEmbedding = currentEmb
+
+        // Collect ambient embedding if enabled
+        synchronized(this) {
+            if (isCollectingAmbient && ambientEmbeddings.size < 100) {
+                lastEmbedding?.let { ambientEmbeddings.add(it.copyOf()) }
+            }
+        }
 
         if (verboseLogging) {
             Log.v(TAG, "runClassifier() triggered [ONNX_Personal=$isPersonalModel, OnDevice_Personal=$useOnDevicePersonalizer]")
