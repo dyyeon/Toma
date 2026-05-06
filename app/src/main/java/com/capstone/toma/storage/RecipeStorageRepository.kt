@@ -175,7 +175,7 @@ private fun seedRecipes(): List<StoredRecipe> = listOf(
     StoredRecipe(
         id = "matcha_latte",
         title = "\uB9D0\uCC28 \uB77C\uB5BC",
-        category = "\uC74C\uB8CC",
+        category = "\uAE30\uD0C0",
         story = "\uC9C4\uD55C \uB9D0\uCC28\uC640 \uC6B0\uC720\uAC00 \uC5B4\uC6B0\uB7EC\uC9C4 \uBD80\uB4DC\uB7EC\uC6B4 \uC74C\uB8CC\uC785\uB2C8\uB2E4.",
         time = 7,
         difficulty = "\uC26C\uC6C0",
@@ -200,7 +200,7 @@ private fun seedRecipes(): List<StoredRecipe> = listOf(
     StoredRecipe(
         id = "mushroom_toast",
         title = "\uBC84\uC12F \uD1A0\uC2A4\uD2B8",
-        category = "\uBE0C\uB7F0\uCE58",
+        category = "\uC591\uC2DD",
         story = "\uACE0\uC18C\uD55C \uBC84\uD130 \uD5A5\uACFC \uBC84\uC12F\uC774 \uC798 \uC5B4\uC6B8\uB9AC\uB294 \uBE0C\uB7F0\uCE58 \uBA54\uB274\uC785\uB2C8\uB2E4.",
         time = 15,
         difficulty = "\uBCF4\uD1B5",

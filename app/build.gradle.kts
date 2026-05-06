@@ -14,6 +14,36 @@ if (localPropertiesFile.exists()) {
     localPropertiesFile.inputStream().use { localProperties.load(it) }
 }
 
+fun resolveOpenAiApiKey(): String {
+    localProperties.getProperty("OPENAI_API_KEY")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+
+    System.getenv("OPENAI_API_KEY")
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+
+    val sharedPropertyFiles = listOf(
+        file("C:/00_Projects/TomaAI/local.properties"),
+        file("C:/00_Projects/99_Arch/TomaAI/local.properties"),
+        file("C:/00_Projects/Toma_Iparsing/local.properties")
+    )
+
+    sharedPropertyFiles.forEach { candidate ->
+        if (!candidate.exists()) return@forEach
+
+        val sharedProperties = Properties()
+        candidate.inputStream().use { sharedProperties.load(it) }
+        sharedProperties.getProperty("OPENAI_API_KEY")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+    }
+
+    return ""
+}
+
+val resolvedOpenAiApiKey = resolveOpenAiApiKey()
+
 android {
     namespace = "com.capstone.toma"
     
@@ -29,8 +59,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        val apiKey = localProperties.getProperty("OPENAI_API_KEY") ?: ""
-        buildConfigField("String", "OPENAI_API_KEY", "\"$apiKey\"")
+        buildConfigField("String", "OPENAI_API_KEY", "\"$resolvedOpenAiApiKey\"")
     }
 
     buildTypes {
@@ -42,7 +71,7 @@ android {
             )
         }
         debug {
-            buildConfigField("String", "OPENAI_API_KEY", "\"${localProperties.getProperty("OPENAI_API_KEY") ?: ""}\"")
+            buildConfigField("String", "OPENAI_API_KEY", "\"$resolvedOpenAiApiKey\"")
         }
     }
 

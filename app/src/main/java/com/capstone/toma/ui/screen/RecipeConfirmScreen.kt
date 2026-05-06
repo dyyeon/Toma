@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.capstone.toma.model.normalizeRecipeCategory
 import com.capstone.toma.ui.theme.TomaBackground
 import com.capstone.toma.ui.theme.TomaCard
 import com.capstone.toma.ui.theme.TomaMainOrange
@@ -390,7 +391,10 @@ private fun parseConfirmRecipe(keyword: String, recipeDataJson: String?): Confir
     val ingredients = parseStringArray(json, "ingredients")
     val title = json?.optString("title").orEmpty()
         .ifBlank { keyword }
-    val category = json?.optString("category").orEmpty()
+    val category = normalizeRecipeCategory(
+        rawCategory = json?.optString("category"),
+        title = title
+    )
     val difficulty = json?.optString("difficulty").orEmpty()
     val timeText = json?.optString("time").orEmpty()
     val imageUrl = json?.optString("image_url").orEmpty()

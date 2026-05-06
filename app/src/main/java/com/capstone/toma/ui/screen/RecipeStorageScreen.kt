@@ -28,11 +28,14 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,6 +74,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.model.StoredRecipe
+import com.capstone.toma.model.normalizeRecipeCategory
 import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.ui.theme.TomaBackground
 import com.capstone.toma.ui.theme.TomaMainRed
@@ -110,8 +114,10 @@ fun RecipeStorageScreen(
     var openedId by rememberSaveable { mutableStateOf<String?>(null) }
     var imageTargetId by rememberSaveable { mutableStateOf<String?>(null) }
     var showImagePickerDialog by rememberSaveable(openedId) { mutableStateOf(false) }
+    var pendingDeleteId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val opened = recipes.firstOrNull { it.id == openedId }
+    val pendingDeleteRecipe = recipes.firstOrNull { it.id == pendingDeleteId }
 
     val imagePickerLauncher = if (isPreview) {
         null
@@ -194,6 +200,47 @@ fun RecipeStorageScreen(
             }
         }
     ) { inner ->
+        pendingDeleteRecipe?.let { recipe ->
+            AlertDialog(
+                onDismissRequest = { pendingDeleteId = null },
+                title = {
+                    Text(
+                        text = "저장된 레시피 삭제",
+                        color = StorageInk,
+                        fontWeight = FontWeight.Bold
+                    )
+                },
+                text = {
+                    Text(
+                        text = "\"${recipe.title}\" 레시피를 저장소에서 삭제할까요?",
+                        color = StorageMuted
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            pendingDeleteId = null
+                            if (openedId == recipe.id) {
+                                openedId = null
+                            }
+                            storageViewModel?.deleteRecipe(recipe.id)
+                            scope.launch {
+                                snackbar.showSnackbar("레시피를 삭제했어요.")
+                            }
+                        }
+                    ) {
+                        Text("삭제", color = StorageAccent, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { pendingDeleteId = null }) {
+                        Text("취소", color = StorageMuted)
+                    }
+                },
+                containerColor = StorageCard
+            )
+        }
+
         if (opened == null) {
             StorageList(
                 inner = inner,
@@ -202,7 +249,8 @@ fun RecipeStorageScreen(
                 query = query,
                 onQueryChange = { query = it },
                 onOpen = { openedId = it.id },
-                onFavoriteToggle = { recipe -> storageViewModel?.toggleFavorite(recipe) }
+                onFavoriteToggle = { recipe -> storageViewModel?.toggleFavorite(recipe) },
+                onDelete = { recipe -> pendingDeleteId = recipe.id }
             )
         } else {
             if (showImagePickerDialog) {
@@ -257,7 +305,8 @@ private fun StorageList(
     query: String,
     onQueryChange: (String) -> Unit,
     onOpen: (StoredRecipe) -> Unit,
-    onFavoriteToggle: (StoredRecipe) -> Unit
+    onFavoriteToggle: (StoredRecipe) -> Unit,
+    onDelete: (StoredRecipe) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier
@@ -318,7 +367,8 @@ private fun StorageList(
                 RecipeCard(
                     recipe = recipe,
                     onOpen = { onOpen(recipe) },
-                    onFavoriteToggle = { onFavoriteToggle(recipe) }
+                    onFavoriteToggle = { onFavoriteToggle(recipe) },
+                    onDelete = { onDelete(recipe) }
                 )
             }
         }
@@ -433,8 +483,11 @@ private fun StorageDetail(
 private fun RecipeCard(
     recipe: StoredRecipe,
     onOpen: () -> Unit,
-    onFavoriteToggle: () -> Unit
+    onFavoriteToggle: () -> Unit,
+    onDelete: () -> Unit
 ) {
+    val category = normalizedCategory(recipe)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -450,7 +503,7 @@ private fun RecipeCard(
         )
 
         Text(
-            text = "${recipe.time}분 조리 · ${recipe.category}",
+            text = "${recipe.time}분 조리 · $category",
             color = StorageAccent,
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold
@@ -472,20 +525,27 @@ private fun RecipeCard(
                 modifier = Modifier.weight(1f)
             )
 
-            IconButton(
-                onClick = onFavoriteToggle,
-                modifier = Modifier.size(24.dp)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = if (recipe.favorite) {
-                        Icons.Default.Bookmark
-                    } else {
-                        Icons.Default.BookmarkBorder
-                    },
-                    contentDescription = "즐겨찾기",
-                    tint = StorageAccent,
-                    modifier = Modifier.size(18.dp)
-                )
+                RecipeCardActionMenu(onDelete = onDelete)
+
+                IconButton(
+                    onClick = onFavoriteToggle,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = if (recipe.favorite) {
+                            Icons.Default.Bookmark
+                        } else {
+                            Icons.Default.BookmarkBorder
+                        },
+                        contentDescription = "즐겨찾기",
+                        tint = StorageAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
 
@@ -497,11 +557,52 @@ private fun RecipeCard(
 }
 
 @Composable
+private fun RecipeCardActionMenu(
+    onDelete: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        IconButton(
+            onClick = { expanded = true },
+            modifier = Modifier.size(24.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = "더보기",
+                tint = StorageMuted,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        text = "삭제",
+                        color = StorageAccent,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                onClick = {
+                    expanded = false
+                    onDelete()
+                }
+            )
+        }
+    }
+}
+
+@Composable
 private fun HeroCard(
     recipe: StoredRecipe,
     onFavoriteToggle: () -> Unit,
     onImagePick: () -> Unit
 ) {
+    val category = normalizedCategory(recipe)
     val hasImage = !recipe.imageUri.isNullOrBlank()
 
     Box(
@@ -510,7 +611,7 @@ private fun HeroCard(
             .height(270.dp)
             .clip(RoundedCornerShape(30.dp))
             .clickable(onClick = onImagePick)
-            .background(Brush.linearGradient(palette(recipe.category)))
+            .background(Brush.linearGradient(storagePalette(category)))
     ) {
         RecipeArtwork(
             recipe = recipe,
@@ -540,7 +641,7 @@ private fun HeroCard(
                 .padding(14.dp)
         ) {
             Text(
-                text = recipe.category,
+                text = category,
                 color = Color.White,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
             )
@@ -599,11 +700,13 @@ private fun RecipeArtwork(
     recipe: StoredRecipe,
     modifier: Modifier = Modifier
 ) {
+    val category = normalizedCategory(recipe)
+
     Box(
-        modifier = modifier.background(Brush.linearGradient(palette(recipe.category)))
+        modifier = modifier.background(Brush.linearGradient(storagePalette(category)))
     ) {
         DefaultRecipeArtwork(
-            category = recipe.category,
+            category = category,
             title = recipe.title,
             modifier = Modifier.fillMaxSize()
         )
@@ -651,7 +754,7 @@ private fun DefaultRecipeArtwork(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
-                text = defaultImageCaption(category),
+                text = storageImageCaption(category),
                 color = Color.White.copy(alpha = 0.88f),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold
@@ -841,6 +944,28 @@ private fun EmptySearchCard() {
             )
         }
     }
+}
+
+private fun normalizedCategory(recipe: StoredRecipe): String {
+    return normalizeRecipeCategory(recipe.category, recipe.title)
+}
+
+private fun storagePalette(category: String) = when (category) {
+    "한식" -> listOf(Color(0xFF131518), Color(0xFF453126))
+    "양식" -> listOf(Color(0xFF74C8B7), Color(0xFF3B938B))
+    "중식" -> listOf(Color(0xFFD9695B), Color(0xFF9E3D38))
+    "일식" -> listOf(Color(0xFF5D7FA3), Color(0xFF2F4E73))
+    "디저트" -> listOf(Color(0xFFE7B7D5), Color(0xFFC980AF))
+    else -> listOf(Color(0xFFF2DDBE), Color(0xFFD39D6E))
+}
+
+private fun storageImageCaption(category: String) = when (category) {
+    "한식" -> "집밥 무드"
+    "양식" -> "플레이트 한 접시"
+    "중식" -> "웍 한 판"
+    "일식" -> "정갈한 한 상"
+    "디저트" -> "달콤한 한 입"
+    else -> "오늘 레시피"
 }
 
 private fun palette(category: String) = when (category) {

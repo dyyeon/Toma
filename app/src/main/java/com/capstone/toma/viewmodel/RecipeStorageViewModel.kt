@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.capstone.toma.model.RecentRecipeRecord
 import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.model.StoredRecipe
+import com.capstone.toma.model.normalizeRecipeCategory
 import com.capstone.toma.storage.RecipeStorageRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
@@ -45,11 +46,16 @@ class RecipeStorageViewModel(
                 val json = JSONObject(recipeJson)
                 val recipeId = generateStableId(json.optString("title", title))
                 val existing = recipes.value.firstOrNull { it.id == recipeId }
+                val normalizedTitle = json.optString("title", title)
+                val normalizedCategory = normalizeRecipeCategory(
+                    rawCategory = json.optString("category", existing?.category ?: "기타"),
+                    title = normalizedTitle
+                )
                 val parsedTime = parseTimeValue(json.opt("time"))
                 val savedRecipe = StoredRecipe(
                     id = recipeId,
-                    title = json.optString("title", title),
-                    category = json.optString("category", existing?.category ?: "\uAE30\uD0C0"),
+                    title = normalizedTitle,
+                    category = normalizedCategory,
                     story = json.optString("story", existing?.story ?: ""),
                     time = if (parsedTime > 0) parsedTime else existing?.time ?: 0,
                     difficulty = json.optString("difficulty", existing?.difficulty ?: "\uBCF4\uD1B5"),
@@ -87,10 +93,14 @@ class RecipeStorageViewModel(
                 recipeJson?.let { jsonStr ->
                     runCatching {
                         val json = JSONObject(jsonStr)
+                        val normalizedTitle = json.optString("title", title)
                         val recipe = StoredRecipe(
                             id = recipeId,
-                            title = json.optString("title", title),
-                            category = json.optString("category", "\uAE30\uD0C0"),
+                            title = normalizedTitle,
+                            category = normalizeRecipeCategory(
+                                rawCategory = json.optString("category", "기타"),
+                                title = normalizedTitle
+                            ),
                             story = json.optString("story", ""),
                             time = parseTimeValue(json.opt("time")),
                             difficulty = json.optString("difficulty", "\uBCF4\uD1B5"),
@@ -126,6 +136,14 @@ class RecipeStorageViewModel(
         viewModelScope.launch {
             runCatching {
                 repository.saveRecipe(recipe)
+            }
+        }
+    }
+
+    fun deleteRecipe(recipeId: String) {
+        viewModelScope.launch {
+            runCatching {
+                repository.deleteRecipe(recipeId)
             }
         }
     }

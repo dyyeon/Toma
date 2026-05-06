@@ -2,10 +2,10 @@ package com.capstone.toma.ui.screen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,8 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -48,13 +46,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.capstone.toma.R
 import com.capstone.toma.model.RecipeSourceType
+import com.capstone.toma.model.normalizeRecipeCategory
 import com.capstone.toma.ui.component.LoadingSection
 import com.capstone.toma.ui.component.TomaDrawerItem
 import com.capstone.toma.ui.component.TomaDrawerSheet
@@ -66,6 +69,7 @@ import com.capstone.toma.ui.theme.TomaMainRed
 import com.capstone.toma.ui.theme.TomaPrimaryText
 import com.capstone.toma.ui.theme.TomaSecondaryText
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 
 data class RecentRecipeItem(
     val id: String,
@@ -668,13 +672,16 @@ fun RecentAnalysisSection(
                 modifier = Modifier.padding(horizontal = 24.dp)
             )
         } else {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 20.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(items.take(4), key = { it.id }) { item ->
+                items.take(2).forEach { item ->
                     RecentAnalysisCard(
                         item = item,
+                        modifier = Modifier.weight(1f),
                         onClick = { onItemClick(item.id) }
                     )
                 }
@@ -686,6 +693,7 @@ fun RecentAnalysisSection(
 @Composable
 fun RecentAnalysisCard(
     item: RecentRecipeItem,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val badgeText = when (item.sourceType) {
@@ -708,62 +716,131 @@ fun RecentAnalysisCard(
         RecipeSourceType.WEB -> Color(0xFFEAF3FF)
         RecipeSourceType.IMAGE -> Color(0xFFFFECEC)
     }
+    val imageUrl = extractRecentImageUrl(item.recipeDataJson)
+    val fallbackImageRes = recentFallbackImageRes(item)
 
-    Column(
-        modifier = Modifier
-            .size(width = 200.dp, height = 240.dp)
-            .shadow(4.dp, RoundedCornerShape(16.dp))
-            .background(Color.White, RoundedCornerShape(16.dp))
-            .clip(RoundedCornerShape(16.dp))
+    Surface(
+        modifier = modifier
             .clickable { onClick() }
+            .shadow(4.dp, RoundedCornerShape(20.dp)),
+        color = Color.White,
+        shape = RoundedCornerShape(20.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1.5f)
-                .background(tempColor)
-        ) {
-            Box(
-                modifier = Modifier
-                    .padding(top = 10.dp, end = 10.dp)
-                    .align(Alignment.TopEnd)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(badgeBgColor)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = badgeText,
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = item.title,
-                color = TomaPrimaryText,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(132.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(tempColor)
+            ) {
+                if (imageUrl.isNullOrBlank()) {
+                    Image(
+                        painter = painterResource(id = fallbackImageRes),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(64.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                } else {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
 
-            Text(
-                text = item.timeText,
-                color = TomaSecondaryText,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
+                Box(
+                    modifier = Modifier
+                        .padding(top = 10.dp, end = 10.dp)
+                        .align(Alignment.TopEnd)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(badgeBgColor)
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = badgeText,
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = item.title,
+                    color = TomaPrimaryText,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Text(
+                    text = item.timeText,
+                    color = TomaSecondaryText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Text(
+                    text = "레시피 자세히 보기",
+                    color = TomaMainOrange,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
+    }
+}
+
+private fun extractRecentImageUrl(recipeDataJson: String?): String? {
+    if (recipeDataJson.isNullOrBlank()) return null
+
+    return runCatching {
+        JSONObject(recipeDataJson)
+            .optString("image_url")
+            .trim()
+            .takeIf { it.startsWith("http://") || it.startsWith("https://") }
+    }.getOrNull()
+}
+
+private fun recentFallbackImageRes(item: RecentRecipeItem): Int {
+    return when (extractRecentCategory(item.recipeDataJson, item.title)) {
+        "한식" -> R.drawable.recent_korean_rice
+        "일식" -> R.drawable.recent_japanese_fish
+        "디저트" -> R.drawable.recent_dessert_cookie
+        "양식" -> R.drawable.recent_western_pasta
+        else -> R.drawable.ic_tomato
+    }
+}
+
+private fun extractRecentCategory(recipeDataJson: String?, title: String): String {
+    if (recipeDataJson.isNullOrBlank()) {
+        return normalizeRecipeCategory(rawCategory = null, title = title)
+    }
+
+    return runCatching {
+        val json = JSONObject(recipeDataJson)
+        val recipeTitle = json.optString("title").ifBlank { title }
+        normalizeRecipeCategory(
+            rawCategory = json.optString("category"),
+            title = recipeTitle
+        )
+    }.getOrElse {
+        normalizeRecipeCategory(rawCategory = null, title = title)
     }
 }
 
@@ -850,19 +927,22 @@ fun PreviewTomaHomeScreen() {
                     id = "1",
                     title = "김치볶음밥",
                     timeText = "2시간 전 분석",
-                    sourceType = RecipeSourceType.YOUTUBE
+                    sourceType = RecipeSourceType.YOUTUBE,
+                    recipeDataJson = """{"title":"kimchi fried rice","category":"korean"}"""
                 ),
                 RecentRecipeItem(
                     id = "2",
                     title = "감자조림 블로그 레시피",
                     timeText = "어제 분석",
-                    sourceType = RecipeSourceType.WEB
+                    sourceType = RecipeSourceType.WEB,
+                    recipeDataJson = """{"title":"creamy pasta","category":"western"}"""
                 ),
                 RecentRecipeItem(
                     id = "3",
                     title = "계란말이",
                     timeText = "3일 전 분석",
-                    sourceType = RecipeSourceType.IMAGE
+                    sourceType = RecipeSourceType.IMAGE,
+                    recipeDataJson = """{"title":"choco cookie","category":"dessert"}"""
                 )
             )
         ),

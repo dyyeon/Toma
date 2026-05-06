@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.util.Base64
+import com.capstone.toma.model.normalizeRecipeCategory
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -73,7 +74,7 @@ class OpenAiManager {
           "response": "Brief Korean response for the user",
           "recipe_data": {
             "title": "dish name",
-            "category": "한식/중식/양식/기타",
+            "category": "한식/양식/중식/일식/디저트/기타",
             "ingredients": ["item 1", "item 2"],
             "steps": ["step 1", "step 2"],
             "difficulty": "쉬움/보통/어려움",
@@ -191,12 +192,13 @@ class OpenAiManager {
                         .getString("content")
 
                     val resultJson = JSONObject(content)
+                    val normalizedRecipeData = normalizeRecipeData(resultJson.optJSONObject("recipe_data"))
                     onResult(
                         VoiceRequestResult.Success(
                             requestType = resultJson.optString("type", "chat"),
                             keyword = resultJson.optString("keyword", ""),
                             responseMessage = resultJson.optString("response", ""),
-                            recipeData = resultJson.optJSONObject("recipe_data")?.toString()
+                            recipeData = normalizedRecipeData?.toString()
                         )
                     )
                 } catch (e: Exception) {
@@ -300,7 +302,7 @@ class OpenAiManager {
                                       "response": "short Korean message",
                                       "recipe_data": {
                                         "title": "dish name",
-                                        "category": "category",
+                                        "category": "한식/양식/중식/일식/디저트/기타 중 하나",
                                         "ingredients": ["ingredient"],
                                         "steps": ["step"],
                                         "difficulty": "쉬움/보통/어려움",
@@ -454,6 +456,19 @@ class OpenAiManager {
             recipeJson.put("image_url", imageUri)
         }
 
+        return normalizeRecipeData(recipeJson) ?: recipeJson
+    }
+
+    private fun normalizeRecipeData(recipeJson: JSONObject?): JSONObject? {
+        if (recipeJson == null) return null
+
+        recipeJson.put(
+            "category",
+            normalizeRecipeCategory(
+                rawCategory = recipeJson.optString("category"),
+                title = recipeJson.optString("title")
+            )
+        )
         return recipeJson
     }
 }
