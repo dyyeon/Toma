@@ -70,7 +70,7 @@ fun TomaNavHost(
     ) {
         composable(TomaDestination.Home.route) {
             LaunchedEffect(Unit) {
-                voiceViewModel.stopWakeWord() // Ensure wake word is off on Home
+                voiceViewModel.stopWakeWord()
                 val enrolled = UserManager.isEnrolled(context)
                 val skipped = UserManager.hasSkipped(context)
                 if (!enrolled && !skipped) {
@@ -129,26 +129,38 @@ fun TomaNavHost(
                                     webPageManager.fetchPageInfoSuspend(link)
                                 }
 
-                                if (t == null && d?.contains("실패") == true) {
-                                    homeViewModel.showError(d, isDialog = true)
-                                    return@startLinkAnalysis VoiceRequestResult.Error(d)
+                                // Jina 완전 실패 시에만 에러 (t, d 둘 다 null)
+                                if (t == null && d == null) {
+                                    homeViewModel.showError("링크를 읽어올 수 없어요.", isDialog = true)
+                                    return@startLinkAnalysis VoiceRequestResult.Error("스크래핑 실패")
                                 }
 
-                                // Step 2: AI Analysis with full context
+                                // Step 2: AI Analysis
                                 updateStatus("[2/2] 전문가 AI가 실전 정보를 추출 중이에요... ✨")
                                 delay(600)
-                                
+
                                 val openAi = com.capstone.toma.OpenAiManager()
                                 val history = chatViewModel.uiState.value.messages.map { it.text to it.isUser }
-                                
-                                val prompt = """
+
+                                // Jina 성공 여부에 따라 프롬프트 분기
+                                val prompt = if (d.isNullOrBlank() || d == "내용 없음" || d.contains("실패")) {
+                                    // Jina 실패 → URL만으로 분석 요청
+                                    """
+                                    다음 URL의 레시피를 분석해서 JSON으로 추출해주세요.
+                                    URL: $link
+                                    제목: ${t ?: ""}
+                                    URL에 직접 접근해서 레시피 정보를 가져와주세요.
+                                    """.trimIndent()
+                                } else {
+                                    // Jina 성공 → 스크래핑된 내용 포함
+                                    """
                                     다음 웹페이지 내용을 분석해서 레시피 정보를 추출해주세요.
-                                    
                                     URL: $link
                                     제목: ${t ?: "제목 없음"}
                                     내용:
-                                    ${d ?: "내용 없음"}
-                                """.trimIndent()
+                                    $d
+                                    """.trimIndent()
+                                }
 
                                 openAi.processChatRequestSuspend(prompt, history)
                             }
@@ -351,7 +363,6 @@ fun TomaNavHost(
                     nullable = true
                     defaultValue = null
                 }
-
             )
         ) { backStackEntry ->
             val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
