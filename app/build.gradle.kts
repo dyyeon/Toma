@@ -43,6 +43,9 @@ fun resolveOpenAiApiKey(): String {
 }
 
 val resolvedOpenAiApiKey = resolveOpenAiApiKey()
+val resolvedFoodSafetyApiKey = localProperties.getProperty("FOOD_SAFETY_API_KEY")
+    ?: System.getenv("FOOD_SAFETY_API_KEY")
+    ?: ""
 
 android {
     namespace = "com.capstone.toma"
@@ -60,6 +63,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "OPENAI_API_KEY", "\"$resolvedOpenAiApiKey\"")
+        buildConfigField("String", "FOOD_SAFETY_API_KEY", "\"$resolvedFoodSafetyApiKey\"")
     }
 
     buildTypes {
