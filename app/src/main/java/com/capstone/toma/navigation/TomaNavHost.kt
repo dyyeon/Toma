@@ -29,9 +29,12 @@ import com.capstone.toma.ui.screen.*
 import com.capstone.toma.viewmodel.*
 
 private val voiceSuggestions = listOf(
-    "메뉴 추천해줘",
-    "재료로 요리 찾아줘",
-    "간단한 레시피 알려줘"
+    "오늘 저녁 뭐 먹을까",
+    "냉장고 재료로 뭐 해먹지",
+    "간단한 한 끼 추천해줘",
+    "초보도 쉬운 레시피",
+    "10분 안에 만드는 요리",
+    "자취생 요리 알려줘"
 )
 
 @Composable
@@ -362,10 +365,12 @@ fun TomaNavHost(
 
         composable(TomaDestination.VoiceGuide.route) {
             LaunchedEffect(Unit) {
-                voiceViewModel.startWakeWord()
                 voiceViewModel.intentEvent.collect { intent ->
                     if (intent is TomaIntent.RECIPE_SEARCH) {
-                        navController.navigate(TomaDestination.RecipeDetail.createRoute(intent.keyword, com.capstone.toma.model.RecipeSourceType.TEXT)) {
+                        voiceViewModel.stopListeningManually()
+                        chatViewModel.resetChat()
+                        chatViewModel.sendMessage(intent.keyword)
+                        navController.navigate(TomaDestination.Chat.route) {
                             popUpTo(TomaDestination.VoiceGuide.route) { inclusive = true }
                         }
                     }
@@ -374,9 +379,24 @@ fun TomaNavHost(
             VoiceGuideScreen(
                 uiState = voiceUiState,
                 suggestions = voiceSuggestions,
-                onMicClick = { voiceViewModel.onMicClick() },
-                onSuggestionClick = { text -> voiceViewModel.onSuggestionClick(text) },
-                onBackClick = { navController.popBackStack() }
+                onMicClick = {
+                    when (voiceUiState) {
+                        is com.capstone.toma.VoiceUiState.Idle -> voiceViewModel.startListeningManually()
+                        else -> voiceViewModel.stopListeningManually()
+                    }
+                },
+                onSuggestionClick = { text ->
+                    voiceViewModel.stopListeningManually()
+                    chatViewModel.resetChat()
+                    chatViewModel.sendMessage(text)
+                    navController.navigate(TomaDestination.Chat.route) {
+                        popUpTo(TomaDestination.VoiceGuide.route) { inclusive = true }
+                    }
+                },
+                onBackClick = {
+                    voiceViewModel.stopListeningManually()
+                    navController.popBackStack()
+                }
             )
         }
 
@@ -525,7 +545,6 @@ fun TomaNavHost(
                         chatViewModel.sendMessage()
                     }
                 },
-                onMicClick = { navController.navigate(TomaDestination.VoiceGuide.route) },
                 onErrorDismiss = chatViewModel::clearErrorEvent
             )
         }

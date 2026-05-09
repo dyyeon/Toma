@@ -61,11 +61,26 @@ class OpenAiManager {
             CRITICAL RULES:
             - ALL output fields MUST be in Korean. No English in title, ingredients, or steps.
             - ingredients: exact quantities required (e.g. "계란 2개", "간장 1큰술", "소금 약간").
-            - steps: MINIMUM 7 steps. Each step = ONE action only. Always include:
-              * Heat level (강불 / 중불 / 약불)
-              * Timing (몇 분간)
-              * Visual/texture cue (황금색이 될 때까지, 걸쭉해질 때까지 등)
-            - Never combine multiple actions into a single step.
+
+            STEP WRITING RULES (most important):
+            - MINIMUM 8 steps. Each step = ONE single physical action only.
+            - Never combine two actions. "썰어서 볶는다" → must be two separate steps.
+            - Every step must follow this structure:
+              [현재 상태 또는 전제조건] + [구체적인 행동] + [완료 신호]
+            - "현재 상태": What does it look/sound/smell like right now before you act?
+              Examples: "물이 팔팔 끓어 큰 거품이 올라오면", "기름에 손을 가져갔을 때 따뜻한 열기가 느껴지면",
+                        "마늘이 노릇하게 변하며 고소한 향이 나기 시작하면", "뚜껑에 수증기가 맺히기 시작하면"
+            - "완료 신호": How does the cook know THIS step is done?
+              Examples: "젓가락이 부드럽게 들어가면", "국물이 반으로 줄어들면", "가장자리가 노릇하게 익으면",
+                        "투명하게 숨이 죽으면", "보글보글 작은 거품이 올라오기 시작하면"
+            - Always specify heat level: 강불 / 중불 / 약불 / 불 끔
+            - Always specify time when applicable (e.g. "약 3분간", "15~20분간")
+            - For STEAMING (찌기): always include a step for "물 붓기", then "강불로 물을 끓이기",
+              then "김이 올라오면 재료 넣기" as separate steps.
+            - For BOILING (끓이기): include water state changes (찬물부터 → 끓어오르면 → 중불로 줄이기).
+            - For STIR-FRYING (볶기): include oil preheating cue, then ingredient addition order as separate steps.
+            - For SIMMERING (졸이기): include the transition from boil to simmer as a step.
+            - For FRYING (튀기기): include oil temperature check method (젓가락 넣었을 때 거품 올라오면).
 
             WHEN TO RETURN recipe_search:
             - User asks for a recipe by name, by ingredient, or by occasion.

@@ -1,5 +1,7 @@
 package com.capstone.toma.ui.screen
 
+import android.media.MediaRecorder
+import android.os.Build
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -22,15 +24,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.capstone.toma.OpenAiManager
 import com.capstone.toma.R
 import com.capstone.toma.ui.theme.*
 import androidx.compose.foundation.BorderStroke
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import java.io.File
+import kotlin.coroutines.resume
 
 private val TomaMainOrange = Color(0xFFEE8C2B)
 private val TomaBackground = Color(0xFFF8F9FA)
@@ -58,11 +70,95 @@ fun AiChatScreen(
     onBackClick: () -> Unit,
     onInputTextChange: (String) -> Unit,
     onSendMessage: () -> Unit,
-    onMicClick: () -> Unit,
+    onMicClick: () -> Unit = {},
     onErrorDismiss: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isRecording by remember { mutableStateOf(false) }
+    var isTranscribing by remember { mutableStateOf(false) }
+    val recorder = remember { mutableStateOf<MediaRecorder?>(null) }
+    val audioFile = remember { File(context.cacheDir, "chat_voice.m4a") }
+    val vadJob = remember { arrayOf<kotlinx.coroutines.Job?>(null) }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            vadJob[0]?.cancel()
+            runCatching { recorder.value?.stop(); recorder.value?.release() }
+            recorder.value = null
+        }
+    }
+
+    fun stopAndTranscribe() {
+        vadJob[0]?.cancel(); vadJob[0] = null
+        runCatching { recorder.value?.stop(); recorder.value?.release() }
+        recorder.value = null
+        isRecording = false
+        isTranscribing = true
+        scope.launch {
+            val text = withContext(Dispatchers.IO) {
+                suspendCancellableCoroutine { cont ->
+                    OpenAiManager().transcribeAudio(audioFile) { result ->
+                        cont.resume(result ?: "")
+                    }
+                }
+            }
+            isTranscribing = false
+            if (text.isNotBlank()) {
+                onInputTextChange(text)
+                onSendMessage()
+            }
+        }
+    }
+
+    fun startRecording() {
+        runCatching {
+            val mr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                MediaRecorder(context)
+            } else {
+                @Suppress("DEPRECATION")
+                MediaRecorder()
+            }
+            mr.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioSamplingRate(16000)
+                setOutputFile(audioFile.absolutePath)
+                prepare()
+                start()
+            }
+            recorder.value = mr
+            isRecording = true
+
+            vadJob[0] = scope.launch {
+                val silenceThreshold = 500
+                val silenceDurationMs = 1500L
+                val maxDurationMs = 30_000L
+                val recordingStart = System.currentTimeMillis()
+                var silenceStart = 0L
+
+                while (isActive) {
+                    delay(100)
+                    val elapsed = System.currentTimeMillis() - recordingStart
+                    if (elapsed > maxDurationMs) { stopAndTranscribe(); break }
+
+                    val amplitude = recorder.value?.maxAmplitude ?: 0
+                    if (amplitude < silenceThreshold) {
+                        if (silenceStart == 0L) silenceStart = System.currentTimeMillis()
+                        else if (System.currentTimeMillis() - silenceStart >= silenceDurationMs) {
+                            stopAndTranscribe(); break
+                        }
+                    } else {
+                        silenceStart = 0L
+                    }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(uiState.messages.size, uiState.isTyping) {
         val targetIndex = if (uiState.isTyping) uiState.messages.size else uiState.messages.size - 1
@@ -94,9 +190,11 @@ fun AiChatScreen(
             ChatInputBar(
                 inputText = uiState.inputText,
                 isTyping = uiState.isTyping,
+                isRecording = isRecording,
+                isTranscribing = isTranscribing,
                 onInputTextChange = onInputTextChange,
                 onSendMessage = onSendMessage,
-                onMicClick = onMicClick
+                onMicClick = { if (isRecording) stopAndTranscribe() else startRecording() }
             )
         }
     ) { paddingValues ->
@@ -342,10 +440,23 @@ private fun TypingIndicatorBubble() {
 private fun ChatInputBar(
     inputText: String,
     isTyping: Boolean,
+    isRecording: Boolean = false,
+    isTranscribing: Boolean = false,
     onInputTextChange: (String) -> Unit,
     onSendMessage: () -> Unit,
     onMicClick: () -> Unit
 ) {
+    val micBusy = isTyping || isTranscribing
+
+    // 녹음 중 마이크 아이콘 호흡 애니메이션
+    val infiniteTransition = rememberInfiniteTransition(label = "recording")
+    val micAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(700, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "micAlpha"
+    )
+
     Surface(
         color = Color.White,
         shadowElevation = 16.dp,
@@ -361,18 +472,35 @@ private fun ChatInputBar(
             // 마이크 버튼
             Surface(
                 onClick = onMicClick,
-                enabled = !isTyping,
+                enabled = !micBusy,
                 shape = CircleShape,
-                color = if (isTyping) Color(0xFFF1F3F5) else TomaMainOrange.copy(alpha = 0.1f),
+                color = when {
+                    isRecording -> TomaMainOrange
+                    micBusy -> Color(0xFFF1F3F5)
+                    else -> TomaMainOrange.copy(alpha = 0.1f)
+                },
                 modifier = Modifier.size(44.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = "음성 입력",
-                        tint = if (isTyping) Color(0xFFADB5BD) else TomaMainOrange,
-                        modifier = Modifier.size(24.dp)
-                    )
+                    when {
+                        isTranscribing -> CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = TomaMainOrange,
+                            strokeWidth = 2.dp
+                        )
+                        isRecording -> Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "녹음 중지",
+                            tint = Color.White.copy(alpha = micAlpha),
+                            modifier = Modifier.size(24.dp)
+                        )
+                        else -> Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "음성 입력",
+                            tint = if (micBusy) Color(0xFFADB5BD) else TomaMainOrange,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
                 }
             }
 
@@ -403,7 +531,12 @@ private fun ChatInputBar(
                     decorationBox = { innerTextField ->
                         if (inputText.isEmpty()) {
                             Text(
-                                text = if (isTyping) "답변을 기다리고 있어요..." else "메시지를 입력하세요",
+                                text = when {
+                                    isRecording -> "말씀해주세요... 🎙️"
+                                    isTranscribing -> "음성 인식 중..."
+                                    isTyping -> "답변을 기다리고 있어요..."
+                                    else -> "메시지를 입력하세요"
+                                },
                                 color = TomaSecondaryText,
                                 fontSize = 15.sp
                             )
