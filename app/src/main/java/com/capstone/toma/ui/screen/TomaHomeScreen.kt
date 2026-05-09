@@ -21,12 +21,9 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PrivacyTip
-import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -89,7 +86,6 @@ fun TomaHomeScreen(
     onStorageClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onPrivacyPolicyClick: () -> Unit = {},
-    onSpeakerEnrollmentClick: () -> Unit = {},
     onErrorDismiss: () -> Unit = {}
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
@@ -122,12 +118,6 @@ fun TomaHomeScreen(
             subtitle = "앱 설정과 지원 메뉴를 확인합니다",
             icon = Icons.Default.Settings,
             onClick = { scope.launch { drawerState.close(); onSettingsClick() } }
-        ),
-        TomaDrawerItem(
-            label = "화자 등록 관리",
-            subtitle = "내 목소리를 등록하고 관리합니다",
-            icon = Icons.Default.RecordVoiceOver,
-            onClick = { scope.launch { drawerState.close(); onSpeakerEnrollmentClick() } }
         ),
         TomaDrawerItem(
             label = "개인정보 처리방침",
@@ -613,9 +603,8 @@ fun RecentAnalysisCard(
 ) {
     val (icon, bgColor, iconColor, badgeText) = when (item.sourceType) {
         RecipeSourceType.TEXT -> listOf(Icons.Default.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7), "TEXT")
-        RecipeSourceType.YOUTUBE -> listOf(Icons.Default.SmartDisplay, Color(0xFFFFF1E8), TomaMainOrange, "YOUTUBE")
+        RecipeSourceType.YOUTUBE -> listOf(Icons.Filled.SmartDisplay, Color(0xFFFFF1E8), TomaMainOrange, "YOUTUBE")
         RecipeSourceType.IMAGE -> listOf(Icons.Default.CameraAlt, Color(0xFFFFECEC), TomaMainRed, "IMAGE")
-        RecipeSourceType.WEB -> listOf(Icons.Default.Public, Color(0xFFE7F5FF), Color(0xFF228BE6), "WEB")
     }
 
     Surface(
