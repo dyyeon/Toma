@@ -26,9 +26,10 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +46,7 @@ import com.capstone.toma.ui.component.LoadingSection
 import com.capstone.toma.ui.component.TomaDrawerItem
 import com.capstone.toma.ui.component.TomaDrawerSheet
 import com.capstone.toma.ui.component.TomaTopAppBar
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 
@@ -144,7 +146,6 @@ fun TomaHomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .background(TomaBackground)
-                .padding(top = 24.dp)
         ) {
             TomaTopAppBar(
                 onMenuClick = { scope.launch { drawerState.open() } }
@@ -196,28 +197,6 @@ fun TomaHomeScreen(
                         items = uiState.recentItems,
                         onItemClick = onRecentItemClick,
                         onMoreClick = onRecentMoreClick
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                uiState.selectedRecentItemId?.let { selectedId ->
-                    val selectedItem = uiState.recentItems.firstOrNull { it.id == selectedId }
-                    if (selectedItem != null) {
-                        SelectedRecentItemCard(
-                            title = selectedItem.title,
-                            sourceType = selectedItem.sourceType,
-                            timeText = selectedItem.timeText,
-                            modifier = Modifier.padding(horizontal = 24.dp)
-                        )
-                    }
-                }
-
-                uiState.errorMessage?.let { message ->
-                    Spacer(modifier = Modifier.height(16.dp))
-                    ErrorMessageCard(
-                        message = message,
-                        modifier = Modifier.padding(horizontal = 24.dp)
                     )
                 }
 
@@ -398,6 +377,16 @@ fun YoutubeImportCard(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val icons = listOf(Icons.Filled.SmartDisplay, Icons.Default.Link, Icons.Default.Description)
+    var iconIndex by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(2000)
+            iconIndex = (iconIndex + 1) % icons.size
+        }
+    }
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -416,12 +405,14 @@ fun YoutubeImportCard(
                 color = Color(0xFFFFF1E8),
                 modifier = Modifier.size(52.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Filled.SmartDisplay,
-                    contentDescription = "유튜브",
-                    tint = TomaMainOrange,
-                    modifier = Modifier.padding(14.dp)
-                )
+                androidx.compose.animation.Crossfade(targetState = icons[iconIndex], label = "IconAnimation") { icon ->
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = "유튜브",
+                        tint = TomaMainOrange,
+                        modifier = Modifier.padding(14.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(16.dp))
@@ -450,7 +441,7 @@ fun YoutubeImportCard(
                     decorationBox = { innerTextField ->
                         if (linkText.isEmpty()) {
                             Text(
-                                text = "유튜브 링크 붙여넣기",
+                                text = "유튜브,블로그 링크 붙여넣기",
                                 color = Color(0xFFADB5BD),
                                 fontSize = 14.sp,
                                 maxLines = 1,
