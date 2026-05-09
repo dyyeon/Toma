@@ -10,23 +10,27 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.ui.theme.*
+import org.json.JSONObject
 
 @Composable
 fun RecentHistoryScreen(
@@ -151,10 +155,23 @@ private fun HistoryItemCard(
     item: RecentRecipeItem,
     onClick: () -> Unit
 ) {
+    val imageUrl = remember(item.recipeDataJson) {
+        if (item.recipeDataJson.isNullOrBlank()) null
+        else {
+            runCatching {
+                JSONObject(item.recipeDataJson)
+                    .optString("image_url")
+                    .trim()
+                    .takeIf { it.startsWith("http") }
+            }.getOrNull()
+        }
+    }
+
     val (icon, iconBgColor, badgeColor) = when (item.sourceType) {
-        RecipeSourceType.TEXT -> Triple(Icons.Default.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7))
+        RecipeSourceType.TEXT -> Triple(Icons.AutoMirrored.Filled.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7))
         RecipeSourceType.YOUTUBE -> Triple(Icons.Default.PlayCircle, Color(0xFFFFF1E8), TomaMainOrange)
         RecipeSourceType.IMAGE -> Triple(Icons.Default.CameraAlt, Color(0xFFFFECEC), TomaMainRed)
+        RecipeSourceType.WEB -> Triple(Icons.Default.History, Color(0xFFE8F5E9), Color(0xFF43A047))
     }
 
     Surface(
@@ -170,18 +187,29 @@ private fun HistoryItemCard(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // [왼쪽 아이콘]
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = iconBgColor,
-                modifier = Modifier.size(52.dp)
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = badgeColor,
-                    modifier = Modifier.padding(14.dp)
+            // [왼쪽 썸네일 또는 아이콘]
+            if (!imageUrl.isNullOrBlank()) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = item.title,
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(RoundedCornerShape(14.dp)),
+                    contentScale = ContentScale.Crop
                 )
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = iconBgColor,
+                    modifier = Modifier.size(52.dp)
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = badgeColor,
+                        modifier = Modifier.padding(14.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(16.dp))
@@ -214,7 +242,12 @@ private fun HistoryItemCard(
                 color = badgeColor.copy(alpha = 0.1f),
             ) {
                 Text(
-                    text = item.sourceType.name,
+                    text = when(item.sourceType) {
+                        RecipeSourceType.TEXT -> "채팅"
+                        RecipeSourceType.YOUTUBE -> "유튜브"
+                        RecipeSourceType.WEB -> "웹"
+                        RecipeSourceType.IMAGE -> "이미지"
+                    },
                     color = badgeColor,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.ExtraBold,
