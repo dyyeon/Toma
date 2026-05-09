@@ -1,98 +1,296 @@
 package com.capstone.toma.ui.screen
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.capstone.toma.ui.component.TomaTopAppBar
+
+private val TomaMainOrange = Color(0xFFEE8C2B)
+private val TomaBackground = Color(0xFFF8F9FA)
+private val TomaCardBorder = Color(0xFFF1F3F5)
+private val TomaPrimaryText = Color(0xFF212529)
+private val TomaSecondaryText = Color(0xFF868E96)
 
 @Composable
-fun CustomerCenterScreen(onBackClick: () -> Unit = {}) {
-    val TomaPointOrange = Color(0xFFEE8C2B)
-    val TomaSettingsBg = Color(0xFFFFFBFA)
-    val TomaItemGroupBg = Color(0xFFF7F2F0)
-
-    // 🌟 TOMA 앱 맞춤형 FAQ 데이터 4가지 꽉꽉!
+fun CustomerCenterScreen(
+    onBackClick: () -> Unit = {},
+    onContactClick: () -> Unit = {}
+) {
     val faqList = listOf(
-        Pair("Q. 음성 가이드는 어떻게 사용하나요?", "홈 화면에서 마이크 버튼을 누르고 '메뉴 추천해줘' 혹은 '간단한 레시피 알려줘'라고 말씀하시면 TOMA가 똑똑하게 찾아드립니다!"),
-        Pair("Q. 맞춤 레시피 기준이 무엇인가요?", "사용자가 최근 검색한 요리, 자주 찾는 식재료, 그리고 설정해 둔 선호/비선호 재료 데이터를 바탕으로 AI가 가장 적합한 레시피를 추천해 줍니다."),
-        Pair("Q. 푸시 알림이 오지 않아요.", "기기의 설정 > 애플리케이션 > TOMA > 알림 메뉴에서 알림이 허용되어 있는지 확인해 주세요. 앱 내 '푸시 알림 설정'에서도 전체 허용이 켜져 있어야 합니다."),
-        Pair("Q. 등록한 이메일을 변경하고 싶어요.", "설정 > 이메일 수신 설정 메뉴에서 기존 이메일을 지우고 새로운 이메일을 입력한 뒤 '저장하기' 버튼을 누르시면 반영됩니다.")
+        Pair("음성 가이드는 어떻게 사용하나요?", "홈 화면에서 마이크 버튼을 누르고 '메뉴 추천해줘' 혹은 '간단한 레시피 알려줘'라고 말씀하시면 TOMA가 똑똑하게 찾아드립니다!"),
+        Pair("맞춤 레시피 기준이 무엇인가요?", "사용자가 최근 검색한 요리, 자주 찾는 식재료, 그리고 설정해 둔 선호/비선호 재료 데이터를 바탕으로 AI가 가장 적합한 레시피를 추천해 줍니다."),
+        Pair("푸시 알림이 오지 않아요.", "기기의 설정 > 애플리케이션 > TOMA > 알림 메뉴에서 알림이 허용되어 있는지 확인해 주세요. 앱 내 '알림 설정'에서도 전체 허용이 켜져 있어야 합니다."),
+        Pair("등록한 이메일을 변경하고 싶어요.", "설정 > 이메일 수신 설정 메뉴에서 기존 이메일을 지우고 새로운 이메일을 입력한 뒤 '저장하기' 버튼을 누르시면 반영됩니다.")
     )
 
-    // 몇 번째 질문이 펼쳐져 있는지 기억하는 변수 (-1은 모두 접힌 상태)
-    var expandedIndex by remember { mutableStateOf(-1) }
+    var expandedIndex by remember { mutableIntStateOf(-1) }
 
-    Column(modifier = Modifier.fillMaxSize().background(TomaSettingsBg)) {
-        // 상단 바 (통일된 TopAppBar)
-        TomaTopAppBar(
-            title = "고객센터",
-            showBackButton = true,
-            onBackClick = onBackClick
-        )
-        Spacer(modifier = Modifier.height(16.dp))
+    Scaffold(
+        containerColor = TomaBackground,
+        topBar = {
+            CustomerCenterTopBar(onBackClick = onBackClick)
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            Spacer(modifier = Modifier.height(16.dp))
 
-        Text("자주 묻는 질문 (FAQ)", color = TomaPointOrange, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 32.dp))
-        Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "자주 묻는 질문 (FAQ)",
+                color = TomaPrimaryText,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
 
-        // FAQ 리스트 영역
-        Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).verticalScroll(rememberScrollState())) {
+            // FAQ 리스트
             faqList.forEachIndexed { index, faq ->
                 val isExpanded = expandedIndex == index
+                FaqItemCard(
+                    question = faq.first,
+                    answer = faq.second,
+                    isExpanded = isExpanded,
+                    onClick = { expandedIndex = if (isExpanded) -1 else index }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                        .shadow(1.dp, RoundedCornerShape(16.dp))
-                        .background(TomaItemGroupBg, RoundedCornerShape(16.dp))
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // 추가 문의 유도 섹션
+            ContactSupportSection(onClick = onContactClick)
+
+            Spacer(modifier = Modifier.height(48.dp))
+        }
+    }
+}
+
+@Composable
+private fun CustomerCenterTopBar(onBackClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp, vertical = 16.dp)
+            .statusBarsPadding(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier
+                .size(44.dp)
+                .clickable { onBackClick() },
+            shape = CircleShape,
+            color = Color.White,
+            border = BorderStroke(1.dp, TomaCardBorder),
+            shadowElevation = 2.dp
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "뒤로가기",
+                modifier = Modifier.padding(12.dp),
+                tint = TomaPrimaryText
+            )
+        }
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Text(
+            text = "고객센터",
+            color = TomaPrimaryText,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun FaqItemCard(
+    question: String,
+    answer: String,
+    isExpanded: Boolean,
+    onClick: () -> Unit
+) {
+    val arrowRotationDegree by animateFloatAsState(
+        targetValue = if (isExpanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 300),
+        label = "arrowRotation"
+    )
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, TomaCardBorder),
+        shadowElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onClick() }
+        ) {
+            // 질문 영역
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = TomaMainOrange.copy(alpha = 0.1f),
+                    modifier = Modifier.padding(end = 12.dp)
                 ) {
-                    // 1. 질문 영역 (터치하면 펼쳐짐/접힘)
+                    Text(
+                        text = "Q",
+                        color = TomaMainOrange,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                    )
+                }
+
+                Text(
+                    text = question,
+                    color = TomaPrimaryText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = "확장",
+                    tint = TomaSecondaryText,
+                    modifier = Modifier.rotate(arrowRotationDegree)
+                )
+            }
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        thickness = 1.dp,
+                        color = TomaCardBorder
+                    )
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { expandedIndex = if (isExpanded) -1 else index }
+                            .background(Color(0xFFFBFBFC))
                             .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalAlignment = Alignment.Top
                     ) {
-                        Text(text = faq.first, color = Color.Black, fontSize = 15.sp, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
-                        Icon(
-                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Expand",
-                            tint = TomaPointOrange
-                        )
-                    }
-
-                    // 2. 답변 영역 (해당 질문이 터치되었을 때만 등장!)
-                    if (isExpanded) {
-                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color.White.copy(alpha = 0.6f), RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
-                                .padding(16.dp)
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFE9ECEF),
+                            modifier = Modifier.padding(end = 12.dp)
                         ) {
-                            Text(text = faq.second, color = Color.DarkGray, fontSize = 14.sp, lineHeight = 22.sp)
+                            Text(
+                                text = "A",
+                                color = TomaSecondaryText,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Black,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
                         }
+
+                        Text(
+                            text = answer,
+                            color = Color(0xFF495057),
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
+}
+
+@Composable
+private fun ContactSupportSection(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .clickable { onClick() },
+        color = TomaMainOrange,
+        shadowElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = Color.White.copy(alpha = 0.2f),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.SupportAgent,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.padding(12.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "원하는 답변을 찾지 못하셨나요?",
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = "1:1 문의하기",
+                    color = Color.White,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+    }
+}
+
+@Preview(showBackground = true, showSystemUi = true)
+@Composable
+fun CustomerCenterScreenPreview() {
+    CustomerCenterScreen()
 }

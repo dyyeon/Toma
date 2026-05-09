@@ -1,5 +1,6 @@
 package com.capstone.toma.ui.screen
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -21,16 +22,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.capstone.toma.ui.theme.*
-import androidx.compose.ui.res.painterResource
 import com.capstone.toma.R
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
+import com.capstone.toma.ui.theme.*
+import androidx.compose.foundation.BorderStroke
+
+private val TomaMainOrange = Color(0xFFEE8C2B)
+private val TomaBackground = Color(0xFFF8F9FA)
+private val TomaCardBorder = Color(0xFFF1F3F5)
+private val TomaPrimaryText = Color(0xFF212529)
+private val TomaSecondaryText = Color(0xFF868E96)
 
 data class ChatMessage(
     val id: String,
@@ -58,21 +64,21 @@ fun AiChatScreen(
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    LaunchedEffect(uiState.messages.size) {
-        if (uiState.messages.isNotEmpty()) {
-            listState.animateScrollToItem(uiState.messages.size - 1)
+    LaunchedEffect(uiState.messages.size, uiState.isTyping) {
+        val targetIndex = if (uiState.isTyping) uiState.messages.size else uiState.messages.size - 1
+        if (targetIndex >= 0) {
+            listState.animateScrollToItem(targetIndex)
         }
     }
 
-    // 에러 다이얼로그 노출
     uiState.errorDialogMessage?.let { message ->
         AlertDialog(
             onDismissRequest = onErrorDismiss,
-            title = { Text(text = "분석 실패", fontWeight = FontWeight.Bold) },
-            text = { Text(text = message) },
+            title = { Text(text = "분석 실패", fontWeight = FontWeight.Bold, color = TomaPrimaryText) },
+            text = { Text(text = message, color = TomaSecondaryText) },
             confirmButton = {
                 TextButton(onClick = onErrorDismiss) {
-                    Text("확인", color = TomaMainOrange)
+                    Text("확인", color = TomaMainOrange, fontWeight = FontWeight.Bold)
                 }
             },
             shape = RoundedCornerShape(20.dp),
@@ -83,36 +89,8 @@ fun AiChatScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = TomaBackground,
-        topBar = { ChatTopAppBar(onBackClick = onBackClick) }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            // [채팅 목록 영역]
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-
-                items(uiState.messages, key = { it.id }) { message ->
-                    ChatBubble(message = message)
-                }
-
-                // 마지막 메시지가 이미 AI 메시지(링크 분석 상태)면 인디케이터 중복 표시 안 함
-                if (uiState.isTyping && uiState.messages.lastOrNull()?.isUser == true) {
-                    item {
-                        TypingIndicatorBubble()
-                    }
-                }
-            }
-
+        topBar = { ChatTopAppBar(onBackClick = onBackClick) },
+        bottomBar = {
             ChatInputBar(
                 inputText = uiState.inputText,
                 isTyping = uiState.isTyping,
@@ -121,37 +99,75 @@ fun AiChatScreen(
                 onMicClick = onMicClick
             )
         }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp) // 말풍선 간격 넓힘
+            ) {
+                items(uiState.messages, key = { it.id }) { message ->
+                    ChatBubble(message = message)
+                }
+
+                if (uiState.isTyping) {
+                    item {
+                        TypingIndicatorBubble()
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-fun ChatTopAppBar(onBackClick: () -> Unit) {
+private fun ChatTopAppBar(onBackClick: () -> Unit) {
     Surface(
-        color = TomaBackground,
-        shadowElevation = 0.dp
+        color = Color.White.copy(alpha = 0.95f),
+        shadowElevation = 2.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
+                .statusBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = onBackClick) {
+            Surface(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clickable { onBackClick() },
+                shape = CircleShape,
+                color = Color.Transparent
+            ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                     contentDescription = "뒤로 가기",
-                    tint = TomaPrimaryText
+                    tint = TomaPrimaryText,
+                    modifier = Modifier.padding(8.dp)
                 )
             }
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            Box {
+            Surface(
+                shape = CircleShape,
+                color = TomaMainOrange.copy(alpha = 0.1f),
+                modifier = Modifier.size(36.dp)
+            ) {
                 Icon(
                     painter = painterResource(id = R.drawable.ic_tomato),
                     contentDescription = "Toma Logo",
                     tint = Color.Unspecified,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.padding(6.dp)
                 )
             }
 
@@ -159,99 +175,171 @@ fun ChatTopAppBar(onBackClick: () -> Unit) {
 
             Column {
                 Text(
-                    text = "To-ma",
-                    color = TomaMainOrange, // 기존 TomaPrimaryText(검은색)에서 브랜드 컬러로 변경! (TomaMainOrange로 바꿔도 무방해)
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
+                    text = "TOMA AI",
+                    color = TomaPrimaryText,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.ExtraBold
                 )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF20C997))
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "답변 가능",
+                        color = TomaSecondaryText,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-fun ChatBubble(message: ChatMessage) {
+private fun ChatBubble(message: ChatMessage) {
     val isUser = message.isUser
 
-    val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
-
-    val bubbleShape = if (isUser) {
-        RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 4.dp)
-    } else {
-        RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp)
-    }
-
-    val bubbleBgColor = if (isUser) TomaMainOrange else Color.White
-    val textColor = if (isUser) Color.White else TomaPrimaryText
-
-    Box(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        contentAlignment = alignment
+        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
     ) {
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-        ) {
-            if (!isUser) {
-                Text(
-                    text = message.timestamp,
-                    color = TomaSecondaryText,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(end = 6.dp, bottom = 2.dp)
-                )
-            }
-
+        if (!isUser) {
             Surface(
-                shape = bubbleShape,
-                color = bubbleBgColor,
-                shadowElevation = if (isUser) 2.dp else 4.dp,
-                modifier = Modifier.widthIn(max = 260.dp)
+                shape = CircleShape,
+                color = Color.White,
+                shadowElevation = 2.dp,
+                border = BorderStroke(1.dp, TomaCardBorder),
+                modifier = Modifier
+                    .size(32.dp)
+                    .padding(bottom = 2.dp)
             ) {
-                Text(
-                    text = message.text,
-                    color = textColor,
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_tomato),
+                    contentDescription = "Toma AI",
+                    tint = Color.Unspecified,
+                    modifier = Modifier.padding(5.dp)
                 )
             }
-
-            if (isUser) {
-                Text(
-                    text = message.timestamp,
-                    color = TomaSecondaryText,
-                    fontSize = 10.sp,
-                    modifier = Modifier.padding(start = 6.dp, bottom = 2.dp)
-                )
-            }
+            Spacer(modifier = Modifier.width(8.dp))
         }
-    }
-}
 
-@Composable
-fun TypingIndicatorBubble() {
-    Box(
-        modifier = Modifier.fillMaxWidth(),
-        contentAlignment = Alignment.CenterStart
-    ) {
+        if (isUser) {
+            Text(
+                text = message.timestamp,
+                color = Color(0xFFADB5BD),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(end = 6.dp, bottom = 4.dp)
+            )
+        }
+
+        val bubbleShape = if (isUser) {
+            RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 4.dp)
+        } else {
+            RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 4.dp, bottomEnd = 20.dp)
+        }
+
+        val bubbleBgColor = if (isUser) TomaMainOrange else Color.White
+        val textColor = if (isUser) Color.White else TomaPrimaryText
+
         Surface(
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp),
-            color = Color.White,
-            shadowElevation = 4.dp,
-            modifier = Modifier.padding(bottom = 8.dp)
+            shape = bubbleShape,
+            color = bubbleBgColor,
+            shadowElevation = if (isUser) 2.dp else 4.dp,
+            border = if (isUser) null else BorderStroke(1.dp, TomaCardBorder),
+            modifier = Modifier.widthIn(max = 250.dp)
         ) {
             Text(
-                text = "레시피를 고민 중이에요...",
-                color = TomaSecondaryText,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                text = message.text,
+                color = textColor,
+                fontSize = 15.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+        }
+
+        if (!isUser) {
+            Text(
+                text = message.timestamp,
+                color = Color(0xFFADB5BD),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.padding(start = 6.dp, bottom = 4.dp)
             )
         }
     }
 }
 
 @Composable
-fun ChatInputBar(
+private fun TypingIndicatorBubble() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Surface(
+            shape = CircleShape,
+            color = Color.White,
+            shadowElevation = 2.dp,
+            border = BorderStroke(1.dp, TomaCardBorder),
+            modifier = Modifier
+                .size(32.dp)
+                .padding(bottom = 2.dp)
+        ) {
+            Icon(
+                painter = painterResource(id = R.drawable.ic_tomato),
+                contentDescription = "Toma AI",
+                tint = Color.Unspecified,
+                modifier = Modifier.padding(5.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Surface(
+            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 4.dp, bottomEnd = 20.dp),
+            color = Color.White,
+            shadowElevation = 4.dp,
+            border = BorderStroke(1.dp, TomaCardBorder)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val infiniteTransition = rememberInfiniteTransition(label = "typing")
+                val dotAlpha = List(3) { index ->
+                    infiniteTransition.animateFloat(
+                        initialValue = 0.3f,
+                        targetValue = 1f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(durationMillis = 600, delayMillis = index * 200),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "dotAlpha_$index"
+                    )
+                }
+
+                dotAlpha.forEach { alpha ->
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(TomaMainOrange.copy(alpha = alpha.value))
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChatInputBar(
     inputText: String,
     isTyping: Boolean,
     onInputTextChange: (String) -> Unit,
@@ -260,27 +348,32 @@ fun ChatInputBar(
 ) {
     Surface(
         color = Color.White,
-        shadowElevation = 16.dp
+        shadowElevation = 16.dp,
+        border = BorderStroke(1.dp, TomaCardBorder)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 .navigationBarsPadding(),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Bottom
         ) {
-            IconButton(
+            // 마이크 버튼
+            Surface(
                 onClick = onMicClick,
                 enabled = !isTyping,
-                modifier = Modifier
-                    .size(42.dp)
-                    .background(if (isTyping) Color(0xFFF5F5F5) else TomaBackground, CircleShape)
+                shape = CircleShape,
+                color = if (isTyping) Color(0xFFF1F3F5) else TomaMainOrange.copy(alpha = 0.1f),
+                modifier = Modifier.size(44.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.Mic,
-                    contentDescription = "음성 입력",
-                    tint = if (isTyping) Color.LightGray else TomaMainOrange
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "음성 입력",
+                        tint = if (isTyping) Color(0xFFADB5BD) else TomaMainOrange,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -288,9 +381,9 @@ fun ChatInputBar(
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 42.dp, max = 120.dp)
-                    .background(TomaBackground, RoundedCornerShape(20.dp))
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                    .heightIn(min = 44.dp, max = 120.dp)
+                    .background(Color(0xFFF1F3F5), RoundedCornerShape(22.dp))
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 BasicTextField(
@@ -299,23 +392,18 @@ fun ChatInputBar(
                     enabled = !isTyping,
                     textStyle = LocalTextStyle.current.copy(
                         color = if (isTyping) Color.Gray else TomaPrimaryText,
-                        fontSize = 15.sp
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()), // 입력창이 최대 높이(120.dp)를 넘어가면 스크롤되도록 추가!
-                    keyboardOptions = KeyboardOptions(
-                        imeAction = ImeAction.Send
-                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(
-                        onSend = {
-                            if (inputText.isNotBlank()) onSendMessage()
-                        }
+                        onSend = { if (inputText.isNotBlank()) onSendMessage() }
                     ),
                     decorationBox = { innerTextField ->
                         if (inputText.isEmpty()) {
                             Text(
-                                text = if (isTyping) "분석 중입니다..." else "메시지를 입력하세요...",
+                                text = if (isTyping) "답변을 기다리고 있어요..." else "메시지를 입력하세요",
                                 color = TomaSecondaryText,
                                 fontSize = 15.sp
                             )
@@ -327,30 +415,31 @@ fun ChatInputBar(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // [전송 버튼]
             val isSendEnabled = inputText.isNotBlank() && !isTyping
-            Box(
-                modifier = Modifier
-                    .size(42.dp)
-                    .clip(CircleShape)
-                    .background(if (isSendEnabled) TomaMainOrange else Color(0xFFE0E0E0))
-                    .clickable(enabled = isSendEnabled) { onSendMessage() },
-                contentAlignment = Alignment.Center
+            Surface(
+                onClick = onSendMessage,
+                enabled = isSendEnabled,
+                shape = CircleShape,
+                color = if (isSendEnabled) TomaMainOrange else Color(0xFFE9ECEF),
+                shadowElevation = if (isSendEnabled) 4.dp else 0.dp,
+                modifier = Modifier.size(44.dp)
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "전송",
-                    tint = Color.White,
-                    modifier = Modifier
-                        .size(18.dp)
-                        .padding(start = 2.dp)
-                )
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "전송",
+                        tint = if (isSendEnabled) Color.White else Color(0xFFADB5BD),
+                        modifier = Modifier
+                            .size(20.dp)
+                            .padding(start = 2.dp)
+                    )
+                }
             }
         }
     }
 }
 
-// UI 테스트용 프리뷰
+
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
 fun PreviewAiChatScreen() {
@@ -374,9 +463,27 @@ fun PreviewAiChatScreen() {
         onBackClick = {},
         onInputTextChange = { inputText = it },
         onSendMessage = {
-            messages = messages + ChatMessage("new", inputText, true, "방금")
+            messages = messages + ChatMessage("new", inputText, true, "오후 1:02")
             inputText = ""
         },
+        onMicClick = {}
+    )
+}
+
+@Preview(name = "타이핑 중 상태", showBackground = true, showSystemUi = true)
+@Composable
+fun PreviewAiChatScreenTyping() {
+    AiChatScreen(
+        uiState = AiChatUiState(
+            inputText = "",
+            messages = listOf(
+                ChatMessage("1", "집에 양파랑 계란, 그리고 스팸이 조금 남았어.", true, "오후 1:01")
+            ),
+            isTyping = true
+        ),
+        onBackClick = {},
+        onInputTextChange = {},
+        onSendMessage = {},
         onMicClick = {}
     )
 }

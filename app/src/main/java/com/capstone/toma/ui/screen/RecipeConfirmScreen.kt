@@ -1,56 +1,37 @@
 package com.capstone.toma.ui.screen
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Thermostat
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.capstone.toma.model.normalizeRecipeCategory
-import com.capstone.toma.ui.theme.TomaBackground
-import com.capstone.toma.ui.theme.TomaCard
-import com.capstone.toma.ui.theme.TomaMainOrange
-import com.capstone.toma.ui.theme.TomaPrimaryText
-import com.capstone.toma.ui.theme.TomaSecondaryText
+import com.capstone.toma.ui.theme.*
 import org.json.JSONObject
 
 @Composable
@@ -66,7 +47,7 @@ fun RecipeConfirmScreen(
     }
 
     Scaffold(
-        containerColor = TomaBackground,
+        containerColor = Color(0xFFF8F9FA),
         bottomBar = {
             ConfirmDecisionBar(
                 onConfirmClick = onConfirmClick,
@@ -77,12 +58,12 @@ fun RecipeConfirmScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                start = 20.dp,
+                start = 24.dp,
                 top = innerPadding.calculateTopPadding() + 20.dp,
-                end = 20.dp,
-                bottom = innerPadding.calculateBottomPadding() + 24.dp
+                end = 24.dp,
+                bottom = innerPadding.calculateBottomPadding() + 32.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             item {
                 ConfirmTopBar(
@@ -104,7 +85,24 @@ fun RecipeConfirmScreen(
             }
 
             item {
-                SectionTitle("\uC7AC\uB8CC")
+                Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(TomaMainOrange)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "준비할 재료",
+                            color = Color.Black,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
             }
 
             items(recipe.ingredients.chunked(2)) { row ->
@@ -136,21 +134,30 @@ private fun ConfirmTopBar(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onBackClick) {
+        Surface(
+            modifier = Modifier
+                .size(44.dp)
+                .clickable { onBackClick() },
+            shape = CircleShape,
+            color = Color.White,
+            border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
+            shadowElevation = 2.dp
+        ) {
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "\uB4A4\uB85C\uAC00\uAE30",
-                tint = TomaPrimaryText
+                contentDescription = "뒤로가기",
+                modifier = Modifier.padding(12.dp),
+                tint = Color.Black
             )
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(16.dp))
 
         Text(
             text = title,
-            color = TomaPrimaryText,
+            color = Color.Black,
             fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.ExtraBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
@@ -163,17 +170,31 @@ private fun ConfirmImageSection(imageUrl: String?) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(220.dp),
-        shape = RoundedCornerShape(20.dp),
+            .height(240.dp)
+            .shadow(12.dp, RoundedCornerShape(24.dp), ambientColor = TomaMainOrange, spotColor = TomaMainOrange),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
-        AsyncImage(
-            model = imageUrl.takeIf { !it.isNullOrBlank() }
-                ?: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd",
-            contentDescription = "\uC694\uB9AC \uC774\uBBF8\uC9C0",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop
-        )
+        if (imageUrl.isNullOrBlank()) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color(0xFFFFF3E8)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.RestaurantMenu,
+                    contentDescription = null,
+                    tint = TomaMainOrange.copy(alpha = 0.5f),
+                    modifier = Modifier.size(64.dp)
+                )
+            }
+        } else {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = "요리 이미지",
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
     }
 }
 
@@ -190,21 +211,17 @@ private fun InfoCardRow(
         ) {
             InfoCard(
                 modifier = Modifier.weight(1f),
-                label = "\uBD84\uB958",
-                value = category
+                label = "카테고리",
+                value = category,
+                icon = Icons.Default.RestaurantMenu,
+                iconColor = Color(0xFF20C997)
             )
             InfoCard(
                 modifier = Modifier.weight(1f),
-                label = "\uC18C\uC694 \uC2DC\uAC04",
+                label = "소요 시간",
                 value = timeText,
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = TomaMainOrange,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                icon = Icons.Default.Schedule,
+                iconColor = Color(0xFF4DABF7)
             )
         }
 
@@ -214,16 +231,10 @@ private fun InfoCardRow(
         ) {
             InfoCard(
                 modifier = Modifier.weight(1f),
-                label = "\uB09C\uC774\uB3C4",
+                label = "난이도",
                 value = difficulty,
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Thermostat,
-                        contentDescription = null,
-                        tint = TomaMainOrange,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
+                icon = Icons.Default.Thermostat,
+                iconColor = Color(0xFFFAB005)
             )
             Spacer(modifier = Modifier.weight(1f))
         }
@@ -235,51 +246,43 @@ private fun InfoCard(
     modifier: Modifier = Modifier,
     label: String,
     value: String,
-    icon: @Composable (() -> Unit)? = null
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconColor: Color
 ) {
-    Card(
-        modifier = modifier.height(88.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = TomaCard)
+    Surface(
+        modifier = modifier.height(90.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, Color(0xFFF1F3F5)),
+        shadowElevation = 2.dp
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .padding(16.dp),
             verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = label,
-                color = TomaSecondaryText,
-                fontSize = 12.sp
-            )
-            Spacer(modifier = Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                icon?.invoke()
-                if (icon != null) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                }
+                Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = iconColor)
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = value,
-                    color = TomaPrimaryText,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    text = label,
+                    color = Color.LightGray,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = value,
+                color = Color.Black,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.ExtraBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
-}
-
-@Composable
-private fun SectionTitle(title: String) {
-    Text(
-        text = title,
-        color = TomaPrimaryText,
-        fontSize = 24.sp,
-        fontWeight = FontWeight.Bold
-    )
 }
 
 @Composable
@@ -290,16 +293,29 @@ private fun IngredientCard(
     Surface(
         modifier = modifier,
         color = Color.White,
-        shape = RoundedCornerShape(18.dp),
-        shadowElevation = 2.dp
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, Color(0xFFF1F3F5)),
+        shadowElevation = 1.dp
     ) {
-        Text(
-            text = text,
-            color = TomaPrimaryText,
-            fontSize = 15.sp,
-            lineHeight = 22.sp,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFE9ECEF))
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = text,
+                color = Color(0xFF495057),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                lineHeight = 22.sp
+            )
+        }
     }
 }
 
@@ -310,18 +326,20 @@ private fun ConfirmDecisionBar(
 ) {
     Surface(
         color = Color.White,
-        shadowElevation = 16.dp
+        shadowElevation = 24.dp,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = 24.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "\uC704 \uB808\uC2DC\uD53C\uB85C \uC548\uB0B4\uB97C \uC2DC\uC791\uD560\uAE4C\uC694?",
-                color = TomaPrimaryText,
+                text = "이 레시피로 요리를 시작할까요?",
+                color = Color.Black,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -334,24 +352,26 @@ private fun ConfirmDecisionBar(
                     onClick = onRejectClick,
                     modifier = Modifier
                         .weight(1f)
-                        .height(52.dp),
+                        .height(56.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TomaSecondaryText)
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Gray),
+                    border = BorderStroke(1.dp, Color(0xFFE5E7EB))
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("NO", fontWeight = FontWeight.Bold)
+                    Text("아니오", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Button(
                     onClick = onConfirmClick,
                     modifier = Modifier
                         .weight(1f)
-                        .height(52.dp),
+                        .height(56.dp)
+                        .shadow(8.dp, RoundedCornerShape(16.dp), ambientColor = TomaMainOrange, spotColor = TomaMainOrange),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = TomaMainOrange,
@@ -361,15 +381,16 @@ private fun ConfirmDecisionBar(
                     Icon(
                         imageVector = Icons.Default.Check,
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("YES", fontWeight = FontWeight.Bold)
+                    Text("시작하기", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
 }
+
 
 private data class ConfirmRecipeUiData(
     val title: String,
@@ -388,14 +409,11 @@ private fun parseConfirmRecipe(keyword: String, recipeDataJson: String?): Confir
     val ingredients = parseStringArray(json, "ingredients")
     val title = json?.optString("title").orEmpty()
         .ifBlank { keyword }
-    val category = normalizeRecipeCategory(
-        rawCategory = json?.optString("category"),
-        title = title
-    )
+    val category = json?.optString("category").orEmpty()
     val difficulty = json?.optString("difficulty").orEmpty()
     val timeText = json?.optString("time").orEmpty()
     val imageUrl = json?.optString("image_url").orEmpty()
-        .takeIf { it.isNotBlank() && it != "\uC5C6\uC74C" }
+        .takeIf { it.isNotBlank() && it != "없음" }
 
     return ConfirmRecipeUiData(
         title = title,
@@ -411,4 +429,34 @@ private fun parseStringArray(json: JSONObject?, key: String): List<String> {
     val array = json?.optJSONArray(key) ?: return emptyList()
     return List(array.length()) { index -> array.optString(index) }
         .filter { it.isNotBlank() }
+}
+
+@Preview(showBackground = true, showSystemUi = true)
+@Composable
+fun RecipeConfirmScreenPreview() {
+    val mockRecipeJson = """
+        {
+            "title": "스팸 듬뿍 김치볶음밥",
+            "category": "한식",
+            "difficulty": "쉬움",
+            "time": "15분",
+            "image_url": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd",
+            "ingredients": [
+                "신김치 1컵",
+                "밥 1공기",
+                "스팸 1캔",
+                "참기름 1큰술",
+                "계란 1개",
+                "통깨 약간"
+            ]
+        }
+    """.trimIndent()
+
+    RecipeConfirmScreen(
+        keyword = "김치볶음밥",
+        recipeDataJson = mockRecipeJson,
+        onBackClick = {},
+        onConfirmClick = {},
+        onRejectClick = {}
+    )
 }
