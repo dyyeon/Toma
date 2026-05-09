@@ -15,16 +15,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.capstone.toma.ui.theme.*
 import com.capstone.toma.viewmodel.RecipeStorageViewModel
 import org.json.JSONObject
@@ -36,68 +38,66 @@ fun RecipeDetailScreen(
     onBackClick: () -> Unit = {}
 ) {
     val storageViewModel: RecipeStorageViewModel = viewModel()
-    
     val recipeData = remember(recipeDataJson) {
-        recipeDataJson?.let {
-            try {
-                JSONObject(it)
-            } catch (e: Exception) {
-                null
-            }
-        }
+        recipeDataJson?.let { try { JSONObject(it) } catch (e: Exception) { null } }
     }
-
     val title = recipeData?.optString("title", keyword) ?: keyword
     val isFavorite by storageViewModel.isRecipeSaved(title).collectAsState(initial = false)
 
+    RecipeDetailContent(
+        keyword = keyword,
+        recipeDataJson = recipeDataJson,
+        isFavorite = isFavorite,
+        onBackClick = onBackClick,
+        onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) }
+    )
+}
+
+@Composable
+fun RecipeDetailContent(
+    keyword: String,
+    recipeDataJson: String?,
+    isFavorite: Boolean,
+    onBackClick: () -> Unit,
+    onFavoriteClick: () -> Unit
+) {
+    val recipeData = remember(recipeDataJson) {
+        recipeDataJson?.let { try { JSONObject(it) } catch (e: Exception) { null } }
+    }
+    val title = recipeData?.optString("title", keyword) ?: keyword
     val steps = remember(recipeData) {
-        recipeData?.optJSONArray("steps")?.let { array ->
-            List(array.length()) { array.getString(it) }
-        } ?: emptyList()
+        recipeData?.optJSONArray("steps")?.let { array -> List(array.length()) { array.getString(it) } } ?: emptyList()
     }
-
     val ingredients = remember(recipeData) {
-        recipeData?.optJSONArray("ingredients")?.let { array ->
-            List(array.length()) { array.getString(it) }
-        } ?: emptyList()
+        recipeData?.optJSONArray("ingredients")?.let { array -> List(array.length()) { array.getString(it) } } ?: emptyList()
     }
-
     val difficulty = recipeData?.optString("difficulty") ?: "보통"
     val timeStr = recipeData?.optString("time") ?: "20분"
-    val imageUrl = recipeData?.optString("image_url")
 
-    // 현재 단계를 관리 (0: 재료 확인, 1~N: 조리 단계)
     var currentStepIndex by remember { mutableIntStateOf(0) }
+    val totalSteps = steps.size
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = TomaBackground
-    ) {
+    Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFFF8F9FA)) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 30.dp)
+                .padding(horizontal = 24.dp)
         ) {
+            Spacer(modifier = Modifier.height(20.dp))
+
             RecipeTopBar(
-                onBackClick = onBackClick, 
+                onBackClick = onBackClick,
                 keyword = title,
                 isFavorite = isFavorite,
-                onFavoriteClick = {
-                    storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite)
-                }
+                onFavoriteClick = onFavoriteClick
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            CookingImageSection(imageUrl)
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            val totalSteps = steps.size
             val progress = if (totalSteps > 0) (currentStepIndex.toFloat() / totalSteps.toFloat()) else 0f
             ProgressSection(current = currentStepIndex, total = totalSteps, progress = progress)
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             Box(modifier = Modifier.weight(1f)) {
                 if (currentStepIndex == 0) {
@@ -105,168 +105,107 @@ fun RecipeDetailScreen(
                 } else {
                     CurrentStepSection(
                         stepNumber = currentStepIndex,
-                        stepText = steps.getOrNull(currentStepIndex - 1) ?: "준비된 단계가 없습니다."
+                        stepText = steps.getOrNull(currentStepIndex - 1) ?: ""
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(18.dp))
-
             InfoCardRow(timeStr, difficulty)
 
-            Spacer(modifier = Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             AiSuggestionSection()
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             BottomControlSection(
                 onPrevClick = { if (currentStepIndex > 0) currentStepIndex-- },
                 onNextClick = { if (currentStepIndex < totalSteps) currentStepIndex++ }
             )
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
 
 @Composable
-private fun RecipeTopBar(
-    onBackClick: () -> Unit, 
-    keyword: String,
-    isFavorite: Boolean,
-    onFavoriteClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        IconButton(onClick = onBackClick) {
-            Icon(
-                imageVector = Icons.Default.Close,
-                contentDescription = "닫기",
-                tint = Color(0xFF7D7D7D),
-                modifier = Modifier.size(22.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        Text(
-            text = if (keyword.isNotBlank()) keyword else "To-ma",
-            color = if (keyword.isNotBlank()) Color.Black else TomaMainOrange,
-            fontSize = 20.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
-
-        IconButton(onClick = onFavoriteClick) {
-            Icon(
-                imageVector = if (isFavorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                contentDescription = "즐겨찾기",
-                tint = if (isFavorite) TomaMainOrange else Color(0xFF7D7D7D),
-                modifier = Modifier.size(24.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(4.dp))
-
+private fun RecipeTopBar(onBackClick: () -> Unit, keyword: String, isFavorite: Boolean, onFavoriteClick: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Surface(
-            shape = RoundedCornerShape(50),
-            color = Color(0xFFFBE9E7)
+            modifier = Modifier.size(40.dp).clickable { onBackClick() },
+            shape = CircleShape,
+            color = Color.White,
+            border = BorderStroke(1.dp, Color(0xFFEEEEEE))
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Notifications,
-                    contentDescription = "주의",
-                    tint = Color(0xFFE46A5D),
-                    modifier = Modifier.size(14.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "고온 주의",
-                    color = Color(0xFFE46A5D),
-                    fontSize = 11.sp
-                )
-            }
+            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.padding(10.dp), tint = Color.Black)
         }
+        Text(
+            text = titleCase(keyword),
+            modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
+            fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.Black,
+            maxLines = 1, overflow = TextOverflow.Ellipsis
+        )
+        /*IconButton(onClick = onFavoriteClick) {
+            Icon(
+                if (isFavorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                contentDescription = null,
+                tint = if (isFavorite) TomaMainOrange else Color.LightGray,
+                modifier = Modifier.size(28.dp)
+            )
+        }*/
     }
 }
 
 @Composable
-private fun CookingImageSection(imageUrl: String?) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(210.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White)
-    ) {
-        Box {
-            AsyncImage(
-                model = imageUrl ?: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd",
-                contentDescription = "조리 이미지",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
+private fun ProgressSection(current: Int, total: Int, progress: Float) {
+    Column {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = if (current == 0) "재료 준비" else "단계 $current",
+                fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TomaMainOrange
             )
-
-            Surface(
-                modifier = Modifier
-                    .padding(12.dp)
-                    .align(Alignment.TopStart),
-                shape = RoundedCornerShape(50),
-                color = Color(0x99000000)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(Color.Red)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "LIVE FEED",
-                        color = Color.White,
-                        fontSize = 10.sp
-                    )
-                }
-            }
+            Text(
+                text = " / $total",
+                fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.LightGray,
+                modifier = Modifier.padding(bottom = 2.dp, start = 4.dp)
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                text = "${(progress * 100).toInt()}% 완료",
+                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Gray
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Box(modifier = Modifier.fillMaxWidth().height(6.dp).background(Color(0xFFE9ECEF), CircleShape)) {
+            Box(modifier = Modifier.fillMaxWidth(progress).fillMaxHeight().background(
+                brush = Brush.horizontalGradient(listOf(TomaMainOrange, Color(0xFFFFB347))),
+                shape = CircleShape
+            ))
         }
     }
 }
 
 @Composable
 private fun IngredientsSection(ingredients: List<String>) {
-    Column {
-        Text(
-            text = "🛒 준비할 재료",
-            color = TomaMainOrange,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Card(
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.ShoppingBasket, contentDescription = null, tint = TomaMainOrange, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("필수 재료 체크", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color.White),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            shape = RoundedCornerShape(24.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, Color(0xFFF1F3F5)),
+            shadowElevation = 2.dp
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                if (ingredients.isEmpty()) {
-                    Text("재료 정보가 없습니다.", color = TomaSecondaryText)
-                } else {
-                    ingredients.forEach { ingredient ->
-                        Row(modifier = Modifier.padding(vertical = 4.dp)) {
-                            Text("•", color = TomaMainOrange, modifier = Modifier.padding(end = 8.dp))
-                            Text(text = ingredient, color = TomaPrimaryText, fontSize = 16.sp)
-                        }
+            Column(modifier = Modifier.padding(20.dp)) {
+                ingredients.forEach { ingredient ->
+                    Row(modifier = Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(modifier = Modifier.size(6.dp).background(TomaMainOrange, CircleShape))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(ingredient, fontSize = 16.sp, color = Color(0xFF495057), fontWeight = FontWeight.Medium)
                     }
                 }
             }
@@ -275,150 +214,67 @@ private fun IngredientsSection(ingredients: List<String>) {
 }
 
 @Composable
-private fun ProgressSection(current: Int, total: Int, progress: Float) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+private fun CurrentStepSection(stepNumber: Int, stepText: String) {
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = stepNumber.toString(),
+            modifier = Modifier.align(Alignment.TopStart).offset(y = (-20).dp).alpha(0.05f),
+            fontSize = 160.sp, fontWeight = FontWeight.Black, color = Color.Black
+        )
+        Column(modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) {
+            Text("How to Cook", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TomaMainOrange, letterSpacing = 2.sp)
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = if (current == 0) "재료 준비" else "$current / $total",
-                color = TomaSecondaryText,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            Text(
-                text = "${(progress * 100).toInt()}%",
-                color = TomaMainOrange,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
+                text = stepText,
+                fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF212529),
+                lineHeight = 38.sp
             )
         }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(50)),
-            color = TomaMainOrange,
-            trackColor = Color(0xFFE5E7EB)
-        )
-    }
-}
-
-@Composable
-private fun CurrentStepSection(stepNumber: Int, stepText: String) {
-    Column {
-        Text(
-            text = "STEP $stepNumber",
-            color = TomaMainOrange,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Text(
-            text = stepText,
-            color = TomaPrimaryText,
-            fontSize = 22.sp,
-            lineHeight = 32.sp,
-            fontWeight = FontWeight.Medium
-        )
     }
 }
 
 @Composable
 private fun InfoCardRow(time: String, difficulty: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        InfoCard(
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        InfoCardDetail(
             modifier = Modifier.weight(1f),
-            label = "소요 시간",
+            label = "요리시간",
             value = time,
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Schedule,
-                    contentDescription = null,
-                    tint = TomaMainOrange,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+            icon = Icons.Default.Timer,
+            color = Color(0xFF4dabf7)
         )
-
-        InfoCard(
+        InfoCardDetail(
             modifier = Modifier.weight(1f),
             label = "난이도",
             value = difficulty,
-            icon = {
-                Icon(
-                    imageVector = Icons.Default.Thermostat,
-                    contentDescription = null,
-                    tint = Color(0xFFFF6B57),
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+            icon = Icons.Default.SignalCellularAlt,
+            color = Color(0xFFfab005)
         )
     }
 }
 
 @Composable
-private fun InfoCard(
+private fun InfoCardDetail(
     modifier: Modifier = Modifier,
     label: String,
     value: String,
-    icon: @Composable () -> Unit
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    color: Color
 ) {
-    Card(
-        modifier = modifier.height(86.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = TomaCard)
+    Surface(
+        modifier = modifier.height(90.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, Color(0xFFF1F3F5))
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp, vertical = 14.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .height(56.dp)
-                    .clip(RoundedCornerShape(50))
-                    .background(TomaMainOrange)
-            )
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Column(
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = label,
-                    color = TomaSecondaryText,
-                    fontSize = 11.sp
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    icon()
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = value,
-                        color = TomaPrimaryText,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.Center) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = color)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.LightGray)
             }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(value, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = Color.Black)
         }
     }
 }
@@ -426,176 +282,74 @@ private fun InfoCard(
 @Composable
 private fun AiSuggestionSection() {
     Column {
-        Text(
-            text = "AI 제안",
-            color = TomaSecondaryText,
-            fontSize = 12.sp
-        )
-
-        Spacer(modifier = Modifier.height(10.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            SuggestionChip(
-                modifier = Modifier.weight(1f),
-                text = "왜 생크림인가요?",
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.QuestionMark,
-                        contentDescription = null,
-                        tint = TomaMainOrange,
-                        modifier = Modifier.size(14.dp)
-                    )
+        Text("AI 제안", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val suggestions = listOf("팁 확인" to Icons.Default.Lightbulb, "타이머" to Icons.Default.AvTimer, "음성안내" to Icons.Default.VolumeUp)
+            suggestions.forEach { (text, icon) ->
+                Surface(
+                    modifier = Modifier.weight(1f).clickable { },
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFFF1F3F5),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.DarkGray)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+                    }
                 }
-            )
-
-            SuggestionChip(
-                modifier = Modifier.weight(1f),
-                text = "타이머 설정",
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Schedule,
-                        contentDescription = null,
-                        tint = Color(0xFFFF6B57),
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-            )
-
-            SuggestionChip(
-                modifier = Modifier.weight(1f),
-                text = "읽어주기",
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Notifications,
-                        contentDescription = null,
-                        tint = TomaBlue,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-            )
+            }
         }
     }
 }
 
 @Composable
-private fun SuggestionChip(
-    modifier: Modifier = Modifier,
-    text: String,
-    icon: @Composable () -> Unit
-) {
-    Surface(
-        modifier = modifier.clickable { },
-        shape = RoundedCornerShape(50),
-        color = Color(0xFFF3F4F6),
-        border = BorderStroke(1.dp, Color(0xFFE5E7EB))
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
+private fun BottomControlSection(onPrevClick: () -> Unit, onNextClick: () -> Unit) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+        // 이전 버튼
+        Surface(
+            modifier = Modifier.size(56.dp).clickable { onPrevClick() },
+            shape = CircleShape, color = Color.White, border = BorderStroke(1.dp, Color(0xFFEEEEEE))
         ) {
-            icon()
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = text,
-                color = TomaPrimaryText,
-                fontSize = 11.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.padding(16.dp), tint = Color.Black)
         }
-    }
-}
 
-@Composable
-private fun BottomControlSection(
-    onPrevClick: () -> Unit,
-    onNextClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        CircleButton(
-            containerColor = Color(0xFFF1F3F5),
-            iconTint = TomaPrimaryText,
-            size = 52.dp,
-            onClick = onPrevClick,
-            icon = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "이전",
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        )
-
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
+        Surface(
+            modifier = Modifier.size(76.dp).clickable { },
+            shape = CircleShape,
+            color = TomaMainOrange,
+            shadowElevation = 8.dp
         ) {
-            CircleButton(
-                containerColor = TomaMainOrange,
-                iconTint = Color.White,
-                size = 64.dp,
-                onClick = { /* 음성 인식 시작 */ },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = "음성",
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(text = "말씀하세요", color = TomaMainOrange, fontSize = 11.sp)
+            Box(contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.size(64.dp).border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape))
+                Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(32.dp), tint = Color.White)
+            }
         }
 
-        CircleButton(
-            containerColor = TomaLightOrange,
-            iconTint = TomaMainOrange,
-            size = 52.dp,
-            onClick = onNextClick,
-            icon = {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = "다음",
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-        )
-    }
-}
-
-@Composable
-private fun CircleButton(
-    containerColor: Color,
-    iconTint: Color,
-    size: androidx.compose.ui.unit.Dp,
-    onClick: () -> Unit = {},
-    icon: @Composable () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .size(size)
-            .clip(CircleShape)
-            .clickable { onClick() },
-        color = containerColor
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            CompositionLocalProvider(LocalContentColor provides iconTint) {
-                icon()
-            }
+        Surface(
+            modifier = Modifier.size(56.dp).clickable { onNextClick() },
+            shape = CircleShape,
+            color = Color.Black,
+            shadowElevation = 4.dp
+        ) {
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.padding(16.dp), tint = Color.White)
         }
     }
 }
+
+private fun titleCase(str: String) = str.lowercase().replaceFirstChar { it.uppercase() }
 
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
 fun RecipeDetailScreenPreview() {
-    RecipeDetailScreen()
+    RecipeDetailContent(
+        keyword = "간장계란밥",
+        recipeDataJson = null,
+        isFavorite = true,
+        onBackClick = {},
+        onFavoriteClick = {}
+    )
 }

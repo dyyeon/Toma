@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -29,15 +30,17 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -58,6 +61,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -72,20 +76,19 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.model.StoredRecipe
-import com.capstone.toma.ui.theme.TomaBackground
-import com.capstone.toma.ui.theme.TomaCard
-import com.capstone.toma.ui.theme.TomaMainRed
-import com.capstone.toma.ui.theme.TomaPrimaryText
-import com.capstone.toma.ui.theme.TomaSecondaryText
+import com.capstone.toma.ui.theme.TomaMainOrange
 import com.capstone.toma.viewmodel.RecipeStorageViewModel
 import kotlinx.coroutines.launch
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 
-private val StorageBg = TomaBackground
+
+private val StorageBg = Color(0xFFF8F9FA)
 private val StorageCard = Color.White
-private val StorageChip = Color(0xFFFFEFE3)
-private val StorageAccent = TomaMainRed
-private val StorageInk = TomaPrimaryText
-private val StorageMuted = TomaSecondaryText
+private val StorageCardBorder = Color(0xFFF1F3F5)
+private val StorageAccent = TomaMainOrange
+private val StorageInk = Color(0xFF212529)
+private val StorageMuted = Color(0xFF868E96)
 
 @Composable
 fun RecipeStorageScreen(
@@ -97,7 +100,7 @@ fun RecipeStorageScreen(
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
     val recipes by if (isPreview) {
-        remember { androidx.compose.runtime.mutableStateOf(previewRecipes) }
+        remember { mutableStateOf(previewRecipes) }
     } else {
         storageViewModel!!.recipes.collectAsState()
     }
@@ -142,9 +145,10 @@ fun RecipeStorageScreen(
         val keyword = query.trim()
         if (keyword.isBlank()) recipes else recipes.filter {
             listOf(it.title, it.category, it.story).any { text -> text.contains(keyword, true) } ||
-                it.ingredients.any { ingredient -> ingredient.contains(keyword, true) }
+                    it.ingredients.any { ingredient -> ingredient.contains(keyword, true) }
         }
     }
+
     Scaffold(
         containerColor = StorageBg,
         snackbarHost = { SnackbarHost(snackbar) },
@@ -153,8 +157,10 @@ fun RecipeStorageScreen(
                 FloatingActionButton(
                     onClick = { scope.launch { snackbar.showSnackbar("추가 화면은 다음 단계에서 연결하면 됩니다.") } },
                     containerColor = StorageAccent,
-                    contentColor = Color.White
-                ) { Icon(Icons.Default.Add, contentDescription = "레시피 추가") }
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    modifier = Modifier.shadow(8.dp, CircleShape, ambientColor = StorageAccent, spotColor = StorageAccent)
+                ) { Icon(Icons.Default.Add, contentDescription = "레시피 추가", modifier = Modifier.size(28.dp)) }
             }
         }
     ) { inner ->
@@ -186,9 +192,7 @@ fun RecipeStorageScreen(
                             imagePickerLauncher?.launch(arrayOf("image/*"))
                         }
                     },
-                    onResetToDefault = if (opened.imageUri.isNullOrBlank()) {
-                        null
-                    } else {
+                    onResetToDefault = if (opened.imageUri.isNullOrBlank()) null else {
                         {
                             showImagePickerDialog = false
                             imageTargetId = null
@@ -230,35 +234,53 @@ private fun StorageList(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(StorageBg),
-        contentPadding = PaddingValues(20.dp, inner.calculateTopPadding() + 12.dp, 20.dp, inner.calculateBottomPadding() + 96.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        contentPadding = PaddingValues(24.dp, inner.calculateTopPadding() + 16.dp, 24.dp, inner.calculateBottomPadding() + 96.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        item { StorageHeader(onBackClick) }
+        item { StorageTopHeader(title = "저장소", onBackClick = onBackClick) }
+
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("키워드를 입력하세요.", color = StorageMuted) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = StorageMuted) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(22.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedTextColor = StorageInk,
-                        unfocusedTextColor = StorageInk,
-                        focusedContainerColor = StorageCard,
-                        unfocusedContainerColor = StorageCard,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = StorageAccent
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, StorageCardBorder),
+                    shadowElevation = 2.dp
+                ) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = onQueryChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("어떤 레시피를 찾으시나요?", color = StorageMuted) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = StorageAccent) },
+                        singleLine = true,
+                        colors = TextFieldDefaults.colors(
+                            focusedTextColor = StorageInk,
+                            unfocusedTextColor = StorageInk,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            cursorColor = StorageAccent
+                        )
                     )
+                }
+                Text(
+                    text = if (query.isBlank()) "총 ${totalCount}개의 레시피" else "${recipes.size}개 검색됨",
+                    color = StorageMuted,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(start = 8.dp)
                 )
-                Text(if (query.isBlank()) "${totalCount}개의 저장 레시피" else "${recipes.size} / ${totalCount}개 검색됨", color = StorageMuted)
             }
         }
-        if (recipes.isEmpty()) item { EmptySearchCard() } else items(recipes, key = { it.id }) { recipe ->
-            RecipeCard(recipe, { onOpen(recipe) }, { onFavoriteToggle(recipe) })
+
+        if (recipes.isEmpty()) {
+            item { EmptySearchCard() }
+        } else {
+            items(recipes, key = { it.id }) { recipe ->
+                RecipeCard(recipe, { onOpen(recipe) }, { onFavoriteToggle(recipe) })
+            }
         }
     }
 }
@@ -273,317 +295,279 @@ private fun StorageDetail(
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(StorageBg),
-        contentPadding = PaddingValues(20.dp, inner.calculateTopPadding() + 12.dp, 20.dp, inner.calculateBottomPadding() + 32.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp)
+        contentPadding = PaddingValues(24.dp, inner.calculateTopPadding() + 16.dp, 24.dp, inner.calculateBottomPadding() + 40.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
-        item { StorageDetailHeader(onBack) }
+        item { StorageTopHeader(title = "레시피 상세", onBackClick = onBack) }
+
         item { HeroCard(recipe, onFavoriteToggle, onImagePick) }
+
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(recipe.title, color = StorageInk, fontSize = 34.sp, lineHeight = 38.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Text(
+                        text = recipe.title,
+                        color = StorageInk,
+                        fontSize = 28.sp,
+                        lineHeight = 36.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.weight(1f)
+                    )
                     Spacer(Modifier.width(16.dp))
                     Column(horizontalAlignment = Alignment.End) {
-                        Text("${recipe.time}m", color = StorageAccent, fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                        Text("TOTAL TIME", color = StorageMuted, style = MaterialTheme.typography.labelSmall)
+                        Text("${recipe.time}분", color = StorageAccent, fontSize = 24.sp, fontWeight = FontWeight.Black)
+                        Text("조리 시간", color = StorageMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    MetricChip(String.format("%.1f", recipe.rating), true)
-                    MetricChip(recipe.difficulty, false)
-                    MetricChip("${recipe.calories} kcal", false)
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MetricChip(icon = Icons.Default.Star, text = String.format("%.1f", recipe.rating), color = Color(0xFFFAB005))
+                    MetricChip(icon = Icons.Default.RestaurantMenu, text = recipe.difficulty, color = Color(0xFF20C997))
+                    MetricChip(icon = Icons.Default.LocalFireDepartment, text = "${recipe.calories} kcal", color = TomaMainOrange)
                 }
-                Text("\"${recipe.story}\"", color = StorageMuted, lineHeight = 26.sp)
+
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, StorageCardBorder)
+                ) {
+                    Text(
+                        text = "\"${recipe.story}\"",
+                        color = Color(0xFF495057),
+                        lineHeight = 24.sp,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
             }
         }
-        item { SectionTitle("재료", "(${recipe.servings}인분)") }
+
+        item { SectionTitle("준비할 재료", "(${recipe.servings}인분)") }
+
         items(recipe.ingredients.chunked(2)) { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
                 row.forEach { ingredient ->
-                    Surface(color = StorageCard, shape = RoundedCornerShape(22.dp), modifier = Modifier.weight(1f)) {
-                        Text(ingredient, color = StorageInk, modifier = Modifier.padding(16.dp))
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, StorageCardBorder),
+                        shadowElevation = 1.dp,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(6.dp).background(StorageAccent, CircleShape))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(ingredient, color = StorageInk, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        }
                     }
                 }
                 if (row.size == 1) Spacer(Modifier.weight(1f))
             }
         }
+
         item { SectionTitle("조리 순서") }
+
         itemsIndexed(recipe.steps) { index, step -> StepCard(index + 1, step) }
     }
 }
 
 @Composable
-private fun StorageHeader(onBackClick: () -> Unit) {
-    StorageTopHeader(
-        title = "저장소",
-        onBackClick = onBackClick
-    )
-}
-
-@Composable
-private fun StorageDetailHeader(onBackClick: () -> Unit) {
-    StorageTopHeader(
-        title = "레시피 상세",
-        onBackClick = onBackClick
-    )
-}
-
-@Composable
-private fun StorageTopHeader(
-    title: String,
-    onBackClick: () -> Unit
-) {
-    Surface(
-        color = StorageBg,
-        shadowElevation = 0.dp
+private fun StorageTopHeader(title: String, onBackClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+        Surface(
+            modifier = Modifier.size(44.dp).clickable { onBackClick() },
+            shape = CircleShape,
+            color = Color.White,
+            border = BorderStroke(1.dp, StorageCardBorder),
+            shadowElevation = 2.dp
         ) {
-            IconButton(
-                onClick = onBackClick,
-                modifier = Modifier.background(TomaCard, CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "뒤로",
-                    tint = StorageInk
-                )
-            }
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Text(
-                text = title,
-                color = StorageInk,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "뒤로",
+                modifier = Modifier.padding(12.dp),
+                tint = StorageInk
             )
         }
+        Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = title,
+            color = StorageInk,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 
 @Composable
 private fun RecipeCard(recipe: StoredRecipe, onOpen: () -> Unit, onFavoriteToggle: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        RecipeArtwork(
-            recipe = recipe,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(212.dp)
-                .clip(RoundedCornerShape(22.dp))
-        )
-        Text("${recipe.time}분 조리 · ${recipe.category}", color = StorageAccent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-            Text(recipe.title, color = StorageInk, fontSize = 28.sp, lineHeight = 30.sp, fontWeight = FontWeight.ExtraBold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-            IconButton(onClick = onFavoriteToggle, modifier = Modifier.size(24.dp)) {
-                Icon(if (recipe.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "즐겨찾기", tint = StorageAccent, modifier = Modifier.size(18.dp))
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, StorageCardBorder),
+        shadowElevation = 4.dp,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)
+    ) {
+        Column {
+            RecipeArtwork(
+                recipe = recipe,
+                modifier = Modifier.fillMaxWidth().height(180.dp)
+            )
+            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(shape = RoundedCornerShape(6.dp), color = StorageAccent.copy(alpha = 0.1f)) {
+                        Text(recipe.category, color = StorageAccent, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Timer, contentDescription = null, tint = StorageMuted, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("${recipe.time}분 조리", color = StorageMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                    Text(
+                        text = recipe.title,
+                        color = StorageInk,
+                        fontSize = 20.sp,
+                        lineHeight = 28.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = onFavoriteToggle, modifier = Modifier.size(32.dp).padding(start = 8.dp)) {
+                        Icon(
+                            imageVector = if (recipe.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            contentDescription = "즐겨찾기",
+                            tint = if (recipe.favorite) StorageAccent else Color.LightGray,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
             }
         }
-        Text("${recipe.difficulty} · ${recipe.servings}인분", color = StorageMuted)
     }
 }
 
 @Composable
-private fun HeroCard(
-    recipe: StoredRecipe,
-    onFavoriteToggle: () -> Unit,
-    onImagePick: () -> Unit
-) {
+private fun HeroCard(recipe: StoredRecipe, onFavoriteToggle: () -> Unit, onImagePick: () -> Unit) {
     val hasImage = !recipe.imageUri.isNullOrBlank()
 
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(270.dp)
-            .clip(RoundedCornerShape(30.dp))
-            .clickable(onClick = onImagePick)
-            .background(Brush.linearGradient(palette(recipe.category)))
+    Surface(
+        modifier = Modifier.fillMaxWidth().height(280.dp).clickable(onClick = onImagePick),
+        shape = RoundedCornerShape(32.dp),
+        shadowElevation = 8.dp,
+        color = Color.Transparent
     ) {
-        RecipeArtwork(
-            recipe = recipe,
-            modifier = Modifier.fillMaxSize()
-        )
+        Box(modifier = Modifier.fillMaxSize()) {
+            RecipeArtwork(recipe = recipe, modifier = Modifier.fillMaxSize())
 
-        if (hasImage) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Black.copy(alpha = 0.12f), Color.Black.copy(alpha = 0.35f))
-                        )
-                    )
-            )
-        }
+            if (hasImage) {
+                Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.1f), Color.Black.copy(alpha = 0.5f)))))
+            }
 
-        Surface(color = StorageAccent, shape = RoundedCornerShape(18.dp), modifier = Modifier.align(Alignment.TopStart).padding(14.dp)) {
-            Text(recipe.category, color = Color.White, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
-        }
-        IconButton(onClick = onFavoriteToggle, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).background(Color.White.copy(alpha = 0.92f), CircleShape)) {
-            Icon(if (recipe.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "즐겨찾기", tint = StorageAccent)
-        }
-        Surface(
-            color = Color.White.copy(alpha = 0.94f),
-            shape = RoundedCornerShape(18.dp),
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(14.dp)
-                .clickable(onClick = onImagePick)
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            Surface(
+                color = StorageAccent,
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.AddPhotoAlternate,
-                    contentDescription = null,
-                    tint = StorageAccent,
-                    modifier = Modifier.size(18.dp)
-                )
-                Text(
-                    text = if (hasImage) "이미지 변경" else "이미지 등록",
-                    color = StorageInk,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Text(recipe.category, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+            }
+
+            IconButton(
+                onClick = onFavoriteToggle,
+                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.White.copy(alpha = 0.9f), CircleShape)
+            ) {
+                Icon(if (recipe.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "즐겨찾기", tint = StorageAccent)
+            }
+
+            Surface(
+                color = Color.White.copy(alpha = 0.9f),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.align(Alignment.BottomStart).padding(16.dp).clickable(onClick = onImagePick)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, tint = StorageAccent, modifier = Modifier.size(18.dp))
+                    Text(if (hasImage) "이미지 변경" else "이미지 등록", color = StorageInk, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun RecipeArtwork(
-    recipe: StoredRecipe,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier.background(Brush.linearGradient(palette(recipe.category)))
-    ) {
-        DefaultRecipeArtwork(
-            category = recipe.category,
-            title = recipe.title,
-            modifier = Modifier.fillMaxSize()
-        )
-
+private fun RecipeArtwork(recipe: StoredRecipe, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.background(Brush.linearGradient(palette(recipe.category)))) {
+        DefaultRecipeArtwork(category = recipe.category, title = recipe.title, modifier = Modifier.fillMaxSize())
         if (!recipe.imageUri.isNullOrBlank()) {
-            AsyncImage(
-                model = recipe.imageUri,
-                contentDescription = "${recipe.title} 음식 사진",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
+            AsyncImage(model = recipe.imageUri, contentDescription = "${recipe.title} 음식 사진", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
         }
     }
 }
 
 @Composable
-private fun DefaultRecipeArtwork(
-    category: String,
-    title: String,
-    modifier: Modifier = Modifier
-) {
+private fun DefaultRecipeArtwork(category: String, title: String, modifier: Modifier = Modifier) {
     Box(modifier = modifier) {
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 18.dp, end = 22.dp)
-                .size(112.dp)
-                .clip(CircleShape)
-                .background(Color.White.copy(alpha = 0.16f))
-        )
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 16.dp, bottom = 20.dp)
-                .size(72.dp)
-                .clip(CircleShape)
-                .background(Color.Black.copy(alpha = 0.10f))
-        )
+        Box(modifier = Modifier.align(Alignment.TopEnd).padding(top = 18.dp, end = 22.dp).size(140.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.12f)))
+        Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = 16.dp, bottom = 20.dp).size(80.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.08f)))
         Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(horizontal = 22.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier.align(Alignment.Center).padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = defaultImageCaption(category),
-                color = Color.White.copy(alpha = 0.88f),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = defaultImageMonogram(title, category),
-                color = Color.White.copy(alpha = 0.95f),
-                fontSize = 58.sp,
-                lineHeight = 58.sp,
-                fontWeight = FontWeight.ExtraBold
-            )
-            Text(
-                text = category,
-                color = Color.White.copy(alpha = 0.82f),
-                fontSize = 14.sp
-            )
+            Text(defaultImageMonogram(title, category), color = Color.White.copy(alpha = 0.95f), fontSize = 64.sp, fontWeight = FontWeight.Black)
+            Text(defaultImageCaption(category), color = Color.White.copy(alpha = 0.85f), fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
-private fun ImagePickerDialog(
-    hasImage: Boolean,
-    onDismiss: () -> Unit,
-    onOpenGallery: () -> Unit,
-    onResetToDefault: (() -> Unit)? = null
-) {
+private fun ImagePickerDialog(hasImage: Boolean, onDismiss: () -> Unit, onOpenGallery: () -> Unit, onResetToDefault: (() -> Unit)? = null) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = if (hasImage) "레시피 이미지 변경" else "레시피 이미지 등록",
-                color = StorageInk,
-                fontWeight = FontWeight.Bold
-            )
-        },
+        title = { Text(if (hasImage) "레시피 이미지 변경" else "레시피 이미지 등록", color = StorageInk, fontWeight = FontWeight.ExtraBold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text(
-                    text = "갤러리에서 음식 사진을 선택하면 이 레시피 대표 이미지로 저장됩니다.",
-                    color = StorageMuted,
-                    lineHeight = 22.sp
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("갤러리에서 직접 찍은 음식 사진을 선택하여 나만의 레시피북을 꾸며보세요.", color = StorageMuted, lineHeight = 22.sp)
                 if (hasImage && onResetToDefault != null) {
-                    TextButton(
-                        onClick = onResetToDefault,
-                        modifier = Modifier.align(Alignment.End)
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFFFF4F4),
+                        modifier = Modifier.fillMaxWidth().clickable { onResetToDefault() }
                     ) {
-                        Text("기본 이미지로 되돌리기", color = StorageAccent, fontWeight = FontWeight.SemiBold)
+                        Text("기본 이미지로 되돌리기", color = Color(0xFFE03131), fontWeight = FontWeight.Bold, modifier = Modifier.padding(14.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onOpenGallery) {
-                Text("갤러리 열기", color = StorageAccent, fontWeight = FontWeight.Bold)
+            Button(onClick = onOpenGallery, colors = ButtonDefaults.buttonColors(containerColor = StorageAccent)) {
+                Text("갤러리 열기", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("취소", color = StorageMuted)
-            }
+            TextButton(onClick = onDismiss) { Text("취소", color = StorageMuted, fontWeight = FontWeight.Bold) }
         },
-        containerColor = StorageCard
+        containerColor = Color.White,
+        shape = RoundedCornerShape(24.dp)
     )
 }
 
 @Composable
-private fun MetricChip(text: String, star: Boolean) {
-    Surface(color = StorageChip, shape = RoundedCornerShape(18.dp)) {
-        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            if (star) Icon(Icons.Default.Star, contentDescription = null, tint = StorageAccent, modifier = Modifier.size(15.dp))
-            Text(text, color = StorageInk, style = MaterialTheme.typography.labelLarge)
+private fun MetricChip(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String, color: Color) {
+    Surface(color = Color.White, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, StorageCardBorder), shadowElevation = 1.dp) {
+        Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(16.dp))
+            Text(text, color = StorageInk, fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -591,47 +575,66 @@ private fun MetricChip(text: String, star: Boolean) {
 @Composable
 private fun SectionTitle(title: String, trailing: String? = null) {
     Row(verticalAlignment = Alignment.Bottom) {
-        Text(title, color = StorageInk, fontSize = 30.sp, fontWeight = FontWeight.ExtraBold)
+        Box(modifier = Modifier.size(width = 4.dp, height = 20.dp).background(StorageAccent, CircleShape).align(Alignment.CenterVertically))
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(title, color = StorageInk, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
         if (trailing != null) {
-            Spacer(Modifier.width(10.dp))
-            Text(trailing, color = StorageAccent, modifier = Modifier.padding(bottom = 4.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(trailing, color = StorageMuted, fontSize = 14.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
 
 @Composable
 private fun StepCard(index: Int, step: String) {
-    Card(shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = StorageCard)) {
-        Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(index.toString().padStart(2, '0'), color = StorageAccent, fontWeight = FontWeight.Bold)
-            Text(step, color = StorageInk, lineHeight = 24.sp)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, StorageCardBorder),
+        shadowElevation = 2.dp
+    ) {
+        Row(modifier = Modifier.padding(20.dp)) {
+            Surface(shape = CircleShape, color = StorageAccent.copy(alpha = 0.1f), modifier = Modifier.size(36.dp)) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(index.toString(), color = StorageAccent, fontSize = 16.sp, fontWeight = FontWeight.Black)
+                }
+            }
+            Spacer(Modifier.width(16.dp))
+            Text(step, color = StorageInk, fontSize = 15.sp, lineHeight = 26.sp, modifier = Modifier.weight(1f))
         }
     }
 }
 
 @Composable
 private fun EmptySearchCard() {
-    Card(shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = StorageCard)) {
-        Column(modifier = Modifier.fillMaxWidth().padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("검색 결과가 없습니다.", color = StorageInk, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            Text("검색어를 바꾸거나 전체 목록으로 돌아가 다시 확인해보세요.", color = StorageMuted)
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, StorageCardBorder),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Default.Search, contentDescription = null, tint = StorageMuted.copy(alpha = 0.3f), modifier = Modifier.size(64.dp))
+            Text("검색 결과가 없어요", color = StorageInk, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text("다른 검색어를 입력해 보세요.", color = StorageMuted, fontSize = 14.sp)
         }
     }
 }
 
 private fun palette(category: String) = when (category) {
-    "한식" -> listOf(Color(0xFF131518), Color(0xFF453126))
-    "파스타" -> listOf(Color(0xFF74C8B7), Color(0xFF3B938B))
-    "음료" -> listOf(Color(0xFFC2CC97), Color(0xFF98A761))
-    else -> listOf(Color(0xFFF2DDBE), Color(0xFFD39D6E))
+    "한식" -> listOf(Color(0xFF2C3E50), Color(0xFF000000))
+    "파스타" -> listOf(Color(0xFF20C997), Color(0xFF0CA678))
+    "음료" -> listOf(Color(0xFFFCC419), Color(0xFFF59F00))
+    else -> listOf(Color(0xFFFFA94D), Color(0xFFF76707))
 }
 
 private fun defaultImageCaption(category: String) = when (category) {
-    "한식" -> "집밥 무드"
-    "파스타" -> "한 접시 파스타"
-    "음료" -> "홈카페 한 잔"
-    "브런치" -> "브런치 플레이트"
-    else -> "새 레시피"
+    "한식" -> "따뜻한 집밥"
+    "파스타" -> "특별한 한 끼"
+    "음료" -> "여유로운 홈카페"
+    "브런치" -> "주말의 브런치"
+    else -> "나만의 레시피"
 }
 
 private fun defaultImageMonogram(title: String, category: String): String {

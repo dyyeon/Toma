@@ -1,22 +1,13 @@
 package com.capstone.toma.ui.screen
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -27,19 +18,13 @@ import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
-import androidx.compose.material.icons.filled.PrivacyTip
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.LocalTextStyle
-import androidx.compose.material3.rememberDrawerState
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -58,13 +43,15 @@ import com.capstone.toma.ui.component.LoadingSection
 import com.capstone.toma.ui.component.TomaDrawerItem
 import com.capstone.toma.ui.component.TomaDrawerSheet
 import com.capstone.toma.ui.component.TomaTopAppBar
-import com.capstone.toma.ui.theme.TomaBackground
-import com.capstone.toma.ui.theme.TomaLightRed
-import com.capstone.toma.ui.theme.TomaMainOrange
-import com.capstone.toma.ui.theme.TomaMainRed
-import com.capstone.toma.ui.theme.TomaPrimaryText
-import com.capstone.toma.ui.theme.TomaSecondaryText
 import kotlinx.coroutines.launch
+
+
+private val TomaMainOrange = Color(0xFFEE8C2B)
+private val TomaMainRed = Color(0xFFE03131)
+private val TomaBackground = Color(0xFFF8F9FA)
+private val TomaCardBorder = Color(0xFFF1F3F5)
+private val TomaPrimaryText = Color(0xFF212529)
+private val TomaSecondaryText = Color(0xFF868E96)
 
 data class RecentRecipeItem(
     val id: String,
@@ -104,18 +91,17 @@ fun TomaHomeScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
-    // 에러 다이얼로그 노출
     uiState.errorDialogMessage?.let { message ->
-        androidx.compose.material3.AlertDialog(
+        AlertDialog(
             onDismissRequest = onErrorDismiss,
-            title = { Text(text = "알림", fontWeight = FontWeight.Bold) },
-            text = { Text(text = message) },
+            title = { Text(text = "알림", fontWeight = FontWeight.Bold, color = TomaPrimaryText) },
+            text = { Text(text = message, color = TomaSecondaryText) },
             confirmButton = {
                 TextButton(onClick = onErrorDismiss) {
-                    Text("확인", color = TomaMainOrange)
+                    Text("확인", color = TomaMainOrange, fontWeight = FontWeight.Bold)
                 }
             },
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(24.dp),
             containerColor = Color.White
         )
     }
@@ -125,53 +111,34 @@ fun TomaHomeScreen(
             label = "저장소",
             subtitle = "저장한 레시피를 관리합니다",
             icon = Icons.Default.BookmarkBorder,
-            onClick = {
-                scope.launch {
-                    drawerState.close()
-                    onStorageClick()
-                }
-            }
+            onClick = { scope.launch { drawerState.close(); onStorageClick() } }
         ),
         TomaDrawerItem(
             label = "설정",
             subtitle = "앱 설정과 지원 메뉴를 확인합니다",
             icon = Icons.Default.Settings,
-            onClick = {
-                scope.launch {
-                    drawerState.close()
-                    onSettingsClick()
-                }
-            }
+            onClick = { scope.launch { drawerState.close(); onSettingsClick() } }
         ),
         TomaDrawerItem(
             label = "개인정보 처리방침",
             subtitle = "TOMA 서비스 이용 약관 및 방침",
             icon = Icons.Default.PrivacyTip,
-            onClick = {
-                scope.launch {
-                    drawerState.close()
-                    onPrivacyPolicyClick()
-                }
-            }
+            onClick = { scope.launch { drawerState.close(); onPrivacyPolicyClick() } }
         )
     )
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        drawerContent = {
-            TomaDrawerSheet(items = drawerItems)
-        }
+        drawerContent = { TomaDrawerSheet(items = drawerItems) }
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(TomaBackground)
-                .padding(top = 24.dp, bottom = 24.dp)
+                .padding(top = 24.dp)
         ) {
             TomaTopAppBar(
-                onMenuClick = {
-                    scope.launch { drawerState.open() }
-                }
+                onMenuClick = { scope.launch { drawerState.open() } }
             )
 
             Column(
@@ -180,7 +147,7 @@ fun TomaHomeScreen(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
                 AIRecipeSearchCard(
                     query = uiState.searchQuery,
@@ -213,7 +180,7 @@ fun TomaHomeScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(32.dp))
 
                 if (!uiState.isAnalyzing) {
                     RecentAnalysisSection(
@@ -223,13 +190,11 @@ fun TomaHomeScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
                 uiState.selectedRecentItemId?.let { selectedId ->
                     val selectedItem = uiState.recentItems.firstOrNull { it.id == selectedId }
-
                     if (selectedItem != null) {
-                        Spacer(modifier = Modifier.height(20.dp))
                         SelectedRecentItemCard(
                             title = selectedItem.title,
                             sourceType = selectedItem.sourceType,
@@ -240,14 +205,14 @@ fun TomaHomeScreen(
                 }
 
                 uiState.errorMessage?.let { message ->
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
                     ErrorMessageCard(
                         message = message,
                         modifier = Modifier.padding(horizontal = 24.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(40.dp))
+                Spacer(modifier = Modifier.height(48.dp))
             }
         }
     }
@@ -266,38 +231,45 @@ fun AIRecipeSearchCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
         color = Color.White,
-        shadowElevation = 8.dp
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, TomaCardBorder)
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 22.dp)
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp)
         ) {
-            Text(
-                text = "AI 레시피 검색",
-                color = TomaMainOrange,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = TomaMainOrange.copy(alpha = 0.1f)
+            ) {
+                Text(
+                    text = "AI 레시피 검색",
+                    color = TomaMainOrange,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "어떤 요리를 만들어볼까요?",
+                text = "어떤 요리를\n만들어볼까요?",
                 color = TomaPrimaryText,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                lineHeight = 32.sp
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Black,
+                lineHeight = 34.sp
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "재료나 메뉴명을 말하면 AI가 최적의 레시피를 제안해드립니다.",
+                text = "재료나 메뉴명을 검색하거나 말씀해주세요.",
                 color = TomaSecondaryText,
-                fontSize = 15.sp,
-                lineHeight = 22.sp
+                fontSize = 14.sp,
+                lineHeight = 20.sp
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -306,11 +278,10 @@ fun AIRecipeSearchCard(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(TomaBackground)
-                        .clickable(enabled = enabled) { onSearchSubmit() }
-                        .padding(horizontal = 14.dp),
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFFF1F3F5))
+                        .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Row(
@@ -324,12 +295,11 @@ fun AIRecipeSearchCard(
                             singleLine = true,
                             textStyle = LocalTextStyle.current.copy(
                                 color = TomaPrimaryText,
-                                fontSize = 15.sp
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Medium
                             ),
                             modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(
-                                imeAction = ImeAction.Search
-                            ),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(
                                 onSearch = { onSearchSubmit() },
                                 onDone = { onSearchSubmit() }
@@ -337,8 +307,8 @@ fun AIRecipeSearchCard(
                             decorationBox = { innerTextField ->
                                 if (query.isEmpty()) {
                                     Text(
-                                        text = "검색어를 입력하세요",
-                                        color = TomaSecondaryText,
+                                        text = "예: 남은 참치캔 요리",
+                                        color = Color(0xFFADB5BD),
                                         fontSize = 15.sp,
                                         maxLines = 1
                                     )
@@ -346,41 +316,41 @@ fun AIRecipeSearchCard(
                                 innerTextField()
                             }
                         )
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "검색",
-                            tint = TomaSecondaryText,
-                            modifier = Modifier.size(18.dp)
+                            tint = Color(0xFFADB5BD),
+                            modifier = Modifier
+                                .size(20.dp)
+                                .clickable(enabled = enabled) { onSearchSubmit() }
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                Box(
+                Surface(
                     modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(
-                            if (enabled) TomaMainOrange else Color(0xFFD9D9D9)
-                        )
+                        .size(48.dp)
                         .clickable(enabled = enabled) { onMicClick() },
-                    contentAlignment = Alignment.Center
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (enabled) TomaMainOrange else Color(0xFFD9D9D9),
+                    shadowElevation = if (enabled) 4.dp else 0.dp
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = "음성 검색",
-                        tint = Color.White,
-                        modifier = Modifier.size(19.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = "음성 검색",
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }
     }
 }
+
 @Composable
 fun ImportSection(
     youtubeLink: String,
@@ -391,14 +361,9 @@ fun ImportSection(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = "레시피 가져오기",
-            color = TomaPrimaryText,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        SectionTitle(title = "외부 레시피 가져오기")
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         YoutubeImportCard(
             linkText = youtubeLink,
@@ -407,7 +372,7 @@ fun ImportSection(
             enabled = enabled
         )
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         PhotoImportCard(
             onClick = onPhotoScanClick,
@@ -428,35 +393,37 @@ fun YoutubeImportCard(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         color = Color.White,
-        shadowElevation = 4.dp
+        border = BorderStroke(1.dp, TomaCardBorder),
+        shadowElevation = 2.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(TomaLightRed),
-                contentAlignment = Alignment.Center
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFFFFF1E8),
+                modifier = Modifier.size(52.dp)
             ) {
                 Icon(
                     imageVector = Icons.Filled.SmartDisplay,
                     contentDescription = "유튜브",
-                    tint = TomaMainRed,
-                    modifier = Modifier.size(24.dp)
+                    tint = TomaMainOrange,
+                    modifier = Modifier.padding(14.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(36.dp),
+                    .height(40.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFF8F9FA))
+                    .padding(horizontal = 12.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
                 BasicTextField(
@@ -469,48 +436,37 @@ fun YoutubeImportCard(
                         fontSize = 14.sp
                     ),
                     modifier = Modifier.fillMaxWidth(),
-                    keyboardOptions = KeyboardOptions(
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onDone = { onSubmit() }
-                    ),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { onSubmit() }),
                     decorationBox = { innerTextField ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 2.dp),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            if (linkText.isEmpty()) {
-                                Text(
-                                    text = "유튜브 링크를 붙여넣으세요",
-                                    color = TomaSecondaryText,
-                                    fontSize = 14.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                            innerTextField()
+                        if (linkText.isEmpty()) {
+                            Text(
+                                text = "유튜브 링크 붙여넣기",
+                                color = Color(0xFFADB5BD),
+                                fontSize = 14.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
+                        innerTextField()
                     }
                 )
             }
 
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(12.dp))
 
-            Box(
+            Surface(
+                shape = CircleShape,
+                color = TomaMainOrange,
                 modifier = Modifier
-                    .size(24.dp)
-                    .clip(RoundedCornerShape(7.dp))
-                    .clickable(enabled = enabled) { onSubmit() },
-                contentAlignment = Alignment.Center
+                    .size(36.dp)
+                    .clickable(enabled = enabled) { onSubmit() }
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.CallMade,
                     contentDescription = "유튜브 링크 전송",
-                    tint = Color(0xD20A0F23),
-                    modifier = Modifier.size(16.dp)
+                    tint = Color.White,
+                    modifier = Modifier.padding(10.dp)
                 )
             }
         }
@@ -529,58 +485,52 @@ fun PhotoImportCard(
             .clickable(enabled = enabled) { onClick() },
         shape = RoundedCornerShape(20.dp),
         color = Color.White,
-        shadowElevation = 6.dp
+        border = BorderStroke(1.dp, TomaCardBorder),
+        shadowElevation = 2.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(50.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFFFFF3E8)),
-                contentAlignment = Alignment.Center
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFFFFECEC),
+                modifier = Modifier.size(52.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.CameraAlt,
                     contentDescription = "사진 스캔",
-                    tint = TomaMainOrange,
-                    modifier = Modifier.size(24.dp)
+                    tint = TomaMainRed,
+                    modifier = Modifier.padding(14.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "이미지 업로드",
+                    text = "이미지 스캔하기",
                     color = TomaPrimaryText,
-                    fontSize = 18.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold
                 )
-
                 Spacer(modifier = Modifier.height(4.dp))
-
                 Text(
-                    text = "레시피를 바로 추출하세요",
+                    text = "메뉴판이나 요리 사진으로 추출",
                     color = TomaSecondaryText,
-                    fontSize = 14.sp,
+                    fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
-
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = "사진 스캔 이동",
-                tint = Color(0xFFD0D3DB)
+                tint = Color(0xFFCED4DA),
+                modifier = Modifier.size(24.dp)
             )
         }
     }
@@ -600,38 +550,42 @@ fun RecentAnalysisSection(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "최근 분석 항목",
-                color = TomaPrimaryText,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
+            SectionTitle(title = "최근 분석 항목")
 
-            TextButton(onClick = onMoreClick) {
+            TextButton(onClick = onMoreClick, contentPadding = PaddingValues(0.dp)) {
                 Text(
                     text = "전체 보기",
-                    color = TomaMainOrange,
-                    fontSize = 14.sp,
+                    color = TomaSecondaryText,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         if (items.isEmpty()) {
-            Text(
-                text = "아직 분석한 레시피가 없습니다.",
-                color = TomaSecondaryText,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(horizontal = 24.dp)
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = Color.White,
+                border = BorderStroke(1.dp, TomaCardBorder)
+            ) {
+                Text(
+                    text = "아직 분석한 레시피가 없습니다.",
+                    color = TomaSecondaryText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(20.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
         } else {
             LazyRow(
-                contentPadding = PaddingValues(horizontal = 20.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(items.take(2), key = { it.id }) { item ->
+                items(items.take(3), key = { it.id }) { item ->
                     RecentAnalysisCard(
                         item = item,
                         onClick = { onItemClick(item.id) }
@@ -647,78 +601,77 @@ fun RecentAnalysisCard(
     item: RecentRecipeItem,
     onClick: () -> Unit
 ) {
-    val badgeText = when (item.sourceType) {
-        RecipeSourceType.TEXT -> "TEXT"
-        RecipeSourceType.YOUTUBE -> "YOUTUBE"
-        RecipeSourceType.IMAGE -> "IMAGE"
+    val (icon, bgColor, iconColor, badgeText) = when (item.sourceType) {
+        RecipeSourceType.TEXT -> listOf(Icons.Default.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7), "TEXT")
+        RecipeSourceType.YOUTUBE -> listOf(Icons.Filled.SmartDisplay, Color(0xFFFFF1E8), TomaMainOrange, "YOUTUBE")
+        RecipeSourceType.IMAGE -> listOf(Icons.Default.CameraAlt, Color(0xFFFFECEC), TomaMainRed, "IMAGE")
     }
 
-    val badgeBgColor = when (item.sourceType) {
-        RecipeSourceType.TEXT -> TomaMainOrange
-        RecipeSourceType.YOUTUBE -> TomaMainOrange
-        RecipeSourceType.IMAGE -> TomaMainRed
-    }
-
-    val tempColor = when (item.sourceType) {
-        RecipeSourceType.TEXT -> Color(0xFFE8F1FF)
-        RecipeSourceType.YOUTUBE -> Color(0xFFFFF1E8)
-        RecipeSourceType.IMAGE -> Color(0xFFFFECEC)
-    }
-
-    Column(
+    Surface(
         modifier = Modifier
-            .size(width = 200.dp, height = 240.dp)
-            .shadow(4.dp, RoundedCornerShape(16.dp))
-            .background(Color.White, RoundedCornerShape(16.dp))
-            .clip(RoundedCornerShape(16.dp))
-            .clickable { onClick() }
+            .width(160.dp)
+            .height(200.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, TomaCardBorder),
+        shadowElevation = 2.dp
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1.5f)
-                .background(tempColor)
-        ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            // 상단 아이콘/배경 영역
             Box(
                 modifier = Modifier
-                    .padding(top = 10.dp, end = 10.dp)
-                    .align(Alignment.TopEnd)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(badgeBgColor)
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(bgColor as Color),
                 contentAlignment = Alignment.Center
             ) {
+                // 워터마크 느낌의 대형 아이콘
+                Icon(
+                    imageVector = icon as androidx.compose.ui.graphics.vector.ImageVector,
+                    contentDescription = null,
+                    tint = (iconColor as Color).copy(alpha = 0.4f),
+                    modifier = Modifier.size(48.dp)
+                )
+
+                // 우측 상단 배지
+                Surface(
+                    shape = RoundedCornerShape(bottomStart = 12.dp),
+                    color = iconColor,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
+                    Text(
+                        text = badgeText as String,
+                        color = Color.White,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.Bottom
+            ) {
                 Text(
-                    text = badgeText,
-                    color = Color.White,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold
+                    text = item.title,
+                    color = TomaPrimaryText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = item.timeText,
+                    color = TomaSecondaryText,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
                 )
             }
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                text = item.title,
-                color = TomaPrimaryText,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Text(
-                text = item.timeText,
-                color = TomaSecondaryText,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
         }
     }
 }
@@ -730,44 +683,36 @@ fun SelectedRecentItemCard(
     timeText: String,
     modifier: Modifier = Modifier
 ) {
-    val sourceLabel = when (sourceType) {
-        RecipeSourceType.TEXT -> "TEXT"
-        RecipeSourceType.YOUTUBE -> "YOUTUBE"
-        RecipeSourceType.IMAGE -> "IMAGE"
-    }
-
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.White,
-        shadowElevation = 4.dp
+        shape = RoundedCornerShape(16.dp),
+        color = TomaMainOrange.copy(alpha = 0.05f),
+        border = BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.2f))
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "선택된 최근 항목",
-                color = TomaMainOrange,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
+            Icon(
+                imageVector = Icons.Default.BookmarkBorder,
+                contentDescription = null,
+                tint = TomaMainOrange,
+                modifier = Modifier.size(24.dp)
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = title,
-                color = TomaPrimaryText,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = "$sourceLabel · $timeText",
-                color = TomaSecondaryText,
-                fontSize = 14.sp
-            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = title,
+                    color = TomaPrimaryText,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "불러오기 완료 · $timeText",
+                    color = TomaSecondaryText,
+                    fontSize = 13.sp
+                )
+            }
         }
     }
 }
@@ -780,14 +725,34 @@ fun ErrorMessageCard(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        color = Color(0xFFFFF4F4)
+        color = Color(0xFFFFF4F4),
+        border = BorderStroke(1.dp, Color(0xFFFFE3E3))
     ) {
         Text(
             text = message,
-            color = Color(0xFFC62828),
+            color = Color(0xFFE03131),
             fontSize = 14.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(16.dp)
+        )
+    }
+}
+
+@Composable
+private fun SectionTitle(title: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(width = 4.dp, height = 18.dp)
+                .clip(CircleShape)
+                .background(TomaMainOrange)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = title,
+            color = TomaPrimaryText,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.ExtraBold
         )
     }
 }
@@ -803,15 +768,21 @@ fun PreviewTomaHomeScreen() {
             recentItems = listOf(
                 RecentRecipeItem(
                     id = "1",
-                    title = "김치볶음밥",
-                    timeText = "2시간 전 분석",
+                    title = "백종원 김치볶음밥",
+                    timeText = "2시간 전",
                     sourceType = RecipeSourceType.YOUTUBE
                 ),
                 RecentRecipeItem(
                     id = "2",
-                    title = "계란말이",
-                    timeText = "어제 분석",
+                    title = "스팸 계란말이",
+                    timeText = "어제",
                     sourceType = RecipeSourceType.IMAGE
+                ),
+                RecentRecipeItem(
+                    id = "3",
+                    title = "간단 파스타",
+                    timeText = "3일 전",
+                    sourceType = RecipeSourceType.TEXT
                 )
             )
         ),
@@ -820,34 +791,6 @@ fun PreviewTomaHomeScreen() {
         onMicClick = {},
         onYoutubeLinkChange = {},
         onYoutubeSubmit = {},
-        onPhotoScanClick = {},
-        onRecentItemClick = {},
-        onRecentMoreClick = {},
-        onHomeClick = {},
-        onStorageClick = {},
-        onSettingsClick = {},
-        onPrivacyPolicyClick = {}
-    )
-}
-
-@Preview(showBackground = true, showSystemUi = true)
-@Composable
-fun PreviewTomaHomeScreenLoading() {
-    TomaHomeScreen(
-        uiState = HomeUiState(
-            isAnalyzing = true
-        ),
-        onSearchQueryChange = {},
-        onSearchSubmit = {},
-        onMicClick = {},
-        onYoutubeLinkChange = {},
-        onYoutubeSubmit = {},
-        onPhotoScanClick = {},
-        onRecentItemClick = {},
-        onRecentMoreClick = {},
-        onHomeClick = {},
-        onStorageClick = {},
-        onSettingsClick = {},
-        onPrivacyPolicyClick = {}
+        onPhotoScanClick = {}
     )
 }
