@@ -44,12 +44,16 @@ fun VoiceGuideScreen(
     uiState: VoiceUiState,
     suggestions: List<String>,
     onMicClick: () -> Unit,
-    onSuggestionClick: (String) -> Unit
+    onSuggestionClick: (String) -> Unit,
+    onBackClick: () -> Unit = {}
 ) {
     val statusText = when (uiState) {
         VoiceUiState.Idle -> "READY"
         VoiceUiState.Listening -> "LISTENING"
         VoiceUiState.Processing -> "PROCESSING"
+        VoiceUiState.Speaking -> "SPEAKING"
+        VoiceUiState.Training -> "TRAINING"
+        VoiceUiState.Recovering -> "RECOVERING"
         is VoiceUiState.Result -> "RESULT"
         is VoiceUiState.Error -> "ERROR"
     }
@@ -58,6 +62,9 @@ fun VoiceGuideScreen(
         VoiceUiState.Idle -> "레시피나 메뉴를 음성으로 요청해보세요"
         VoiceUiState.Listening -> "말씀하시는 내용을 듣고 있어요..."
         VoiceUiState.Processing -> "음성을 열심히 분석하고 있어요"
+        VoiceUiState.Speaking -> "TOMA가 답변을 말하고 있어요"
+        VoiceUiState.Training -> "목소리를 학습하고 있어요"
+        VoiceUiState.Recovering -> "잠시 후 다시 시도해주세요"
         is VoiceUiState.Result -> "인식된 요청을 확인해보세요"
         is VoiceUiState.Error -> "다시 한 번 말씀해 주세요"
     }
@@ -68,7 +75,10 @@ fun VoiceGuideScreen(
             .background(TomaBackground)
             .padding(vertical = 24.dp)
     ) {
-        TomaTopAppBar()
+        TomaTopAppBar(
+            showBackButton = true,
+            onBackClick = onBackClick
+        )
 
         Spacer(modifier = Modifier.height(24.dp))
 
@@ -426,23 +436,23 @@ private val previewSuggestions = listOf(
 @Preview(name = "1. Idle 상태", showBackground = true, showSystemUi = true)
 @Composable
 private fun VoiceGuideIdlePreview() {
-    VoiceGuideScreen(uiState = VoiceUiState.Idle, suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
+    VoiceGuideScreen(uiState = VoiceUiState.Idle, suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {}, onBackClick = {})
 }
 
 @Preview(name = "2. Listening 상태", showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
 private fun TomaVoiceGuideListeningPreview() {
-    VoiceGuideScreen(uiState = VoiceUiState.Listening, suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
+    VoiceGuideScreen(uiState = VoiceUiState.Listening, suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {}, onBackClick = {})
 }
 
 @Preview(name = "3. Result 결과", showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
 private fun TomaVoiceGuideResultPreview() {
-    VoiceGuideScreen(uiState = VoiceUiState.Result("김치볶음밥 레시피를 찾아드릴게요."), suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
+    VoiceGuideScreen(uiState = VoiceUiState.Result("김치볶음밥 레시피를 찾아드릴게요."), suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {}, onBackClick = {})
 }
 
 @Preview(name = "4. Error 에러", showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
 private fun TomaVoiceGuideErrorPreview() {
-    VoiceGuideScreen(uiState = VoiceUiState.Error("음성을 인식하지 못했어요. 다시 시도해 주세요."), suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
+    VoiceGuideScreen(uiState = VoiceUiState.Error("음성을 인식하지 못했어요. 다시 시도해 주세요."), suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {}, onBackClick = {})
 }

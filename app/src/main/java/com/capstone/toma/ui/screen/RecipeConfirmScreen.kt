@@ -102,22 +102,38 @@ fun RecipeConfirmScreen(
                         )
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                }
-            }
 
-            items(recipe.ingredients.chunked(2)) { row ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    row.forEach { ingredient ->
-                        IngredientCard(
-                            text = ingredient,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                    if (row.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xFFF1F3F5)),
+                        shadowElevation = 3.dp
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            recipe.ingredients.forEach { ingredient ->
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(TomaMainOrange.copy(alpha = 0.6f))
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = ingredient,
+                                        color = Color(0xFF495057),
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -171,7 +187,11 @@ private fun ConfirmImageSection(imageUrl: String?) {
         modifier = Modifier
             .fillMaxWidth()
             .height(240.dp)
-            .shadow(12.dp, RoundedCornerShape(24.dp), ambientColor = TomaMainOrange, spotColor = TomaMainOrange),
+            .shadow(
+                elevation = 8.dp,
+                shape = RoundedCornerShape(24.dp),
+                spotColor = Color.Black.copy(alpha = 0.1f)
+            ),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
@@ -280,40 +300,6 @@ private fun InfoCard(
                 fontWeight = FontWeight.ExtraBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun IngredientCard(
-    text: String,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier,
-        color = Color.White,
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, Color(0xFFF1F3F5)),
-        shadowElevation = 1.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(Color(0xFFE9ECEF))
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(
-                text = text,
-                color = Color(0xFF495057),
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                lineHeight = 22.sp
             )
         }
     }

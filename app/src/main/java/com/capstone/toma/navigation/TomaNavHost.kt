@@ -334,6 +334,9 @@ fun TomaNavHost(
                 onPrivacyPolicyClick = {
                     navController.navigateSingleTop(TomaDestination.PrivacyPolicy.route)
                 },
+                onSpeakerEnrollmentClick = {
+                    navController.navigateSingleTop(TomaDestination.SpeakerEnrollment.route)
+                },
                 onErrorDismiss = homeViewModel::clearError
             )
         }
@@ -550,7 +553,8 @@ fun TomaNavHost(
                 onPushClick = { navController.navigate(TomaDestination.PushSetting.route) },
                 onEmailClick = { navController.navigate(TomaDestination.EmailSetting.route) },
                 onCustomerCenterClick = { navController.navigate(TomaDestination.CustomerCenter.route) },
-                onContactClick = { navController.navigate(TomaDestination.ContactUs.route) }
+                onContactClick = { navController.navigate(TomaDestination.ContactUs.route) },
+                onSpeakerEnrollmentClick = { navController.navigate(TomaDestination.SpeakerEnrollment.route) }
             )
         }
 
