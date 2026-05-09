@@ -77,7 +77,7 @@ fun TomaNavHost(
                 voiceViewModel.stopWakeWord()
                 val enrolled = UserManager.isEnrolled(context)
                 val skipped = UserManager.hasSkipped(context)
-                if (!enrolled && !skipped) {
+                if (!enrolled && skipped.not()) {
                     navController.navigate(TomaDestination.SpeakerEnrollment.route)
                 } else if (enrolled) {
                     val modelFile = java.io.File(context.filesDir, "hey_toma_personal.onnx")
@@ -116,10 +116,10 @@ fun TomaNavHost(
                                 }
 
                                 val fetchFailed = t == null && (d == null
-                                    || d.startsWith("본문을 읽어오는데 실패")
-                                    || d.startsWith("페이지 로드 실패")
-                                    || d.startsWith("유튜브 정보를 가져오는데 실패")
-                                    || d.startsWith("유튜브 정보를 로드할 수 없습니다"))
+                                        || d.startsWith("본문을 읽어오는데 실패")
+                                        || d.startsWith("페이지 로드 실패")
+                                        || d.startsWith("유튜브 정보를 가져오는데 실패")
+                                        || d.startsWith("유튜브 정보를 로드할 수 없습니다"))
                                 if (fetchFailed) {
                                     homeViewModel.showError("링크를 읽어올 수 없어요. 다시 시도해주세요.", isDialog = true)
                                     return@startLinkAnalysis VoiceRequestResult.Error("스크래핑 실패")
@@ -169,7 +169,7 @@ fun TomaNavHost(
                                     return@startLinkAnalysis VoiceRequestResult.Success(
                                         requestType = "not_recipe",
                                         keyword = "",
-                                        responseMessage = "이 링크는 요리 레시피가 아닌 것 같아요 😅\n\n요리 관련 페이지 링크를 다시 입력해주시거나, 음식 이름을 채팅으로 직접 알려주세요!",
+                                        responseMessage = "이 링크는 요리 레시피가 아닌 것 같아요 \n\n요리 관련 페이지 링크를 다시 입력해주시거나, 음식 이름을 채팅으로 직접 알려주세요!",
                                         recipeData = null
                                     )
                                 }
@@ -201,9 +201,9 @@ fun TomaNavHost(
                 onMicClick = {
                     navController.navigateSingleTop(TomaDestination.VoiceGuide.route)
                 },
-                onLinkChange = homeViewModel::updateRecipeLink,
-                onLinkSubmit = {
-                    val link = homeUiState.recipeLink
+                onYoutubeLinkChange = homeViewModel::updateYoutubeLink,
+                onYoutubeSubmit = {
+                    val link = homeUiState.youtubeLink
 
                     if (link.isNotBlank()) {
                         val isYoutube = link.contains("youtube.com") || link.contains("youtu.be")
@@ -224,19 +224,17 @@ fun TomaNavHost(
                                 initialAiText = "페이지 본문을 읽어오고 있어요... 📄",
                                 fixedSourceType = if (isYoutube) com.capstone.toma.model.RecipeSourceType.YOUTUBE else com.capstone.toma.model.RecipeSourceType.WEB
                             ) { updateStatus ->
-                                // Step 1: Scraping (YouTube or Web)
                                 val (t, d, img) = if (isYoutube) {
                                     youtubeManager.fetchVideoInfoSuspend(link)
                                 } else {
                                     webPageManager.fetchPageInfoSuspend(link)
                                 }
 
-                                // 명시적 실패 메시지 감지
                                 val fetchFailed = t == null && (d == null
-                                    || d.startsWith("본문을 읽어오는데 실패")
-                                    || d.startsWith("페이지 로드 실패")
-                                    || d.startsWith("유튜브 정보를 가져오는데 실패")
-                                    || d.startsWith("유튜브 정보를 로드할 수 없습니다"))
+                                        || d.startsWith("본문을 읽어오는데 실패")
+                                        || d.startsWith("페이지 로드 실패")
+                                        || d.startsWith("유튜브 정보를 가져오는데 실패")
+                                        || d.startsWith("유튜브 정보를 로드할 수 없습니다"))
                                 if (fetchFailed) {
                                     homeViewModel.showError("링크를 읽어올 수 없어요. 다시 시도해주세요.", isDialog = true)
                                     return@startLinkAnalysis VoiceRequestResult.Error("스크래핑 실패")
@@ -286,7 +284,7 @@ fun TomaNavHost(
                                     return@startLinkAnalysis VoiceRequestResult.Success(
                                         requestType = "not_recipe",
                                         keyword = "",
-                                        responseMessage = "이 링크는 요리 레시피가 아닌 것 같아요 😅\n\n요리 관련 페이지 링크를 다시 입력해주시거나, 음식 이름을 채팅으로 직접 알려주세요!",
+                                        responseMessage = "이 링크는 요리 레시피가 아닌 것 같아요 \n\n요리 관련 페이지 링크를 다시 입력해주시거나, 음식 이름을 채팅으로 직접 알려주세요!",
                                         recipeData = null
                                     )
                                 }
@@ -306,7 +304,7 @@ fun TomaNavHost(
                                 } else aiResult
                             }
 
-                            homeViewModel.updateRecipeLink("")
+                            homeViewModel.updateYoutubeLink("")
                         } else {
                             homeViewModel.showError("올바른 링크를 입력해주세요.")
                         }
@@ -329,9 +327,6 @@ fun TomaNavHost(
                 },
                 onSettingsClick = {
                     navController.navigateSingleTop(TomaDestination.Settings.route)
-                },
-                onSpeakerEnrollmentClick = {
-                    navController.navigateSingleTop(TomaDestination.SpeakerEnrollment.route)
                 },
                 onPrivacyPolicyClick = {
                     navController.navigateSingleTop(TomaDestination.PrivacyPolicy.route)
@@ -445,15 +440,15 @@ fun TomaNavHost(
                             val (t, d, img) = if (isYoutube) youtubeManager.fetchVideoInfoSuspend(inputText) else webPageManager.fetchPageInfoSuspend(inputText)
 
                             val fetchFailed = t == null && (d == null
-                                || d.startsWith("본문을 읽어오는데 실패")
-                                || d.startsWith("페이지 로드 실패")
-                                || d.startsWith("유튜브 정보를 가져오는데 실패")
-                                || d.startsWith("유튜브 정보를 로드할 수 없습니다"))
+                                    || d.startsWith("본문을 읽어오는데 실패")
+                                    || d.startsWith("페이지 로드 실패")
+                                    || d.startsWith("유튜브 정보를 가져오는데 실패")
+                                    || d.startsWith("유튜브 정보를 로드할 수 없습니다"))
                             if (fetchFailed) {
                                 return@startLinkAnalysis VoiceRequestResult.Success(
                                     requestType = "not_recipe",
                                     keyword = "",
-                                    responseMessage = "링크를 읽어올 수 없어요 😥\n다시 시도하거나 음식 이름을 직접 알려주세요!",
+                                    responseMessage = "링크를 읽어올 수 없어요 \n다시 시도하거나 음식 이름을 직접 알려주세요!",
                                     recipeData = null
                                 )
                             }
@@ -502,7 +497,7 @@ fun TomaNavHost(
                                 return@startLinkAnalysis VoiceRequestResult.Success(
                                     requestType = "not_recipe",
                                     keyword = "",
-                                    responseMessage = "이 링크는 요리 레시피가 아닌 것 같아요 😅\n\n요리 관련 페이지 링크를 다시 입력해주시거나, 음식 이름을 채팅으로 직접 알려주세요!",
+                                    responseMessage = "이 링크는 요리 레시피가 아닌 것 같아요 \n\n요리 관련 페이지 링크를 다시 입력해주시거나, 음식 이름을 채팅으로 직접 알려주세요!",
                                     recipeData = null
                                 )
                             }
@@ -536,8 +531,7 @@ fun TomaNavHost(
                 onPushClick = { navController.navigate(TomaDestination.PushSetting.route) },
                 onEmailClick = { navController.navigate(TomaDestination.EmailSetting.route) },
                 onCustomerCenterClick = { navController.navigate(TomaDestination.CustomerCenter.route) },
-                onContactClick = { navController.navigate(TomaDestination.ContactUs.route) },
-                onSpeakerEnrollmentClick = { navController.navigate(TomaDestination.SpeakerEnrollment.route) }
+                onContactClick = { navController.navigate(TomaDestination.ContactUs.route) }
             )
         }
 
@@ -552,7 +546,8 @@ fun TomaNavHost(
                 voiceViewModel = voiceViewModel,
                 onEnrollmentComplete = {
                     navController.popBackStack()
-                }
+                },
+                onBackClick = { navController.popBackStack() }
             )
         }
 
@@ -609,7 +604,34 @@ fun TomaNavHost(
             RecipeDetailScreen(
                 keyword = keyword,
                 recipeDataJson = recipeData,
-                onBackClick = { navController.popBackStack() }
+                onBackClick = { navController.popBackStack() },
+                onFinish = { kw, data ->
+                    navController.navigate(TomaDestination.RecipeComplete.createRoute(kw, data)) {
+                        popUpTo(TomaDestination.RecipeDetail.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(
+            route = TomaDestination.RecipeComplete.route,
+            arguments = listOf(
+                navArgument("keyword") { type = NavType.StringType },
+                navArgument("recipeData") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
+            val recipeData = backStackEntry.arguments?.getString("recipeData")
+            RecipeCompleteScreen(
+                keyword = keyword,
+                recipeDataJson = recipeData,
+                onDoneClick = {
+                    navController.popBackStack(TomaDestination.Home.route, false)
+                }
             )
         }
     }

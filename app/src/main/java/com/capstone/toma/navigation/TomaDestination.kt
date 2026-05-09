@@ -13,6 +13,17 @@ sealed class TomaDestination(val route: String) {
     object Chat : TomaDestination("ai_chat")
     object RecentHistory : TomaDestination("recent_history")
     object SpeakerEnrollment : TomaDestination("speaker_enrollment")
+    object RecipeComplete : TomaDestination("recipe_complete/{keyword}?recipeData={recipeData}") {
+        fun createRoute(keyword: String, recipeData: String? = null): String {
+            val encodedKeyword = android.net.Uri.encode(keyword)
+            return if (recipeData != null) {
+                val encodedData = android.net.Uri.encode(recipeData)
+                "recipe_complete/$encodedKeyword?recipeData=$encodedData"
+            } else {
+                "recipe_complete/$encodedKeyword"
+            }
+        }
+    }
     object RecipeConfirm : TomaDestination("recipe_confirm/{keyword}/{sourceType}?recipeData={recipeData}") {
         fun createRoute(keyword: String, sourceType: com.capstone.toma.model.RecipeSourceType, recipeData: String? = null): String {
             val encodedKeyword = android.net.Uri.encode(keyword)

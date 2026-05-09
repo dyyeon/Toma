@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.*
@@ -151,10 +152,12 @@ private fun HistoryItemCard(
     item: RecentRecipeItem,
     onClick: () -> Unit
 ) {
+    // ✨ WEB 타입이 완벽하게 추가되었습니다!
     val (icon, iconBgColor, badgeColor) = when (item.sourceType) {
         RecipeSourceType.TEXT -> Triple(Icons.Default.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7))
         RecipeSourceType.YOUTUBE -> Triple(Icons.Default.PlayCircle, Color(0xFFFFF1E8), TomaMainOrange)
         RecipeSourceType.IMAGE -> Triple(Icons.Default.CameraAlt, Color(0xFFFFECEC), TomaMainRed)
+        RecipeSourceType.WEB -> Triple(Icons.Default.Language, Color(0xFFE6FCF5), Color(0xFF20C997))
     }
 
     Surface(
@@ -225,7 +228,6 @@ private fun HistoryItemCard(
     }
 }
 
-
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
 fun RecentHistoryScreenPreview() {
@@ -251,9 +253,9 @@ fun RecentHistoryScreenPreview() {
         ),
         RecentRecipeItem(
             id = "4",
-            title = "초간단 백종원 라면",
+            title = "백종원 만능 간장",
             timeText = "3일 전",
-            sourceType = RecipeSourceType.YOUTUBE
+            sourceType = RecipeSourceType.WEB
         )
     )
 

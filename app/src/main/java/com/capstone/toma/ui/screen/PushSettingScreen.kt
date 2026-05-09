@@ -295,6 +295,6 @@ private fun CustomDivider() {
 
 @Preview(showBackground = true, showSystemUi = true)
 @Composable
-fun PushSettingScreenPreview() {
+fun PushSettingScreenPreview(onBackClick: () -> Unit = {}) {
     PushSettingScreen()
 }

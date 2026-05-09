@@ -17,13 +17,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.capstone.toma.UserManager
+import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.ui.theme.*
 import com.capstone.toma.viewmodel.VoiceViewModel
 
 @Composable
 fun SpeakerEnrollmentScreen(
     voiceViewModel: VoiceViewModel,
-    onEnrollmentComplete: () -> Unit
+    onEnrollmentComplete: () -> Unit,
+    onBackClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var isUploading by remember { mutableStateOf(false) }
@@ -63,11 +65,14 @@ fun SpeakerEnrollmentScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(TomaBackground)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .padding(top = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // 1. Central Status Text
+        TomaTopAppBar(
+            showBackButton = true,
+            onBackClick = onBackClick
+        )
+
         Box(
             modifier = Modifier.weight(1f),
             contentAlignment = Alignment.Center

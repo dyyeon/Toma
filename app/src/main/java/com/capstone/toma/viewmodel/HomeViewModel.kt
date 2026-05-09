@@ -31,9 +31,8 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(searchQuery = query) }
     }
 
-    // 🔥 핵심 추가 (네 기능 유지)
-    fun updateRecipeLink(link: String) {
-        _uiState.update { it.copy(recipeLink = link) }
+    fun updateYoutubeLink(link: String) {
+        _uiState.update { it.copy(youtubeLink = link) }
     }
 
     fun refreshRecentItems() {

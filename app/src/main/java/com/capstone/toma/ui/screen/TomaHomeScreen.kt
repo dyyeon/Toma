@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PrivacyTip
@@ -44,7 +45,6 @@ import com.capstone.toma.ui.component.TomaDrawerItem
 import com.capstone.toma.ui.component.TomaDrawerSheet
 import com.capstone.toma.ui.component.TomaTopAppBar
 import kotlinx.coroutines.launch
-
 
 private val TomaMainOrange = Color(0xFFEE8C2B)
 private val TomaMainRed = Color(0xFFE03131)
@@ -601,10 +601,12 @@ fun RecentAnalysisCard(
     item: RecentRecipeItem,
     onClick: () -> Unit
 ) {
+    // ✨ WEB 타입이 완벽하게 추가되었습니다!
     val (icon, bgColor, iconColor, badgeText) = when (item.sourceType) {
         RecipeSourceType.TEXT -> listOf(Icons.Default.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7), "TEXT")
         RecipeSourceType.YOUTUBE -> listOf(Icons.Filled.SmartDisplay, Color(0xFFFFF1E8), TomaMainOrange, "YOUTUBE")
         RecipeSourceType.IMAGE -> listOf(Icons.Default.CameraAlt, Color(0xFFFFECEC), TomaMainRed, "IMAGE")
+        RecipeSourceType.WEB -> listOf(Icons.Default.Language, Color(0xFFE6FCF5), Color(0xFF20C997), "WEB")
     }
 
     Surface(
