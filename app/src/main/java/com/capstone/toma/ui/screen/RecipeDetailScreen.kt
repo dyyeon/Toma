@@ -35,7 +35,8 @@ import org.json.JSONObject
 fun RecipeDetailScreen(
     keyword: String = "",
     recipeDataJson: String? = null,
-    onBackClick: () -> Unit = {}
+    onBackClick: () -> Unit = {},
+    onFinish: (String, String?) -> Unit = { _, _ -> }
 ) {
     val storageViewModel: RecipeStorageViewModel = viewModel()
     val recipeData = remember(recipeDataJson) {
@@ -49,7 +50,8 @@ fun RecipeDetailScreen(
         recipeDataJson = recipeDataJson,
         isFavorite = isFavorite,
         onBackClick = onBackClick,
-        onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) }
+        onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) },
+        onFinish = onFinish
     )
 }
 
@@ -59,7 +61,8 @@ fun RecipeDetailContent(
     recipeDataJson: String?,
     isFavorite: Boolean,
     onBackClick: () -> Unit,
-    onFavoriteClick: () -> Unit
+    onFavoriteClick: () -> Unit,
+    onFinish: (String, String?) -> Unit
 ) {
     val recipeData = remember(recipeDataJson) {
         recipeDataJson?.let { try { JSONObject(it) } catch (e: Exception) { null } }
@@ -120,7 +123,13 @@ fun RecipeDetailContent(
 
             BottomControlSection(
                 onPrevClick = { if (currentStepIndex > 0) currentStepIndex-- },
-                onNextClick = { if (currentStepIndex < totalSteps) currentStepIndex++ }
+                onNextClick = {
+                    if (currentStepIndex < totalSteps) {
+                        currentStepIndex++
+                    } else {
+                        onFinish(keyword, recipeDataJson)
+                    }
+                }
             )
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -350,6 +359,7 @@ fun RecipeDetailScreenPreview() {
         recipeDataJson = null,
         isFavorite = true,
         onBackClick = {},
-        onFavoriteClick = {}
+        onFavoriteClick = {},
+        onFinish = { _, _ -> }
     )
 }

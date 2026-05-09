@@ -1,0 +1,2 @@
+    git add app/src/main/java/com/capstone/toma/ui/screen/RecentHistoryScreen.kt app/src/main/java/com/capstone/toma/ui/screen/RecipeDetailScreen.kt app/src/main/java/com/capstone/toma/ui/screen/TomaHomeScreen.kt app/src/main/java/com/capstone/toma/ui/screen/VoiceGuideScreen.kt
+    
