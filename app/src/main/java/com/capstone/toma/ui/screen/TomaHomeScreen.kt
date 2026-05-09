@@ -557,7 +557,7 @@ fun RecentAnalysisSection(
             TextButton(onClick = onMoreClick, contentPadding = PaddingValues(0.dp)) {
                 Text(
                     text = "전체 보기",
-                    color = TomaSecondaryText,
+                    color = TomaMainOrange,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )

@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.Search
@@ -74,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
+import coil.compose.SubcomposeAsyncImage
 import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.model.StoredRecipe
 import com.capstone.toma.ui.theme.TomaMainOrange
@@ -110,6 +112,7 @@ fun RecipeStorageScreen(
     var query by rememberSaveable { mutableStateOf("") }
     var openedId by rememberSaveable { mutableStateOf<String?>(null) }
     var imageTargetId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deleteTarget by remember { mutableStateOf<StoredRecipe?>(null) }
     val opened = recipes.firstOrNull { it.id == openedId }
     var showImagePickerDialog by rememberSaveable(openedId) { mutableStateOf(false) }
     val imagePickerLauncher = if (isPreview) {
@@ -165,6 +168,20 @@ fun RecipeStorageScreen(
             }
         }
     ) { inner ->
+        deleteTarget?.let { recipe ->
+            DeleteRecipeDialog(
+                recipeTitle = recipe.title,
+                onDismiss = { deleteTarget = null },
+                onConfirm = {
+                    deleteTarget = null
+                    latestStorageViewModel?.deleteRecipe(recipe.id)
+                    scope.launch {
+                        snackbar.showSnackbar("레시피를 삭제했어요.")
+                    }
+                }
+            )
+        }
+
         if (opened == null) {
             StorageList(
                 inner = inner,
@@ -174,7 +191,8 @@ fun RecipeStorageScreen(
                 onQueryChange = { query = it },
                 onBackClick = onBackClick,
                 onOpen = { openedId = it.id },
-                onFavoriteToggle = { recipe -> storageViewModel?.toggleFavorite(recipe) }
+                onFavoriteToggle = { recipe -> storageViewModel?.toggleFavorite(recipe) },
+                onDeleteRequest = { recipe -> deleteTarget = recipe }
             )
         } else {
             if (showImagePickerDialog) {
@@ -231,7 +249,8 @@ private fun StorageList(
     onQueryChange: (String) -> Unit,
     onBackClick: () -> Unit,
     onOpen: (StoredRecipe) -> Unit,
-    onFavoriteToggle: (StoredRecipe) -> Unit
+    onFavoriteToggle: (StoredRecipe) -> Unit,
+    onDeleteRequest: (StoredRecipe) -> Unit
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(StorageBg),
@@ -280,7 +299,12 @@ private fun StorageList(
             item { EmptySearchCard() }
         } else {
             items(recipes, key = { it.id }) { recipe ->
-                RecipeCard(recipe, { onOpen(recipe) }, { onFavoriteToggle(recipe) })
+                RecipeStorageListCard(
+                    recipe = recipe,
+                    onOpen = { onOpen(recipe) },
+                    onFavoriteToggle = { onFavoriteToggle(recipe) },
+                    onDeleteClick = { onDeleteRequest(recipe) }
+                )
             }
         }
     }
@@ -413,9 +437,12 @@ private fun RecipeCard(recipe: StoredRecipe, onOpen: () -> Unit, onFavoriteToggl
         modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)
     ) {
         Column {
-            RecipeArtwork(
+            RecipeArtworkStable(
                 recipe = recipe,
-                modifier = Modifier.fillMaxWidth().height(180.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
             )
             Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -453,6 +480,147 @@ private fun RecipeCard(recipe: StoredRecipe, onOpen: () -> Unit, onFavoriteToggl
             }
         }
     }
+}
+
+@Composable
+private fun RecipeStorageListCard(
+    recipe: StoredRecipe,
+    onOpen: () -> Unit,
+    onFavoriteToggle: () -> Unit,
+    onDeleteClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, StorageCardBorder),
+        shadowElevation = 4.dp,
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)
+    ) {
+        Column {
+            RecipeArtworkStable(
+                recipe = recipe,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp)
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+            )
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = StorageAccent.copy(alpha = 0.1f)
+                    ) {
+                        Text(
+                            text = recipe.category,
+                            color = StorageAccent,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Timer,
+                            contentDescription = null,
+                            tint = StorageMuted,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "${recipe.time}분 조리",
+                            color = StorageMuted,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Text(
+                        text = recipe.title,
+                        color = StorageInk,
+                        fontSize = 20.sp,
+                        lineHeight = 28.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = onDeleteClick,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteOutline,
+                                contentDescription = "삭제",
+                                tint = Color(0xFFADB5BD),
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        IconButton(
+                            onClick = onFavoriteToggle,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .padding(start = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (recipe.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                contentDescription = "즐겨찾기",
+                                tint = if (recipe.favorite) StorageAccent else Color.LightGray,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeleteRecipeDialog(
+    recipeTitle: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "삭제 확인",
+                color = StorageInk,
+                fontWeight = FontWeight.ExtraBold
+            )
+        },
+        text = {
+            Text(
+                text = "\"$recipeTitle\"을(를) 삭제할까요?",
+                color = StorageMuted,
+                lineHeight = 22.sp
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("삭제", color = Color(0xFFE03131), fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("취소", color = StorageMuted, fontWeight = FontWeight.Bold)
+            }
+        },
+        containerColor = Color.White,
+        shape = RoundedCornerShape(24.dp)
+    )
 }
 
 @Composable
@@ -511,6 +679,40 @@ private fun RecipeArtwork(recipe: StoredRecipe, modifier: Modifier = Modifier) {
         DefaultRecipeArtwork(category = recipe.category, title = recipe.title, modifier = Modifier.fillMaxSize())
         if (!recipe.imageUri.isNullOrBlank()) {
             AsyncImage(model = recipe.imageUri, contentDescription = "${recipe.title} 음식 사진", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        }
+    }
+}
+
+@Composable
+private fun RecipeArtworkStable(recipe: StoredRecipe, modifier: Modifier = Modifier) {
+    Box(modifier = modifier.background(Brush.linearGradient(palette(recipe.category)))) {
+        if (recipe.imageUri.isNullOrBlank()) {
+            DefaultRecipeArtwork(
+                category = recipe.category,
+                title = recipe.title,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            SubcomposeAsyncImage(
+                model = recipe.imageUri,
+                contentDescription = "${recipe.title} 음식 사진",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+                loading = {
+                    DefaultRecipeArtwork(
+                        category = recipe.category,
+                        title = recipe.title,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                },
+                error = {
+                    DefaultRecipeArtwork(
+                        category = recipe.category,
+                        title = recipe.title,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            )
         }
     }
 }
