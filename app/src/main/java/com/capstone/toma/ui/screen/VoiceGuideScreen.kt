@@ -32,11 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.VoiceUiState
+import com.capstone.toma.ui.theme.*
 
-private val TomaMainOrange = Color(0xFFEE8C2B)
-private val TomaBackground = Color(0xFFF8F9FA)
-private val TomaPrimaryText = Color(0xFF212529)
-private val TomaSecondaryText = Color(0xFF868E96)
 private val TomaCardBorder = Color(0xFFF1F3F5)
 
 @Composable
@@ -44,12 +41,16 @@ fun VoiceGuideScreen(
     uiState: VoiceUiState,
     suggestions: List<String>,
     onMicClick: () -> Unit,
-    onSuggestionClick: (String) -> Unit
+    onSuggestionClick: (String) -> Unit,
+    onBackClick: () -> Unit = {}
 ) {
     val statusText = when (uiState) {
         VoiceUiState.Idle -> "READY"
         VoiceUiState.Listening -> "LISTENING"
         VoiceUiState.Processing -> "PROCESSING"
+        VoiceUiState.Speaking -> "SPEAKING"
+        VoiceUiState.Recovering -> "RECOVERING"
+        VoiceUiState.Training -> "TRAINING"
         is VoiceUiState.Result -> "RESULT"
         is VoiceUiState.Error -> "ERROR"
     }
@@ -57,24 +58,32 @@ fun VoiceGuideScreen(
     val helperText = when (uiState) {
         VoiceUiState.Idle -> "레시피나 메뉴를 음성으로 요청해보세요"
         VoiceUiState.Listening -> "말씀하시는 내용을 듣고 있어요..."
-        VoiceUiState.Processing -> "음성을 열심히 분석하고 있어요"
+        VoiceUiState.Processing -> "음성을 분석하고 있어요"
+        VoiceUiState.Speaking -> "답변을 들려드리고 있어요"
+        VoiceUiState.Recovering -> "잠시 후 다시 시도할게요"
+        VoiceUiState.Training -> "개인화 모델을 준비하고 있어요"
         is VoiceUiState.Result -> "인식된 요청을 확인해보세요"
         is VoiceUiState.Error -> "다시 한 번 말씀해 주세요"
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(TomaBackground)
-            .padding(vertical = 24.dp)
-    ) {
-        TomaTopAppBar()
-
-        Spacer(modifier = Modifier.height(24.dp))
-
+    Scaffold(
+        containerColor = TomaBackground,
+        topBar = {
+            TomaTopAppBar(
+                title = "음성 안내",
+                showBackButton = true,
+                onBackClick = onBackClick
+            )
+        }
+    ) { innerPadding ->
         Column(
-            modifier = Modifier.padding(horizontal = 24.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 24.dp)
         ) {
+            Spacer(modifier = Modifier.height(24.dp))
+
             Text(
                 text = "무엇을 도와드릴까요?",
                 fontSize = 28.sp,
@@ -185,7 +194,7 @@ fun VoiceGuideScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }

@@ -10,9 +10,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -152,9 +152,10 @@ private fun HistoryItemCard(
     onClick: () -> Unit
 ) {
     val (icon, iconBgColor, badgeColor) = when (item.sourceType) {
-        RecipeSourceType.TEXT -> Triple(Icons.Default.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7))
+        RecipeSourceType.TEXT -> Triple(Icons.AutoMirrored.Filled.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7))
         RecipeSourceType.YOUTUBE -> Triple(Icons.Default.PlayCircle, Color(0xFFFFF1E8), TomaMainOrange)
         RecipeSourceType.IMAGE -> Triple(Icons.Default.CameraAlt, Color(0xFFFFECEC), TomaMainRed)
+        RecipeSourceType.WEB -> Triple(Icons.Default.History, Color(0xFFE8F5E9), Color(0xFF43A047))
     }
 
     Surface(

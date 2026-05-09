@@ -16,8 +16,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PrivacyTip
@@ -602,9 +604,10 @@ fun RecentAnalysisCard(
     onClick: () -> Unit
 ) {
     val (icon, bgColor, iconColor, badgeText) = when (item.sourceType) {
-        RecipeSourceType.TEXT -> listOf(Icons.Default.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7), "TEXT")
+        RecipeSourceType.TEXT -> listOf(Icons.AutoMirrored.Filled.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7), "TEXT")
         RecipeSourceType.YOUTUBE -> listOf(Icons.Filled.SmartDisplay, Color(0xFFFFF1E8), TomaMainOrange, "YOUTUBE")
         RecipeSourceType.IMAGE -> listOf(Icons.Default.CameraAlt, Color(0xFFFFECEC), TomaMainRed, "IMAGE")
+        RecipeSourceType.WEB -> listOf(Icons.Default.History, Color(0xFFE8F5E9), Color(0xFF43A047), "WEB")
     }
 
     Surface(
