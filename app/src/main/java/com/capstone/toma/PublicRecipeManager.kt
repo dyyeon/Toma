@@ -44,7 +44,7 @@ data class PublicRecipe(
 class PublicRecipeManager {
     private val client = OkHttpClient()
     private val apiKey = BuildConfig.FOOD_SAFETY_API_KEY
-    private val baseUrl = "http://openapi.foodsafetykorea.go.kr/api/$apiKey/COOKRCP01/json/1/3"
+    private val baseUrl = "https://openapi.foodsafetykorea.go.kr/api/$apiKey/COOKRCP01/json/1/3"
 
     suspend fun searchRecipe(keyword: String): PublicRecipe? = withContext(Dispatchers.IO) {
         try {
@@ -73,7 +73,7 @@ class PublicRecipeManager {
             val name = item.optString("RCP_NM", "")
             val category = item.optString("RCP_PAT2", "기타")
             val calories = item.optString("INFO_ENG", "")
-            val mainImageUrl = item.optString("ATT_FILE_NO_MAIN", "")
+            val mainImageUrl = item.optString("ATT_FILE_NO_MAIN", "").replace("http://", "https://")
 
             val rawIngredients = item.optString("RCP_PARTS_DTLS", "")
             val ingredients = rawIngredients

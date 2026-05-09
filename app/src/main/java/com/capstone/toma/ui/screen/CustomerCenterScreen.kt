@@ -80,7 +80,7 @@ fun CustomerCenterScreen(onBackClick: () -> Unit = {}) {
 
                     // 2. 답변 영역 (해당 질문이 터치되었을 때만 등장!)
                     if (isExpanded) {
-                        Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()

@@ -4,7 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,7 +26,7 @@ fun ContactUsScreen(onBackClick: () -> Unit = {}) {
     Column(modifier = Modifier.fillMaxSize().background(TomaSettingsBg).padding(top = 48.dp, start = 20.dp, end = 20.dp)) {
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             IconButton(onClick = onBackClick, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.Black)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black)
             }
             Text("문의하기", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }

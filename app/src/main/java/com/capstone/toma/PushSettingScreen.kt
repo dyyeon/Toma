@@ -6,7 +6,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,7 +45,7 @@ fun PushSettingScreen(onBackClick: () -> Unit = {}) {
         // 상단 바
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             IconButton(onClick = onBackClick, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.Black)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black)
             }
             Text("푸시 알림 설정", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
@@ -85,7 +85,7 @@ fun PushSettingScreen(onBackClick: () -> Unit = {}) {
                     .padding(vertical = 8.dp)
             ) {
                 PushSwitchItem(title = "내 게시글 댓글 알림", isChecked = isCommentEnabled, onCheckedChange = { isCommentEnabled = it }, activeColor = TomaPointOrange)
-                Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
                 PushSwitchItem(title = "내 레시피 좋아요 알림", isChecked = isLikeEnabled, onCheckedChange = { isLikeEnabled = it }, activeColor = TomaPointOrange)
             }
 
@@ -102,7 +102,7 @@ fun PushSettingScreen(onBackClick: () -> Unit = {}) {
                     .padding(vertical = 8.dp)
             ) {
                 PushSwitchItem(title = "오늘의 맞춤 레시피 추천", isChecked = isRecipeRecommendEnabled, onCheckedChange = { isRecipeRecommendEnabled = it }, activeColor = TomaPointOrange)
-                Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
                 PushSwitchItem(title = "관심 식재료 알림", isChecked = isIngredientAlertEnabled, onCheckedChange = { isIngredientAlertEnabled = it }, activeColor = TomaPointOrange)
             }
 
@@ -119,7 +119,7 @@ fun PushSettingScreen(onBackClick: () -> Unit = {}) {
                     .padding(vertical = 8.dp)
             ) {
                 PushSwitchItem(title = "이벤트 및 프로모션 알림", subtitle = "광고성 정보 수신 동의", isChecked = isEventEnabled, onCheckedChange = { isEventEnabled = it }, activeColor = TomaPointOrange)
-                Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
                 PushSwitchItem(title = "중요 공지사항 알림", isChecked = isNoticeEnabled, onCheckedChange = { isNoticeEnabled = it }, activeColor = TomaPointOrange)
             }
 

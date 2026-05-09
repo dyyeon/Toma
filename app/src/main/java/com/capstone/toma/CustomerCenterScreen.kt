@@ -7,7 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.*
@@ -41,7 +41,7 @@ fun CustomerCenterScreen(onBackClick: () -> Unit = {}) {
         // 상단 바
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             IconButton(onClick = onBackClick, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.Black)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black)
             }
             Text("고객센터", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
@@ -81,7 +81,7 @@ fun CustomerCenterScreen(onBackClick: () -> Unit = {}) {
 
                     // 2. 답변 영역 (해당 질문이 터치되었을 때만 등장!)
                     if (isExpanded) {
-                        Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+                        HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()

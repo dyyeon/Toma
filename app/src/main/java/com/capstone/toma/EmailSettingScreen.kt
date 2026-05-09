@@ -4,7 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,7 +30,7 @@ fun EmailSettingScreen(onBackClick: () -> Unit = {}) {
         // 상단 바
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
             IconButton(onClick = onBackClick, modifier = Modifier.align(Alignment.CenterStart)) {
-                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.Black)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black)
             }
             Text("이메일 수신 설정", color = Color.Black, fontSize = 18.sp, fontWeight = FontWeight.Bold)
         }
@@ -58,7 +58,7 @@ fun EmailSettingScreen(onBackClick: () -> Unit = {}) {
             }
 
             // 구분선
-            Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
             Spacer(modifier = Modifier.height(8.dp))
 
             // 2. 이메일 입력 영역 (이제 스위치 여부와 상관없이 항상 보입니다!)

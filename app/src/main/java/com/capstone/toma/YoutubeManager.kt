@@ -39,11 +39,19 @@ class YoutubeManager {
             override fun onResponse(call: Call, response: Response) {
                 if (response.isSuccessful) {
                     val content = response.body?.string() ?: ""
-                    // Jina AI returns clean markdown.
                     val title = content.lines().firstOrNull { it.isNotBlank() }?.replace("#", "")?.trim()
-                    
-                    // The content from Jina Reader typically includes description and sometimes transcript elements
-                    onResult(title, content, null)
+                    val videoId = extractVideoId(url)
+                    val thumbnailUrl = videoId?.let { id ->
+                        // maxresdefault 우선, 없으면 hqdefault (Shorts 포함 항상 존재)
+                        val maxRes = "https://img.youtube.com/vi/$id/maxresdefault.jpg"
+                        val hq = "https://img.youtube.com/vi/$id/hqdefault.jpg"
+                        try {
+                            val req = Request.Builder().url(maxRes).head().build()
+                            val resp = client.newCall(req).execute()
+                            if (resp.isSuccessful && (resp.header("Content-Length")?.toLongOrNull() ?: 0L) > 1000L) maxRes else hq
+                        } catch (e: Exception) { hq }
+                    }
+                    onResult(title, content, thumbnailUrl)
                 } else {
                     onResult(null, "유튜브 정보를 로드할 수 없습니다 (HTTP ${response.code})", null)
                 }
@@ -56,9 +64,10 @@ class YoutubeManager {
      */
     fun extractVideoId(url: String): String? {
         val patterns = listOf(
+            "shorts/([^?/]+)",
             "v=([^&]+)",
-            "youtu.be/([^?]+)",
-            "embed/([^?]+)"
+            "youtu\\.be/([^?/]+)",
+            "embed/([^?/]+)"
         )
         for (pattern in patterns) {
             val match = Regex(pattern).find(url)

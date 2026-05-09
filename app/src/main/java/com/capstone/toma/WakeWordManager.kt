@@ -166,6 +166,7 @@ class WakeWordManager(
                 val melInputName = melSession?.inputNames?.iterator()?.next() ?: "input"
                 val melOutput = melSession?.run(Collections.singletonMap(melInputName, pcmTensor))
                 melOutput?.use {
+                    @Suppress("UNCHECKED_CAST")
                     val melValue = it[0].value as Array<Array<Array<FloatArray>>>
                     val frames = melValue[0][0]
                     for (frame in frames) {
@@ -191,6 +192,7 @@ class WakeWordManager(
                 val embInputName = embSession?.inputNames?.iterator()?.next() ?: "input"
                 val embOutput = embSession?.run(Collections.singletonMap(embInputName, melInputTensor))
                 embOutput?.use {
+                    @Suppress("UNCHECKED_CAST")
                     val embValue = it[0].value as Array<Array<Array<FloatArray>>>
                     val embedding = embValue[0][0][0]
                     embeddingBuffer.add(embedding)
@@ -332,6 +334,7 @@ class WakeWordManager(
                     val clfInputName = clfSession?.inputNames?.iterator()?.next()
                     if (clfInputName != null) {
                         clfSession?.run(mapOf(clfInputName to it))?.use { res ->
+                            @Suppress("UNCHECKED_CAST")
                             score = (res.get(0).value as? Array<FloatArray>)?.get(0)?.get(0) ?: 0f
                         }
                     }
@@ -378,6 +381,7 @@ class WakeWordManager(
             } else {
                 @Suppress("DEPRECATION")
                 val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                @Suppress("DEPRECATION")
                 vibrator.vibrate(100)
             }
         } catch (e: Exception) {}

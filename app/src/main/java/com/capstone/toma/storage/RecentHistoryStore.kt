@@ -29,22 +29,11 @@ class RecentHistoryStore(context: Context) {
             return getRecentItems()
         }
 
-        // Automatic Source Type mapping
-        val finalSourceType = if (keyword.startsWith("http")) {
-            if (keyword.contains("youtube.com") || keyword.contains("youtu.be")) {
-                RecipeSourceType.YOUTUBE
-            } else {
-                RecipeSourceType.WEB
-            }
-        } else if (sourceType == RecipeSourceType.IMAGE) {
-            RecipeSourceType.IMAGE
-        } else {
-            RecipeSourceType.TEXT
-        }
+        val finalSourceType = sourceType
 
         val savedAt = System.currentTimeMillis()
         val entry = RecentHistoryEntry(
-            id = buildRecordId(title),
+            id = buildRecordId(title, finalSourceType, recipeDataJson),
             title = title,
             sourceType = finalSourceType,
             recipeDataJson = recipeDataJson?.takeIf { it.isNotBlank() },
@@ -112,8 +101,24 @@ class RecentHistoryStore(context: Context) {
         }.getOrDefault("")
     }
 
-    private fun buildRecordId(title: String): String {
-        return title.trim().lowercase(Locale.ROOT).hashCode().toUInt().toString()
+    private fun buildRecordId(title: String, sourceType: RecipeSourceType, recipeDataJson: String?): String {
+        val base = "${title.trim().lowercase(Locale.ROOT)}_${sourceType.name}"
+        
+        // 같은 제목이어도 재료나 조리 단계가 다르면 다른 레시피로 취급하기 위해 해시값 추가
+        val contentHash = if (!recipeDataJson.isNullOrBlank()) {
+            runCatching {
+                val json = JSONObject(recipeDataJson)
+                val ingredients = json.optJSONArray("ingredients")?.toString() ?: ""
+                val steps = json.optJSONArray("steps")?.toString() ?: ""
+                val imageUrl = json.optString("image_url", "")
+                // 주요 데이터의 결합 해시
+                (ingredients + steps + imageUrl).hashCode()
+            }.getOrDefault(recipeDataJson.hashCode())
+        } else {
+            0
+        }
+        
+        return "${base}_$contentHash".hashCode().toUInt().toString()
     }
 
     private fun formatTimeText(savedAt: Long): String {
@@ -167,6 +172,6 @@ class RecentHistoryStore(context: Context) {
     companion object {
         private const val PREFS_NAME = "recent_history_store"
         private const val KEY_RECENT_HISTORY = "recent_history_items"
-        private const val MAX_ITEMS = 5
+        private const val MAX_ITEMS = 20
     }
 }

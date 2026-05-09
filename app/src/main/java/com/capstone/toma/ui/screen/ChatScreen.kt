@@ -105,7 +105,8 @@ fun AiChatScreen(
                     ChatBubble(message = message)
                 }
 
-                if (uiState.isTyping) {
+                // 마지막 메시지가 이미 AI 메시지(링크 분석 상태)면 인디케이터 중복 표시 안 함
+                if (uiState.isTyping && uiState.messages.lastOrNull()?.isUser == true) {
                     item {
                         TypingIndicatorBubble()
                     }

@@ -167,16 +167,13 @@ private fun ConfirmImageSection(imageUrl: String?) {
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
-        if (imageUrl.isNullOrBlank()) {
-            Box(modifier = Modifier.fillMaxSize())
-        } else {
-            AsyncImage(
-                model = imageUrl,
-                contentDescription = "\uC694\uB9AC \uC774\uBBF8\uC9C0",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
-        }
+        AsyncImage(
+            model = imageUrl.takeIf { !it.isNullOrBlank() }
+                ?: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd",
+            contentDescription = "\uC694\uB9AC \uC774\uBBF8\uC9C0",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
+        )
     }
 }
 

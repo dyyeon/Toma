@@ -3,7 +3,11 @@ package com.capstone.toma.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.capstone.toma.OpenAiManager
+import com.capstone.toma.PublicRecipeManager
 import com.capstone.toma.VoiceRequestResult
+import com.capstone.toma.WebPageManager
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import com.capstone.toma.ui.screen.AiChatUiState
 import com.capstone.toma.ui.screen.ChatMessage
 import kotlinx.coroutines.Dispatchers
@@ -45,10 +49,12 @@ class ChatViewModel : ViewModel() {
 
     private val timeFormat = SimpleDateFormat("a h:mm", Locale.KOREAN)
     private var lastAnalyzedRecipeData: String? = null
+    private var sessionSourceType: com.capstone.toma.model.RecipeSourceType? = null
 
     fun resetChat() {
         _uiState.value = AiChatUiState()
         lastAnalyzedRecipeData = null
+        sessionSourceType = null
         clearNavigationEvent()
         clearErrorEvent()
     }
@@ -118,6 +124,9 @@ class ChatViewModel : ViewModel() {
         onAnalyze: suspend (updateStatus: (String) -> Unit) -> VoiceRequestResult
     ) {
         if (_uiState.value.isTyping) return
+        if (fixedSourceType != null && sessionSourceType == null) {
+            sessionSourceType = fixedSourceType
+        }
 
         val userMessageId = UUID.randomUUID().toString()
         val aiMessageId = UUID.randomUUID().toString()
@@ -220,9 +229,30 @@ class ChatViewModel : ViewModel() {
                 viewModelScope.launch {
                     when (result) {
                         is VoiceRequestResult.Success -> {
+                            val enrichedResult = if (
+                                result.requestType == "recipe_search" &&
+                                result.keyword.isNotBlank() &&
+                                result.recipeData != null
+                            ) {
+                                val recipeJson = JSONObject(result.recipeData)
+                                val currentImageUrl = recipeJson.optString("image_url")
+                                if (currentImageUrl.isBlank() || currentImageUrl == "없음") {
+                                    val imageUrl = withContext(Dispatchers.IO) {
+                                        // 1순위: 공공 레시피 API
+                                        PublicRecipeManager().searchRecipe(result.keyword)?.mainImageUrl?.takeIf { it.isNotBlank() }
+                                        // 2순위: 만개의레시피 블로그 이미지 검색
+                                            ?: WebPageManager().searchFoodImage(result.keyword)
+                                    }
+                                    if (imageUrl != null) {
+                                        recipeJson.put("image_url", imageUrl)
+                                        result.copy(recipeData = recipeJson.toString())
+                                    } else result
+                                } else result
+                            } else result
+
                             val aiMessage = ChatMessage(
                                 id = UUID.randomUUID().toString(),
-                                text = result.responseMessage,
+                                text = enrichedResult.responseMessage,
                                 isUser = false,
                                 timestamp = getCurrentTime()
                             )
@@ -233,7 +263,7 @@ class ChatViewModel : ViewModel() {
                                     isTyping = false
                                 )
                             }
-                            handleNavigation(result)
+                            handleNavigation(enrichedResult)
                         }
                         is VoiceRequestResult.Error -> {
                             _uiState.update {
@@ -268,15 +298,17 @@ class ChatViewModel : ViewModel() {
                 )
         ) {
             val keyword = result.keyword
-            val sourceType = fixedSourceType ?: if (keyword.startsWith("http")) {
-                if (keyword.contains("youtube.com") || keyword.contains("youtu.be")) {
-                    com.capstone.toma.model.RecipeSourceType.YOUTUBE
+            val sourceType = fixedSourceType
+                ?: sessionSourceType
+                ?: if (keyword.startsWith("http")) {
+                    if (keyword.contains("youtube.com") || keyword.contains("youtu.be")) {
+                        com.capstone.toma.model.RecipeSourceType.YOUTUBE
+                    } else {
+                        com.capstone.toma.model.RecipeSourceType.WEB
+                    }
                 } else {
-                    com.capstone.toma.model.RecipeSourceType.WEB
+                    com.capstone.toma.model.RecipeSourceType.TEXT
                 }
-            } else {
-                com.capstone.toma.model.RecipeSourceType.TEXT
-            }
 
             _navigationEvent.value = ChatNavigationEvent.ToConfirm(
                 keyword = keyword,

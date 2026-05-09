@@ -38,7 +38,7 @@ fun EmailSettingScreen(onBackClick: () -> Unit = {}) {
                 Switch(checked = isEmailEnabled, onCheckedChange = { isEmailEnabled = it }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = TomaPointOrange))
             }
 
-            Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
             Spacer(modifier = Modifier.height(8.dp))
 
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {

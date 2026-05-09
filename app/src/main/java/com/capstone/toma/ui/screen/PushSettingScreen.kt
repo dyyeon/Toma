@@ -50,7 +50,7 @@ fun PushSettingScreen(onBackClick: () -> Unit = {}) {
             Spacer(modifier = Modifier.height(12.dp))
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
                 PushSwitchItem("내 게시글 댓글 알림", null, isCommentEnabled, { isCommentEnabled = it }, TomaPointOrange)
-                Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
                 PushSwitchItem("내 레시피 좋아요 알림", null, isLikeEnabled, { isLikeEnabled = it }, TomaPointOrange)
             }
             Spacer(modifier = Modifier.height(32.dp))
@@ -59,7 +59,7 @@ fun PushSettingScreen(onBackClick: () -> Unit = {}) {
             Spacer(modifier = Modifier.height(12.dp))
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
                 PushSwitchItem("오늘의 맞춤 레시피 추천", null, isRecipeRecommendEnabled, { isRecipeRecommendEnabled = it }, TomaPointOrange)
-                Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
                 PushSwitchItem("관심 식재료 알림", null, isIngredientAlertEnabled, { isIngredientAlertEnabled = it }, TomaPointOrange)
             }
             Spacer(modifier = Modifier.height(32.dp))
@@ -68,7 +68,7 @@ fun PushSettingScreen(onBackClick: () -> Unit = {}) {
             Spacer(modifier = Modifier.height(12.dp))
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp).shadow(1.dp, RoundedCornerShape(16.dp)).background(TomaItemGroupBg, RoundedCornerShape(16.dp)).padding(vertical = 8.dp)) {
                 PushSwitchItem("이벤트 및 프로모션 알림", "광고성 정보 수신 동의", isEventEnabled, { isEventEnabled = it }, TomaPointOrange)
-                Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
                 PushSwitchItem("중요 공지사항 알림", null, isNoticeEnabled, { isNoticeEnabled = it }, TomaPointOrange)
             }
             Spacer(modifier = Modifier.height(48.dp))

@@ -145,7 +145,7 @@ abstract class RecipeStorageDatabase : RoomDatabase() {
                     .addMigrations(Migration2To3)
                     .addMigrations(Migration3To4)
                     .addMigrations(Migration4To5)
-                    .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { instance = it }
             }

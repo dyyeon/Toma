@@ -697,10 +697,10 @@ fun RecentAnalysisCard(
     onClick: () -> Unit
 ) {
     val badgeText = when (item.sourceType) {
-        RecipeSourceType.TEXT -> "TEXT"
-        RecipeSourceType.YOUTUBE -> "YOUTUBE"
-        RecipeSourceType.WEB -> "WEB"
-        RecipeSourceType.IMAGE -> "IMAGE"
+        RecipeSourceType.TEXT -> "채팅"
+        RecipeSourceType.YOUTUBE -> "유튜브"
+        RecipeSourceType.WEB -> "웹"
+        RecipeSourceType.IMAGE -> "이미지"
     }
 
     val badgeBgColor = when (item.sourceType) {
@@ -717,6 +717,7 @@ fun RecentAnalysisCard(
         RecipeSourceType.IMAGE -> Color(0xFFFFF3E8)
     }
     val fallbackImageRes = recentFallbackImageRes(item)
+    val imageUrl = extractRecentImageUrl(item.recipeDataJson)
 
     Surface(
         modifier = modifier
@@ -738,14 +739,23 @@ fun RecentAnalysisCard(
                     .clip(RoundedCornerShape(18.dp))
                     .background(tempColor)
             ) {
-                Image(
-                    painter = painterResource(id = fallbackImageRes),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .size(64.dp),
-                    contentScale = ContentScale.Fit
-                )
+                if (!imageUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = imageUrl,
+                        contentDescription = item.title,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Image(
+                        painter = painterResource(id = fallbackImageRes),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(64.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                }
 
                 Box(
                     modifier = Modifier
@@ -842,10 +852,10 @@ fun SelectedRecentItemCard(
     modifier: Modifier = Modifier
 ) {
     val sourceLabel = when (sourceType) {
-        RecipeSourceType.TEXT -> "TEXT"
-        RecipeSourceType.YOUTUBE -> "YOUTUBE"
-        RecipeSourceType.WEB -> "WEB"
-        RecipeSourceType.IMAGE -> "IMAGE"
+        RecipeSourceType.TEXT -> "채팅"
+        RecipeSourceType.YOUTUBE -> "유튜브"
+        RecipeSourceType.WEB -> "웹"
+        RecipeSourceType.IMAGE -> "이미지"
     }
 
     Surface(

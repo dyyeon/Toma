@@ -8,6 +8,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -43,7 +45,7 @@ fun SettingsScreen(
     ) {
         // 상단 바
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBackClick) { Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.Black) }
+            IconButton(onClick = onBackClick) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.Black) }
             Text("설정", color = Color.Black, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp))
             Spacer(modifier = Modifier.weight(1f))
             Text("TOMA", color = TomaPointOrange, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
@@ -60,7 +62,7 @@ fun SettingsScreen(
             .padding(vertical = 8.dp)) {
 
             SettingsItemRow(icon = Icons.Default.NotificationsNone, title = "푸시 알림 설정", onClick = onPushClick)
-            Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
             SettingsItemRow(icon = Icons.Default.MailOutline, title = "이메일 수신 설정", onClick = onEmailClick)
         }
 
@@ -77,9 +79,9 @@ fun SettingsScreen(
             .background(TomaItemGroupBg, RoundedCornerShape(16.dp))
             .padding(vertical = 8.dp)) {
 
-            SettingsItemRow(icon = Icons.Default.HelpOutline, title = "고객센터", onClick = onCustomerCenterClick)
-            Divider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
-            SettingsItemRow(icon = Icons.Default.HelpOutline, title = "문의하기", onClick = onContactClick)
+            SettingsItemRow(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "고객센터", onClick = onCustomerCenterClick)
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color.LightGray.copy(0.5f))
+            SettingsItemRow(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "문의하기", onClick = onContactClick)
         }
 
         Spacer(modifier = Modifier.height(48.dp))
