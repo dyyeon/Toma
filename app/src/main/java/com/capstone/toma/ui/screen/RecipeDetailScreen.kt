@@ -5,10 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -37,8 +35,7 @@ import org.json.JSONObject
 fun RecipeDetailScreen(
     keyword: String = "",
     recipeDataJson: String? = null,
-    onBackClick: () -> Unit = {},
-    onFinish: (String, String?) -> Unit = { _, _ -> }
+    onBackClick: () -> Unit = {}
 ) {
     val storageViewModel: RecipeStorageViewModel = viewModel()
     val recipeData = remember(recipeDataJson) {
@@ -52,8 +49,7 @@ fun RecipeDetailScreen(
         recipeDataJson = recipeDataJson,
         isFavorite = isFavorite,
         onBackClick = onBackClick,
-        onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) },
-        onFinish = onFinish
+        onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) }
     )
 }
 
@@ -63,8 +59,7 @@ fun RecipeDetailContent(
     recipeDataJson: String?,
     isFavorite: Boolean,
     onBackClick: () -> Unit,
-    onFavoriteClick: () -> Unit,
-    onFinish: (String, String?) -> Unit
+    onFavoriteClick: () -> Unit
 ) {
     val recipeData = remember(recipeDataJson) {
         recipeDataJson?.let { try { JSONObject(it) } catch (e: Exception) { null } }
@@ -115,8 +110,6 @@ fun RecipeDetailContent(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
             InfoCardRow(timeStr, difficulty)
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -127,13 +120,7 @@ fun RecipeDetailContent(
 
             BottomControlSection(
                 onPrevClick = { if (currentStepIndex > 0) currentStepIndex-- },
-                onNextClick = {
-                    if (currentStepIndex < totalSteps) {
-                        currentStepIndex++
-                    } else {
-                        onFinish(keyword, recipeDataJson)
-                    }
-                }
+                onNextClick = { if (currentStepIndex < totalSteps) currentStepIndex++ }
             )
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -199,7 +186,7 @@ private fun ProgressSection(current: Int, total: Int, progress: Float) {
 
 @Composable
 private fun IngredientsSection(ingredients: List<String>) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.ShoppingBasket, contentDescription = null, tint = TomaMainOrange, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
@@ -207,21 +194,13 @@ private fun IngredientsSection(ingredients: List<String>) {
         }
         Spacer(modifier = Modifier.height(16.dp))
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
             color = Color.White,
             border = BorderStroke(1.dp, Color(0xFFF1F3F5)),
-            shadowElevation = 3.dp
+            shadowElevation = 2.dp
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(20.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
+            Column(modifier = Modifier.padding(20.dp)) {
                 ingredients.forEach { ingredient ->
                     Row(modifier = Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Box(modifier = Modifier.size(6.dp).background(TomaMainOrange, CircleShape))
@@ -236,18 +215,13 @@ private fun IngredientsSection(ingredients: List<String>) {
 
 @Composable
 private fun CurrentStepSection(stepNumber: Int, stepText: String) {
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = stepNumber.toString(),
             modifier = Modifier.align(Alignment.TopStart).offset(y = (-20).dp).alpha(0.05f),
             fontSize = 160.sp, fontWeight = FontWeight.Black, color = Color.Black
         )
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 20.dp)
-                .verticalScroll(rememberScrollState())
-        ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) {
             Text("How to Cook", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TomaMainOrange, letterSpacing = 2.sp)
             Spacer(modifier = Modifier.height(12.dp))
             Text(
@@ -376,7 +350,6 @@ fun RecipeDetailScreenPreview() {
         recipeDataJson = null,
         isFavorite = true,
         onBackClick = {},
-        onFavoriteClick = {},
-        onFinish = { _, _ -> }
+        onFavoriteClick = {}
     )
 }

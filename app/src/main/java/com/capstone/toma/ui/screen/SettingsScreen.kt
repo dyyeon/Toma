@@ -16,6 +16,8 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MailOutline
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.NotificationsNone
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -38,7 +40,8 @@ fun SettingsScreen(
     onPushClick: () -> Unit = {},
     onEmailClick: () -> Unit = {},
     onCustomerCenterClick: () -> Unit = {},
-    onContactClick: () -> Unit = {}
+    onContactClick: () -> Unit = {},
+    onSpeakerEnrollmentClick: () -> Unit = {}
 ) {
     Scaffold(
         containerColor = TomaBackground,
@@ -67,6 +70,17 @@ fun SettingsScreen(
                     icon = Icons.Default.MailOutline,
                     title = "이메일 수신 설정",
                     onClick = onEmailClick
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            SectionHeader(title = "개인화 설정", icon = Icons.Default.Person)
+            SettingsCard {
+                SettingsItemRow(
+                    icon = Icons.Default.RecordVoiceOver,
+                    title = "화자 등록 관리",
+                    onClick = onSpeakerEnrollmentClick
                 )
             }
 

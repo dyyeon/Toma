@@ -224,6 +224,28 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun startListeningManually() {
+        if (_uiState.value != VoiceUiState.Idle) return
+        viewModelScope.launch(Dispatchers.IO) {
+            realtimeManager.connect()
+            audioStreamManager.startCapture()
+            withContext(Dispatchers.Main) {
+                _uiState.value = VoiceUiState.Listening
+                toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
+            }
+        }
+    }
+
+    fun stopListeningManually() {
+        viewModelScope.launch(Dispatchers.IO) {
+            audioStreamManager.stopCapture()
+            realtimeManager.disconnect()
+            withContext(Dispatchers.Main) {
+                _uiState.value = VoiceUiState.Idle
+            }
+        }
+    }
+
     fun onMicClick() {
         // Manual trigger (optional, keeps current UI working)
         if (_uiState.value == VoiceUiState.Idle) {
