@@ -20,7 +20,6 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PrivacyTip
-import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
@@ -125,12 +124,6 @@ fun TomaHomeScreen(
             subtitle = "앱 설정과 지원 메뉴를 확인합니다",
             icon = Icons.Default.Settings,
             onClick = { scope.launch { drawerState.close(); onSettingsClick() } }
-        ),
-        TomaDrawerItem(
-            label = "화자 등록 관리",
-            subtitle = "내 목소리를 등록하고 관리합니다",
-            icon = Icons.Default.RecordVoiceOver,
-            onClick = { scope.launch { drawerState.close(); onSpeakerEnrollmentClick() } }
         ),
         TomaDrawerItem(
             label = "개인정보 처리방침",

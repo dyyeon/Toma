@@ -3,7 +3,18 @@ package com.capstone.toma.ui.screen
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -11,15 +22,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
-import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.MailOutline
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.SupportAgent
-import androidx.compose.material3.*
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,28 +68,11 @@ fun SettingsScreen(
         ) {
             Spacer(modifier = Modifier.height(16.dp))
 
-            SectionHeader(title = "알림", icon = Icons.Default.NotificationsNone)
-            SettingsCard {
-                SettingsItemRow(
-                    icon = Icons.Default.NotificationsActive,
-                    title = "푸시 알림 설정",
-                    onClick = onPushClick
-                )
-                CustomDivider()
-                SettingsItemRow(
-                    icon = Icons.Default.MailOutline,
-                    title = "이메일 수신 설정",
-                    onClick = onEmailClick
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
             SectionHeader(title = "개인화 설정", icon = Icons.Default.Person)
             SettingsCard {
                 SettingsItemRow(
                     icon = Icons.Default.RecordVoiceOver,
-                    title = "화자 등록 관리",
+                    title = "화자등록관리",
                     onClick = onSpeakerEnrollmentClick
                 )
             }
@@ -93,17 +86,7 @@ fun SettingsScreen(
                     title = "고객센터",
                     onClick = onCustomerCenterClick
                 )
-                CustomDivider()
-                SettingsItemRow(
-                    icon = Icons.Default.ChatBubbleOutline,
-                    title = "문의하기",
-                    onClick = onContactClick
-                )
             }
-
-            Spacer(modifier = Modifier.height(48.dp))
-
-            AppVersionInfo()
 
             Spacer(modifier = Modifier.height(40.dp))
         }
@@ -237,40 +220,10 @@ private fun SettingsItemRow(icon: ImageVector, title: String, onClick: () -> Uni
     }
 }
 
+@Preview(showBackground = true)
 @Composable
-private fun CustomDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 20.dp),
-        thickness = 1.dp,
-        color = TomaCardBorder
-    )
-}
-
-@Composable
-private fun AppVersionInfo() {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "TOMA",
-            color = Color.LightGray,
-            fontSize = 16.sp,
-            fontWeight = FontWeight.Black,
-            letterSpacing = 2.sp
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = "최신 버전 1.0.0",
-            color = Color.LightGray,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium
-        )
+private fun SettingsScreenPreview() {
+    Box(modifier = Modifier.background(TomaBackground)) {
+        SettingsScreen()
     }
-}
-
-@Preview(showBackground = true, showSystemUi = true)
-@Composable
-fun SettingsScreenPreview() {
-    SettingsScreen()
 }
