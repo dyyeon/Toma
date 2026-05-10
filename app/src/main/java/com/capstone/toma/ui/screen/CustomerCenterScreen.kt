@@ -10,7 +10,16 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,8 +27,16 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -40,11 +57,18 @@ fun CustomerCenterScreen(
     onBackClick: () -> Unit = {}
 ) {
     val faqList = listOf(
-        Pair("음성 가이드는 어떻게 사용하나요?", "홈 화면에서 마이크 버튼을 누르고 '메뉴 추천해줘' 혹은 '간단한 레시피 알려줘'라고 말씀하시면 TOMA가 똑똑하게 찾아드립니다!"),
-        Pair("맞춤 레시피 기준이 무엇인가요?", "사용자가 최근 검색한 요리, 자주 찾는 식재료, 그리고 설정해 둔 선호/비선호 재료 데이터를 바탕으로 AI가 가장 적합한 레시피를 추천해 줍니다."),
-        Pair("푸시 알림이 오지 않아요.", "기기의 설정 > 애플리케이션 > TOMA > 알림 메뉴에서 알림이 허용되어 있는지 확인해 주세요. 앱 내 '알림 설정'에서도 전체 허용이 켜져 있어야 합니다."),
-        Pair("등록한 이메일을 변경하고 싶어요.", "설정 > 이메일 수신 설정 메뉴에서 기존 이메일을 지우고 새로운 이메일을 입력한 뒤 '저장하기' 버튼을 누르시면 반영됩니다."),
-        Pair("문의는 어디로 할수있나요?", "관련 문의는 TOMA 개발팀의 책임자에게 이메일(kook0707@mju.ac.kr)로 남겨주시면 됩니다. 보내주신 내용을 확인하는 대로 신속하고 자세하게 안내해 드리겠습니다. 서비스 이용과 관련하여 궁금하신 점이나 불편한 사항이 있으신 경우, 언제든지 저희 쪽으로 연락해 주시기 바랍니다. 감사합니다.")
+        Pair(
+            "음성 가이드는 어떻게 사용하나요?",
+            "홈 화면에서 마이크 버튼을 누르고 '메뉴 추천해줘' 혹은 '간단한 레시피 알려줘'라고 말씀하시면 TOMA가 똑똑하게 찾아드립니다!"
+        ),
+        Pair(
+            "맞춤 레시피 기준이 무엇인가요?",
+            "사용자가 최근 검색한 요리, 자주 찾는 식재료, 그리고 설정해 둔 선호/비선호 재료 데이터를 바탕으로 AI가 가장 적합한 레시피를 추천해 줍니다."
+        ),
+        Pair(
+            "문의는 어디로 할수있나요?",
+            "관련 문의는 TOMA 개발팀의 책임자에게 이메일(kook0707@mju.ac.kr)로 남겨주시면 됩니다. 보내주신 내용을 확인하는 대로 신속하고 자세하게 안내해 드리겠습니다. 서비스 이용과 관련하여 궁금하신 점이나 불편한 사항이 있으신 경우, 언제든지 저희 쪽으로 연락해 주시기 바랍니다. 감사합니다."
+        )
     )
 
     var expandedIndex by remember { mutableIntStateOf(-1) }
@@ -72,7 +96,6 @@ fun CustomerCenterScreen(
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            // FAQ 리스트
             faqList.forEachIndexed { index, faq ->
                 val isExpanded = expandedIndex == index
                 FaqItemCard(
@@ -152,7 +175,6 @@ private fun FaqItemCard(
                 .fillMaxWidth()
                 .clickable { onClick() }
         ) {
-            // 질문 영역
             Row(
                 modifier = Modifier.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -222,10 +244,10 @@ private fun FaqItemCard(
 
                         Text(
                             text = answer,
-                            color = Color(0xFF495057),
+                            color = TomaSecondaryText,
                             fontSize = 14.sp,
                             lineHeight = 22.sp,
-                            fontWeight = FontWeight.Medium
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
@@ -234,8 +256,8 @@ private fun FaqItemCard(
     }
 }
 
-@Preview(showBackground = true, showSystemUi = true)
+@Preview(showBackground = true)
 @Composable
-fun CustomerCenterScreenPreview() {
+private fun CustomerCenterScreenPreview() {
     CustomerCenterScreen()
 }
