@@ -21,7 +21,7 @@ class OpenAiRealtimeManager(
 
     private var webSocket: WebSocket? = null
     private val TAG = "RealtimeVoice"
-    private val MODEL = "gpt-4o-realtime-preview"
+    private val MODEL = OpenAiConfig.REALTIME_MODEL
 
     fun connect() {
         if (webSocket != null) return
@@ -63,20 +63,47 @@ class OpenAiRealtimeManager(
                 val modalitiesArr = JSONArray().apply { put("text") }
                 put("modalities", modalitiesArr)
                 put("instructions", """
-                    당신은 요리 보조 앱 '토마'의 비서입니다. 
-                    사용자의 한국어 명령을 분석하여 반드시 다음 JSON 형식으로만 응답하세요:
-                    { "intent": "NEXT_STEP" | "PREVIOUS_STEP" | "REPEAT_STEP" | "SET_TIMER" | "INGREDIENT_CHECK" | "RECIPE_SEARCH" | "HELP" | "CANCEL", "arguments": { "duration_min": 3, "keyword": "김치찌개" } }
-                    - '다음', '넘어가', '다음 단계' -> NEXT_STEP
-                    - '이전', '뒤로', '전 단계' -> PREVIOUS_STEP
-                    - '다시', '한번 더', '다시 읽어줘' -> REPEAT_STEP
-                    - 'N분 타이머', 'N분 맞춰줘' -> SET_TIMER (arguments에 duration_min 포함)
-                    - '재료 뭐 있어?', '재료 알려줘' -> INGREDIENT_CHECK
-                    - '~ 레시피 찾아줘', '~ 알려줘', '~ 어떻게 만들어?' -> RECIPE_SEARCH (arguments에 keyword 포함)
-                    - '도움말', '어떻게 써?' -> HELP
-                    - '취소', '그만' -> CANCEL
+                    당신은 요리 보조 앱 '토마'의 음성 명령 인식기입니다.
+                    사용자의 한국어 발화를 분석해 아래 JSON 형식 하나만 출력하세요. 설명 텍스트 없이 JSON만 출력하세요.
+
+                    형식:
+                    { "intent": "<INTENT>", "arguments": { "duration_min": <숫자>, "keyword": "<텍스트>" } }
+
+                    인텐트 규칙 (우선순위 순):
+
+                    [SET_TIMER] — 숫자 + '분' 이 들어간 모든 타이머 요청
+                      예: "3분 맞춰줘", "5분 타이머 시작해", "10분으로 설정해줘", "어.. 2분 재줘"
+                      → arguments.duration_min 에 숫자 값 필수 포함
+
+                    [RECOMMENDED_TIMER] — 구체적 숫자 없이 추천/권장 시간 요청
+                      예: "추천 시간으로 맞춰줘", "추천으로", "권장 시간으로 설정해"
+                      → arguments 불필요
+
+                    [NEXT_STEP] — 다음 단계로 이동
+                      예: "다음", "넘겨줘", "다음 단계", "다음으로 넘어가"
+
+                    [PREVIOUS_STEP] — 이전 단계로 이동
+                      예: "이전", "뒤로", "전 단계", "돌아가"
+
+                    [REPEAT_STEP] — 현재 단계 반복
+                      예: "다시", "한번 더", "다시 읽어줘", "반복해줘"
+
+                    [INGREDIENT_CHECK] — 재료 확인
+                      예: "재료 뭐 있어?", "재료 알려줘"
+
+                    [RECIPE_SEARCH] — 레시피 검색 (arguments.keyword 필수)
+                      예: "김치찌개 레시피", "파스타 어떻게 만들어?"
+
+                    [CANCEL] — 취소
+                      예: "취소", "그만"
+
+                    [UNKNOWN] — 위 어떤 것도 해당 없을 때
+
+                    주의: 발화에 '어..', '음..', '그니까' 같은 망설임이 포함돼도 핵심 키워드로 판단하세요.
+                    항상 JSON만 출력하고 다른 텍스트는 절대 포함하지 마세요.
                 """.trimIndent())
                 put("input_audio_format", "pcm16")
-                put("input_audio_transcription", JSONObject().apply { put("model", "whisper-1") })
+                put("input_audio_transcription", JSONObject().apply { put("model", OpenAiConfig.STT_MODEL) })
                 put("turn_detection", JSONObject().apply { 
                     put("type", "server_vad")
                     put("threshold", 0.5)

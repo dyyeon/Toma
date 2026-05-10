@@ -152,7 +152,7 @@ class OpenAiManager {
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", audioFile.name, audioFile.asRequestBody("audio/wav".toMediaType()))
-            .addFormDataPart("model", "whisper-1")
+            .addFormDataPart("model", OpenAiConfig.STT_MODEL)
             .addFormDataPart("language", "ko")
             .build()
 
@@ -217,8 +217,10 @@ class OpenAiManager {
             })
         }
 
+        val chosenModel = if (isComplexRequest(userText)) OpenAiConfig.ADVANCED_REASONING_MODEL
+                         else OpenAiConfig.DEFAULT_TEXT_MODEL
         val requestJson = JSONObject().apply {
-            put("model", OpenAiConfig.DEFAULT_TEXT_MODEL)
+            put("model", chosenModel)
             put("messages", messages)
             put("response_format", JSONObject().apply {
                 put("type", "json_object")
@@ -345,7 +347,7 @@ class OpenAiManager {
                 val base64Image = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
 
                 val requestJson = JSONObject().apply {
-                    put("model", OpenAiConfig.ADVANCED_MODEL)
+                    put("model", OpenAiConfig.IMAGE_MODEL)
                     put("messages", JSONArray().apply {
                         put(JSONObject().apply {
                             put("role", "user")
@@ -554,6 +556,30 @@ class OpenAiManager {
             )
         )
         return recipeJson
+    }
+
+    /**
+     * Routes to ADVANCED_REASONING_MODEL when the request is genuinely complex.
+     * Triggers: 2+ constraint markers, 2+ failure/analysis keywords, or very long input.
+     * Keeps basic recipe chat on the cheaper DEFAULT_TEXT_MODEL.
+     */
+    private fun isComplexRequest(text: String): Boolean {
+        val lower = text.lowercase()
+
+        // Hard constraint markers (allergy, exclusion, equipment, time limit, etc.)
+        val constraintScore = listOf(
+            "알레르기", "못 먹", "안 먹", "빼고", "없이", "채식", "비건",
+            "글루텐", "유제품", "분 안에", "분 이내", "재료만", "장비",
+            "오븐 없이", "냉장고에 있는"
+        ).count { lower.contains(it) }
+
+        // Deep-reasoning keywords (failure analysis, nutrition, planning)
+        val reasoningScore = listOf(
+            "왜", "실패", "분석", "원인", "이유", "계획", "영양", "칼로리",
+            "건강", "다이어트", "대체", "substitut", "improve"
+        ).count { lower.contains(it) }
+
+        return constraintScore >= 2 || reasoningScore >= 2 || text.length > 200
     }
 }
 

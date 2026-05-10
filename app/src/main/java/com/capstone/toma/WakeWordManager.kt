@@ -34,16 +34,21 @@ class WakeWordManager(
     private val TAG = "WakeWord"
     
     // Detection configuration
-    var detectionThreshold: Float = 0.5f         // raised from 0.05 — was triggering on noise
+    var detectionThreshold: Float = 0.42f         // calibrated: 0.5 caused misses, 0.42 balances FP/FN
     var verboseLogging: Boolean = true
     private var consecutiveDetections = 0
-    private val REQUIRED_CONSECUTIVE = 5          // 5 × 80ms = 400ms — deliberate utterance only
+    private val REQUIRED_CONSECUTIVE = 4          // 4 × 80ms = 320ms — snappier response
     private val RESET_FLOOR = 0.3f               // below this: hard-reset counter immediately
     private val SILENCE_RESET_FRAMES = 25         // 25 × 80ms ≈ 2s of silence → state reset
 
     // VAD (Voice Activity Detection) — pre-filter before ONNX inference
-    private val VAD_RMS_THRESHOLD = 300f          // ~0.9% full-scale; filters electrical noise
+    private val VAD_RMS_THRESHOLD = 500f          // raised from 300: filters fridge/fan hum reliably
     private var consecutiveSilentFrames = 0
+
+    // Anti-conflict gate: set false while the app is in active LISTENING mode to prevent
+    // the async ONNX pipeline from firing onWakeWordDetected mid-command.
+    @Volatile var isArmed: Boolean = true
+        private set
     
     private val SAMPLE_RATE = 16000
     private val CHUNK_SIZE = 1280 // 80ms at 16kHz
@@ -185,7 +190,25 @@ class WakeWordManager(
         return kotlin.math.sqrt(sumSq / shorts.size).toFloat()
     }
 
+    /** Re-enables wake-word detection after an active-listening session ends. */
+    fun arm() {
+        isArmed = true
+        if (verboseLogging) Log.d(TAG, "🔓 Wake-word ARMED")
+    }
+
+    /**
+     * Disables wake-word detection and flushes any accumulated consecutive-detection count.
+     * Call this the moment the app enters LISTENING state so a previously accumulating score
+     * cannot fire a spurious second trigger.
+     */
+    fun disarm() {
+        isArmed = false
+        consecutiveDetections = 0
+        if (verboseLogging) Log.d(TAG, "🔒 Wake-word DISARMED — counter flushed")
+    }
+
     fun processFrame(pcmData: ByteArray) {
+        if (!isArmed) return  // disarmed during active listening — skip all ONNX work
         if (melSession == null || embSession == null) return
         if (!useOnDevicePersonalizer && clfSession == null) return
 

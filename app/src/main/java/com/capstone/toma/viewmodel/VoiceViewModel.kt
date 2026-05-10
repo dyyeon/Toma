@@ -83,11 +83,8 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         onError = { error ->
             viewModelScope.launch {
                 _uiState.value = VoiceUiState.Error(error)
-                // Error 상태에서도 3초 후 Idle로 복귀하여 다시 웨이크워드 대기
                 delay(3000)
-                if (_uiState.value is VoiceUiState.Error) {
-                    _uiState.value = VoiceUiState.Idle
-                }
+                if (_uiState.value is VoiceUiState.Error) returnToIdle()
             }
         }
     )
@@ -142,6 +139,17 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         application.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
+    /**
+     * Single control point for returning to the idle/listening-for-wake-word state.
+     * Always call this instead of setting _uiState.value = Idle directly so that
+     * wake-word detection is reliably re-armed at the same time.
+     * Must be called on the Main dispatcher.
+     */
+    private fun returnToIdle() {
+        _uiState.value = VoiceUiState.Idle
+        wakeWordManager.arm()
+    }
+
     fun startWakeWord() {
         Log.d("VoiceViewModel", "Starting WakeWord sensing")
         viewModelScope.launch(Dispatchers.IO) {
@@ -155,9 +163,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             audioStreamManager.stopCapture()
             realtimeManager.disconnect()
-            withContext(Dispatchers.Main) {
-                _uiState.value = VoiceUiState.Idle
-            }
+            withContext(Dispatchers.Main) { returnToIdle() }
         }
     }
 
@@ -179,20 +185,19 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun onWakeWordDetected() {
         viewModelScope.launch {
-            if (_uiState.value == VoiceUiState.Idle) {
-                // IMPORTANT: Stop any ongoing TTS when wake-word is detected
-                onStopTtsRequest?.invoke()
+            if (_uiState.value != VoiceUiState.Idle) return@launch
+            // Disarm first: flush any further accumulating detections in the async ONNX pipeline
+            // so a second fire cannot stack on top of this one while we're LISTENING.
+            wakeWordManager.disarm()
+            onStopTtsRequest?.invoke()
+            // If TTS was interrupted its onStop() callback never calls resumeAudioCapture(),
+            // so we must ensure the mic is live before routing audio to the realtime API.
+            resumeAudioCapture()
+            _uiState.value = VoiceUiState.Listening
+            toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
 
-                _uiState.value = VoiceUiState.Listening
-                // Play earcon to notify user
-                toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
-
-                // Auto-timeout if no speech detected for 5 seconds
-                delay(5000)
-                if (_uiState.value == VoiceUiState.Listening) {
-                    _uiState.value = VoiceUiState.Idle
-                }
-            }
+            delay(5000)
+            if (_uiState.value == VoiceUiState.Listening) returnToIdle()
         }
     }
 
@@ -233,7 +238,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                             _uiState.value = VoiceUiState.Result("'${intent.keyword}' 레시피를 찾아볼게요.")
                         }
                         TomaIntent.CANCEL -> {
-                            _uiState.value = VoiceUiState.Idle
+                            returnToIdle()
                         }
                         else -> {
                             _uiState.value = VoiceUiState.Error("명령을 이해하지 못했어요.")
@@ -241,22 +246,30 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // Transition to SPEAKING then back to IDLE after a short delay
+                // State machine exit: transition to IDLE (re-arming wake-word) via one path.
                 val currentState = withContext(Dispatchers.Main) { _uiState.value }
-                if (currentState !is VoiceUiState.Error && currentState !is VoiceUiState.Idle) {
-                    withContext(Dispatchers.Main) {
-                        _uiState.value = VoiceUiState.Speaking
+                when {
+                    // Already Idle (CANCEL): nothing to do
+                    currentState is VoiceUiState.Idle -> Unit
+                    // Error (UNKNOWN intent): auto-recover after 3 s
+                    currentState is VoiceUiState.Error -> {
+                        delay(3000)
+                        withContext(Dispatchers.Main) {
+                            if (_uiState.value is VoiceUiState.Error) returnToIdle()
+                        }
                     }
-                    delay(3000)
-                    withContext(Dispatchers.Main) {
-                        _uiState.value = VoiceUiState.Idle
+                    // Result/Processing: show Speaking briefly then return to Idle
+                    else -> {
+                        withContext(Dispatchers.Main) { _uiState.value = VoiceUiState.Speaking }
+                        delay(3000)
+                        withContext(Dispatchers.Main) { returnToIdle() }
                     }
                 }
             } catch (e: Exception) {
                 Log.e("VoiceViewModel", "Intent parsing error: ${e.message}")
-                withContext(Dispatchers.Main) {
-                    _uiState.value = VoiceUiState.Error("오류가 발생했습니다.")
-                }
+                withContext(Dispatchers.Main) { _uiState.value = VoiceUiState.Error("오류가 발생했습니다.") }
+                delay(3000)
+                withContext(Dispatchers.Main) { if (_uiState.value is VoiceUiState.Error) returnToIdle() }
             }
         }
     }
@@ -281,28 +294,21 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startListeningManually() {
         if (_uiState.value != VoiceUiState.Idle) return
-        
-        // Stop any ongoing TTS when mic button is tapped
+        // Disarm before entering LISTENING so the ONNX pipeline cannot race-fire
+        // onWakeWordDetected() while we're already processing a manual command.
+        wakeWordManager.disarm()
         onStopTtsRequest?.invoke()
-
-        viewModelScope.launch(Dispatchers.IO) {
-            realtimeManager.connect()
-            audioStreamManager.startCapture()
-            withContext(Dispatchers.Main) {
-                _uiState.value = VoiceUiState.Listening
-                toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
-            }
-        }
+        // If TTS was active its onStop callback does not resume capture; do it here
+        // so PCM flows to realtimeManager.sendAudio() as soon as state is LISTENING.
+        resumeAudioCapture()
+        _uiState.value = VoiceUiState.Listening
+        toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
+        // Audio capture + realtime WebSocket are already live from startWakeWord().
+        // observeAudioStream() routes PCM to sendAudio() now that state is LISTENING.
     }
 
     fun stopListeningManually() {
-        viewModelScope.launch(Dispatchers.IO) {
-            audioStreamManager.stopCapture()
-            realtimeManager.disconnect()
-            withContext(Dispatchers.Main) {
-                _uiState.value = VoiceUiState.Idle
-            }
-        }
+        returnToIdle()
     }
 
     /**
@@ -326,12 +332,8 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onMicClick() {
-        // Manual trigger (optional, keeps current UI working)
-        if (_uiState.value == VoiceUiState.Idle) {
-            onWakeWordDetected()
-        } else {
-            _uiState.value = VoiceUiState.Idle
-        }
+        if (_uiState.value == VoiceUiState.Idle) startListeningManually()
+        else if (_uiState.value == VoiceUiState.Listening) stopListeningManually()
     }
 
     fun onSuggestionClick(text: String) {
@@ -448,7 +450,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                     "file", wavFile.name,
                     wavFile.asRequestBody("audio/wav".toMediaType())
                 )
-                .addFormDataPart("model", "whisper-1")
+                .addFormDataPart("model", OpenAiConfig.STT_MODEL)
                 .addFormDataPart("language", "ko")
                 .build()
 

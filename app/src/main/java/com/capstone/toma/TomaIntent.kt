@@ -53,21 +53,45 @@ object TomaIntentParser {
     }
 
     private fun fallbackParse(text: String): TomaIntent {
-        val lowerText = text.lowercase()
-        return when {
-            lowerText.contains("다음") || lowerText.contains("넘어가") -> TomaIntent.NEXT_STEP
-            lowerText.contains("이전") || lowerText.contains("뒤로") -> TomaIntent.PREVIOUS_STEP
-            lowerText.contains("다시") || lowerText.contains("한 번 더") -> TomaIntent.REPEAT_STEP
-            // "추천으로 맞춰줘" / "권장 시간으로" must be checked before the generic 타이머 branch
-            lowerText.contains("추천으로") ||
-            (lowerText.contains("추천") && (lowerText.contains("타이머") || lowerText.contains("시간"))) -> TomaIntent.RECOMMENDED_TIMER
-            lowerText.contains("타이머") || lowerText.contains("분 맞춰") -> {
-                val digits = "\\d+".toRegex().find(text)?.value?.toIntOrNull() ?: 3
-                TomaIntent.SET_TIMER(digits)
-            }
-            lowerText.contains("재료") -> TomaIntent.INGREDIENT_CHECK
-            lowerText.contains("취소") || lowerText.contains("그만") -> TomaIntent.CANCEL
-            else -> TomaIntent.UNKNOWN
+        val lower = text.lowercase().trim()
+
+        // 1. RECOMMENDED_TIMER — must precede generic timer check
+        if (lower.contains("추천으로") ||
+            (lower.contains("추천") && (lower.contains("타이머") || lower.contains("시간")))) {
+            return TomaIntent.RECOMMENDED_TIMER
         }
+
+        // 2. SET_TIMER — "숫자 분" anywhere in the utterance + a timer-action keyword
+        //    Catches: "3분 맞춰줘", "어.. 5분 타이머 시작해줘", "10분으로 설정해줘"
+        val minuteMatch = "(\\d+)\\s*분".toRegex().find(lower)
+        if (minuteMatch != null) {
+            val minutes = minuteMatch.groupValues[1].toIntOrNull() ?: 3
+            val timerKeywords = listOf("타이머", "맞춰", "설정", "시작", "재줘", "맞추", "알람")
+            if (timerKeywords.any { lower.contains(it) }) {
+                return TomaIntent.SET_TIMER(minutes)
+            }
+        }
+
+        // 3. Navigation — filler-tolerant: matches even with hesitation words around them
+        if ("다음|넘겨|넘어가|다음\\s*단계|다음으로".toRegex().containsMatchIn(lower)) {
+            return TomaIntent.NEXT_STEP
+        }
+        if ("이전|뒤로|전\\s*단계|이전\\s*단계|돌아가".toRegex().containsMatchIn(lower)) {
+            return TomaIntent.PREVIOUS_STEP
+        }
+        if ("다시|한\\s*번\\s*더|반복|다시\\s*읽어|다시\\s*말해".toRegex().containsMatchIn(lower)) {
+            return TomaIntent.REPEAT_STEP
+        }
+
+        // 4. SET_TIMER without explicit action word — bare "N분" in cooking context
+        if (minuteMatch != null) {
+            return TomaIntent.SET_TIMER(minuteMatch.groupValues[1].toIntOrNull() ?: 3)
+        }
+
+        // 5. Remaining keywords
+        if (lower.contains("재료")) return TomaIntent.INGREDIENT_CHECK
+        if (lower.contains("취소") || lower.contains("그만")) return TomaIntent.CANCEL
+
+        return TomaIntent.UNKNOWN
     }
 }
