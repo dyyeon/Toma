@@ -18,12 +18,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -39,8 +37,7 @@ private val TomaSecondaryText = Color(0xFF868E96)
 
 @Composable
 fun CustomerCenterScreen(
-    onBackClick: () -> Unit = {},
-    onContactClick: () -> Unit = {}
+    onBackClick: () -> Unit = {}
 ) {
     val faqList = listOf(
         Pair("음성 가이드는 어떻게 사용하나요?", "홈 화면에서 마이크 버튼을 누르고 '메뉴 추천해줘' 혹은 '간단한 레시피 알려줘'라고 말씀하시면 TOMA가 똑똑하게 찾아드립니다!"),
@@ -86,11 +83,6 @@ fun CustomerCenterScreen(
                 )
                 Spacer(modifier = Modifier.height(12.dp))
             }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // 추가 문의 유도 섹션
-            ContactSupportSection(onClick = onContactClick)
 
             Spacer(modifier = Modifier.height(48.dp))
         }
@@ -237,54 +229,6 @@ private fun FaqItemCard(
                         )
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ContactSupportSection(onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .clickable { onClick() },
-        color = TomaMainOrange,
-        shadowElevation = 4.dp
-    ) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                shape = CircleShape,
-                color = Color.White.copy(alpha = 0.2f),
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.SupportAgent,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.padding(12.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "원하는 답변을 찾지 못하셨나요?",
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "1:1 문의하기",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
             }
         }
     }
