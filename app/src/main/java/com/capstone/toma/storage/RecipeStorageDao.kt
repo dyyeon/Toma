@@ -60,6 +60,9 @@ interface RecipeStorageDao {
     )
     suspend fun trimRecentRecipes(keepCount: Int)
 
+    @Query("DELETE FROM recent_recipe_history")
+    suspend fun clearRecentRecipes()
+
     @Query("SELECT EXISTS(SELECT 1 FROM stored_recipes WHERE id = :recipeId LIMIT 1)")
     fun isRecipeExists(recipeId: String): Flow<Boolean>
 }

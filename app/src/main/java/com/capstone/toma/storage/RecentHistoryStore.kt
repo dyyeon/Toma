@@ -53,6 +53,13 @@ class RecentHistoryStore(context: Context) {
         return updatedEntries.map(::toRecentRecipeItem)
     }
 
+    fun clearRecentItems(): List<RecentRecipeItem> {
+        preferences.edit()
+            .remove(KEY_RECENT_HISTORY)
+            .apply()
+        return emptyList()
+    }
+
     private fun loadEntries(): List<RecentHistoryEntry> {
         val storedJson = preferences.getString(KEY_RECENT_HISTORY, null).orEmpty()
         if (storedJson.isBlank()) {

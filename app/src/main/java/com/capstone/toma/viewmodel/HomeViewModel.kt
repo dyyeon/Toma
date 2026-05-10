@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.storage.RecentHistoryStore
+import com.capstone.toma.storage.RecipeStorageRepository
 import com.capstone.toma.ui.screen.HomeUiState
 import com.capstone.toma.ui.screen.RecentRecipeItem
 import kotlinx.coroutines.Dispatchers
@@ -18,6 +19,7 @@ import kotlinx.coroutines.withContext
 class HomeViewModel(application: Application) : AndroidViewModel(application) {
 
     private val recentHistoryStore = RecentHistoryStore(application)
+    private val recipeStorageRepository = RecipeStorageRepository.getInstance(application)
 
     private val _uiState = MutableStateFlow(HomeUiState())
 
@@ -57,6 +59,20 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                 recipeDataJson = recipeDataJson,
                 sourceType = sourceType
             )
+            withContext(Dispatchers.Main) {
+                _uiState.update {
+                    it.copy(recentItems = items)
+                }
+            }
+        }
+    }
+
+    fun clearRecentHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val items = recentHistoryStore.clearRecentItems()
+            runCatching {
+                recipeStorageRepository.clearRecentRecipes()
+            }
             withContext(Dispatchers.Main) {
                 _uiState.update {
                     it.copy(recentItems = items)

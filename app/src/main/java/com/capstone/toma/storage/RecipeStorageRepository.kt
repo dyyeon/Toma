@@ -45,6 +45,10 @@ class RecipeStorageRepository private constructor(
         dao.trimRecentRecipes(keepCount = 5)
     }
 
+    suspend fun clearRecentRecipes() {
+        dao.clearRecentRecipes()
+    }
+
     suspend fun deleteRecipe(recipeId: String) {
         dao.deleteById(recipeId)
     }

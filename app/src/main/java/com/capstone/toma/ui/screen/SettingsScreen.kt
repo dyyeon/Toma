@@ -23,14 +23,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SupportAgent
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.capstone.toma.BuildConfig
 
 private val TomaMainOrange = Color(0xFFEE8C2B)
 private val TomaBackground = Color(0xFFF8F9FA)
@@ -51,8 +60,56 @@ fun SettingsScreen(
     onEmailClick: () -> Unit = {},
     onCustomerCenterClick: () -> Unit = {},
     onContactClick: () -> Unit = {},
-    onSpeakerEnrollmentClick: () -> Unit = {}
+    onSpeakerEnrollmentClick: () -> Unit = {},
+    onClearRecentHistoryClick: () -> Unit = {}
 ) {
+    var showClearRecentHistoryDialog by remember { mutableStateOf(false) }
+
+    if (showClearRecentHistoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearRecentHistoryDialog = false },
+            title = {
+                Text(
+                    text = "최근 기록 삭제",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.Black
+                )
+            },
+            text = {
+                Text(
+                    text = "최근 기록을 모두 삭제하시겠습니까? (삭제된 데이터는 복구할 수 없습니다)",
+                    color = Color(0xFF495057),
+                    lineHeight = 22.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearRecentHistoryDialog = false
+                        onClearRecentHistoryClick()
+                    }
+                ) {
+                    Text(
+                        text = "삭제",
+                        color = Color(0xFFE03131),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearRecentHistoryDialog = false }) {
+                    Text(
+                        text = "취소",
+                        color = Color(0xFF868E96),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(24.dp)
+        )
+    }
+
     Scaffold(
         containerColor = TomaBackground,
         topBar = {
@@ -79,6 +136,17 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            SectionHeader(title = "데이터 관리", icon = Icons.Default.Storage)
+            SettingsCard {
+                SettingsItemRow(
+                    icon = Icons.Default.DeleteOutline,
+                    title = "최근기록삭제",
+                    onClick = { showClearRecentHistoryDialog = true }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
             SectionHeader(title = "지원", icon = Icons.Default.SupportAgent)
             SettingsCard {
                 SettingsItemRow(
@@ -87,6 +155,10 @@ fun SettingsScreen(
                     onClick = onCustomerCenterClick
                 )
             }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            AppVersionInfoRow(versionText = "v${BuildConfig.VERSION_NAME}")
 
             Spacer(modifier = Modifier.height(40.dp))
         }
@@ -217,6 +289,39 @@ private fun SettingsItemRow(icon: ImageVector, title: String, onClick: () -> Uni
             tint = Color(0xFFADB5BD),
             modifier = Modifier.size(20.dp)
         )
+    }
+}
+
+@Composable
+private fun AppVersionInfoRow(versionText: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, TomaCardBorder),
+        shadowElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "앱 버전 정보",
+                color = Color(0xFF495057),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+
+            Text(
+                text = versionText,
+                color = TomaMainOrange,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.ExtraBold
+            )
+        }
     }
 }
 

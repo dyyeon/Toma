@@ -701,7 +701,8 @@ fun TomaNavHost(
                 onEmailClick = { navController.navigate(TomaDestination.EmailSetting.route) },
                 onCustomerCenterClick = { navController.navigate(TomaDestination.CustomerCenter.route) },
                 onContactClick = { navController.navigate(TomaDestination.ContactUs.route) },
-                onSpeakerEnrollmentClick = { navController.navigate(TomaDestination.SpeakerEnrollment.route) }
+                onSpeakerEnrollmentClick = { navController.navigate(TomaDestination.SpeakerEnrollment.route) },
+                onClearRecentHistoryClick = homeViewModel::clearRecentHistory
             )
         }
 
