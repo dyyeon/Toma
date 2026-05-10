@@ -12,7 +12,8 @@ import java.util.concurrent.TimeUnit
 class OpenAiRealtimeManager(
     private val apiKey: String,
     private val onResult: (String) -> Unit,
-    private val onError: (String) -> Unit
+    private val onError: (String) -> Unit,
+    private val onSessionReady: (() -> Unit)? = null // ADDED: session ready callback
 ) {
     private val client = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
@@ -141,14 +142,14 @@ class OpenAiRealtimeManager(
 
                     ══ 단어 명령 처리 규칙 ══
                     한 단어/한 음절 명령도 항상 유효한 인텐트로 분류하세요.
-                    "다음" 단독 → NEXT_STEP
-                    "이전" 단독 → PREVIOUS_STEP
-                    "취소" 단독 → CANCEL
-                    "멈춰" 단독 → CANCEL
-                    "중지" 단독 → CANCEL
-                    "다시" 단독 → REPEAT_STEP
-                    "재료" 단독 → INGREDIENT_CHECK
-                    "검색" 단독 (키워드 없음) → UNKNOWN
+                    "다음" 단독 -> NEXT_STEP
+                    "이전" 단독 -> PREVIOUS_STEP
+                    "취소" 단독 -> CANCEL
+                    "멈춰" 단독 -> CANCEL
+                    "중지" 단독 -> CANCEL
+                    "다시" 단독 -> REPEAT_STEP
+                    "재료" 단독 -> INGREDIENT_CHECK
+                    "검색" 단독 (키워드 없음) -> UNKNOWN
 
                     ══ 음식 카테고리 분류 규칙 ══
                     RECIPE_SEARCH 시 keyword의 카테고리를 문화적 원산지 기준으로 판단하세요.
@@ -161,10 +162,10 @@ class OpenAiRealtimeManager(
                     동남아식: 팟타이, 쌀국수, 나시고렝, 반미, 똠양꿍
 
                     절대 규칙:
-                    - 마라탕 → 항상 중식
-                    - 짜장면 → 항상 중식
-                    - 초밥 → 항상 일식
-                    - 피자 → 항상 양식
+                    - 마라탕 -> 항상 중식
+                    - 짜장면 -> 항상 중식
+                    - 초밥 -> 항상 일식
+                    - 피자 -> 항상 양식
 
                     ══ 출력 규칙 ══
                     반드시 순수 JSON 한 줄만 출력하세요.
@@ -199,7 +200,11 @@ class OpenAiRealtimeManager(
         while (pendingAudioFrames.isNotEmpty()) {
             sendAudioFrame(pendingAudioFrames.removeFirst())
         }
-        if (count > 0) Log.d(TAG, "📦 Flushed $count buffered audio frames")
+        if (count > 0) {
+            Log.d(TAG, "📦 Flushed $count buffered audio frames")
+            // Ensure the flushed audio is processed immediately
+            webSocket?.send(JSONObject().apply { put("type", "input_audio_buffer.commit") }.toString())
+        }
     }
 
     private fun handleMessage(text: String) {
@@ -211,6 +216,7 @@ class OpenAiRealtimeManager(
                 Log.d(TAG, "✅ Session updated & acknowledged — unblocking audio")
                 isSessionReady = true
                 flushPendingAudio()
+                onSessionReady?.invoke() // ADDED: fire callback
             }
             "response.audio_transcription.done" -> {
                 val transcript = json.optString("transcript")
@@ -231,10 +237,8 @@ class OpenAiRealtimeManager(
             "input_audio_buffer.speech_stopped" -> {
                 val durationMs = System.currentTimeMillis() - speechStartedAtMs
                 if (durationMs < MIN_SPEECH_MS) {
-                    // Too short — cancel this buffer so server_vad doesn't generate a response
-                    // for noise or accidental mic triggers.
                     webSocket?.send(JSONObject().apply { put("type", "input_audio_buffer.clear") }.toString())
-                    Log.d(TAG, "🔇 Speech too short (${durationMs}ms < ${MIN_SPEECH_MS}ms) — discarded")
+                    Log.d(TAG, "🔇 Speech too short (${durationMs}ms) — discarded")
                 } else {
                     Log.d(TAG, "🔇 Speech Stopped (${durationMs}ms) — server_vad will auto-create response")
                 }

@@ -3,35 +3,18 @@ package com.capstone.toma.navigation
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -41,27 +24,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import java.io.File
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import androidx.navigation.navArgument
-import kotlinx.coroutines.delay
 import androidx.navigation.NavType
+import androidx.navigation.compose.*
+import androidx.navigation.navArgument
 import com.capstone.toma.PublicRecipeManager
 import com.capstone.toma.TomaIntent
 import com.capstone.toma.UserManager
 import com.capstone.toma.WebPageManager
 import com.capstone.toma.YoutubeManager
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import com.capstone.toma.VoiceRequestResult
+import com.capstone.toma.VoiceUiState
 import com.capstone.toma.model.toRecipeDataJson
-import org.json.JSONObject
 import com.capstone.toma.ui.screen.*
 import com.capstone.toma.viewmodel.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.io.File
 
 /** Returns true for any YouTube URL including Shorts (/shorts/), standard (/watch?v=), and youtu.be. */
 private fun String.isYoutubeUrl(): Boolean =
@@ -94,14 +77,12 @@ fun TomaNavHost(
     val voiceUiState by voiceViewModel.uiState.collectAsState()
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var showImageSourceSheet by remember { mutableStateOf(false) }
-    // Holds the File and URI created before launching TakePicture so the callback can reference them
     var pendingCameraFile by remember { mutableStateOf<File?>(null) }
     var pendingCameraUri  by remember { mutableStateOf<Uri?>(null) }
 
-    // Helper: create a fresh timestamped file under cacheDir/camera/ and return its FileProvider URI.
-    // The directory is created eagerly; TakePicture writes the JPEG content into the file.
     fun prepareCameraUri(): Pair<File, Uri> {
         val dir  = File(context.cacheDir, "camera").also { it.mkdirs() }
         val file = File(dir, "capture_${System.currentTimeMillis()}.jpg")
@@ -109,7 +90,6 @@ fun TomaNavHost(
         return file to uri
     }
 
-    // Declared first so the permission launcher can reference it
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
@@ -132,7 +112,6 @@ fun TomaNavHost(
                 com.capstone.toma.OpenAiManager().analyzeRecipeImageSuspend(context, uri.toString())
             }
         } else {
-            // User cancelled — delete the pre-allocated temp file
             file?.delete()
         }
     }
@@ -172,7 +151,6 @@ fun TomaNavHost(
         }
     }
 
-    // ModalBottomSheet uses an internal Popup layer, so it renders above NavHost regardless of order
     if (showImageSourceSheet) {
         ImageSourceBottomSheet(
             onDismiss = { showImageSourceSheet = false },
@@ -204,19 +182,7 @@ fun TomaNavHost(
         composable(TomaDestination.Home.route) {
             LaunchedEffect(Unit) {
                 voiceViewModel.stopWakeWord()
-                val enrolled = UserManager.isEnrolled(context)
-                val skipped = UserManager.hasSkipped(context)
-                // Mandatory enrollment check: only proceed to Home if enrolled or skipped
-                if (!enrolled && !skipped) {
-                    navController.navigate(TomaDestination.SpeakerEnrollment.route) {
-                        popUpTo(TomaDestination.Home.route) { inclusive = false }
-                    }
-                } else if (enrolled) {
-                    val modelFile = java.io.File(context.filesDir, "hey_toma_personal.onnx")
-                    if (!modelFile.exists()) {
-                        voiceViewModel.startModelPolling(context)
-                    }
-                }
+                // BYPASSED: Speaker Enrollment check disabled for now.
                 homeViewModel.refreshRecentItems()
             }
 
@@ -508,25 +474,30 @@ fun TomaNavHost(
         }
 
         composable(TomaDestination.VoiceGuide.route) {
+            // Redirect user's recognized speech directly to Chat
             LaunchedEffect(Unit) {
-                voiceViewModel.intentEvent.collect { intent ->
-                    if (intent is TomaIntent.RECIPE_SEARCH) {
-                        voiceViewModel.stopListeningManually()
-                        chatViewModel.resetChat()
-                        chatViewModel.sendMessage(intent.keyword)
-                        navController.navigate(TomaDestination.Chat.route) {
-                            popUpTo(TomaDestination.VoiceGuide.route) { inclusive = true }
+                scope.launch {
+                    voiceViewModel.recognizedTextEvent.collect { text ->
+                        Log.d("TomaNavHost", "Recognized text received: \"$text\"")
+                        if (text.isNotBlank()) {
+                            chatViewModel.resetChat()
+                            chatViewModel.sendMessage(text)
+                            navController.navigate(TomaDestination.Chat.route) {
+                                popUpTo(TomaDestination.VoiceGuide.route) { inclusive = true }
+                            }
                         }
                     }
                 }
             }
+
             VoiceGuideScreen(
                 uiState = voiceUiState,
                 suggestions = voiceSuggestions,
                 onMicClick = {
-                    when (voiceUiState) {
-                        is com.capstone.toma.VoiceUiState.Idle -> voiceViewModel.startListeningManually()
-                        else -> voiceViewModel.stopListeningManually()
+                    if (voiceUiState == com.capstone.toma.VoiceUiState.Listening) {
+                        voiceViewModel.stopListeningManually()
+                    } else {
+                        voiceViewModel.startListeningManually()
                     }
                 },
                 onSuggestionClick = { text ->
@@ -540,7 +511,8 @@ fun TomaNavHost(
                 onBackClick = {
                     voiceViewModel.stopListeningManually()
                     navController.popBackStack()
-                }
+                },
+                voiceViewModel = voiceViewModel
             )
         }
 

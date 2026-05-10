@@ -14,9 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ErrorOutline
-import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,11 +25,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.VoiceUiState
+import com.capstone.toma.viewmodel.VoiceViewModel
 
 private val TomaMainOrange = Color(0xFFEE8C2B)
 private val TomaBackground = Color(0xFFF8F9FA)
@@ -45,12 +43,15 @@ fun VoiceGuideScreen(
     suggestions: List<String>,
     onMicClick: () -> Unit,
     onSuggestionClick: (String) -> Unit,
-    onBackClick: () -> Unit = {}
+    onBackClick: () -> Unit = {},
+    voiceViewModel: VoiceViewModel
 ) {
+    val durationSeconds by voiceViewModel.recordingDurationSeconds.collectAsState()
+
     val statusText = when (uiState) {
         VoiceUiState.Idle -> "READY"
-        VoiceUiState.Listening -> "LISTENING"
-        VoiceUiState.Processing -> "PROCESSING"
+        VoiceUiState.Listening -> "RECORDING"
+        VoiceUiState.Processing -> "ANALYZING"
         VoiceUiState.Speaking -> "SPEAKING"
         VoiceUiState.Training -> "TRAINING"
         VoiceUiState.Recovering -> "RECOVERING"
@@ -60,7 +61,7 @@ fun VoiceGuideScreen(
 
     val helperText = when (uiState) {
         VoiceUiState.Idle -> "레시피나 메뉴를 음성으로 요청해보세요"
-        VoiceUiState.Listening -> "말씀하시는 내용을 듣고 있어요..."
+        VoiceUiState.Listening -> "듣고 있어요... (${durationSeconds}초)" // FIXED: string template
         VoiceUiState.Processing -> "음성을 열심히 분석하고 있어요"
         VoiceUiState.Speaking -> "TOMA가 답변을 말하고 있어요"
         VoiceUiState.Training -> "목소리를 학습하고 있어요"
@@ -264,7 +265,7 @@ private fun VoiceMicButton(
             onClick = onClick,
             interactionSource = interactionSource,
             shape = CircleShape,
-            color = TomaMainOrange,
+            color = if (isListening) Color.Red else TomaMainOrange,
             shadowElevation = if (pressed) 4.dp else 12.dp,
             modifier = Modifier.size(130.dp)
         ) {
@@ -274,14 +275,14 @@ private fun VoiceMicButton(
                 verticalArrangement = Arrangement.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.Mic,
+                    imageVector = if (isListening) Icons.Default.Stop else Icons.Default.Mic,
                     contentDescription = "Mic",
                     tint = Color.White,
                     modifier = Modifier.size(48.dp)
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "TAP TO SPEAK",
+                    text = if (isListening) "STOP" else "TAP TO SPEAK",
                     color = Color.White.copy(alpha = 0.9f),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -425,36 +426,4 @@ private fun SuggestionChip(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
         )
     }
-}
-
-private val previewSuggestions = listOf(
-    "메뉴 추천해줘",
-    "재료로 요리 찾아줘",
-    "간단한 레시피 알려줘",
-    "빠른 요리 찾아줘",
-    "쉬운 요리 추천해줘"
-)
-
-@Preview(name = "1. Idle 상태", showBackground = true, showSystemUi = true)
-@Composable
-private fun VoiceGuideIdlePreview() {
-    VoiceGuideScreen(uiState = VoiceUiState.Idle, suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
-}
-
-@Preview(name = "2. Listening 상태", showBackground = true, widthDp = 390, heightDp = 844)
-@Composable
-private fun TomaVoiceGuideListeningPreview() {
-    VoiceGuideScreen(uiState = VoiceUiState.Listening, suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
-}
-
-@Preview(name = "3. Result 결과", showBackground = true, widthDp = 390, heightDp = 844)
-@Composable
-private fun TomaVoiceGuideResultPreview() {
-    VoiceGuideScreen(uiState = VoiceUiState.Result("김치볶음밥 레시피를 찾아드릴게요."), suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
-}
-
-@Preview(name = "4. Error 에러", showBackground = true, widthDp = 390, heightDp = 844)
-@Composable
-private fun TomaVoiceGuideErrorPreview() {
-    VoiceGuideScreen(uiState = VoiceUiState.Error("음성을 인식하지 못했어요. 다시 시도해 주세요."), suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
 }
