@@ -73,17 +73,19 @@ fun VoiceGuideScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(TomaBackground)
-            .padding(vertical = 24.dp)
+            .padding(bottom = 24.dp)
     ) {
         TomaTopAppBar(
             showBackButton = true,
             onBackClick = onBackClick
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         Column(
-            modifier = Modifier.padding(horizontal = 24.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 24.dp)
         ) {
             Text(
                 text = "무엇을 도와드릴까요?",
