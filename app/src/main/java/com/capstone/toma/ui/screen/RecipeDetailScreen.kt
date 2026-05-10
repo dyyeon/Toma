@@ -104,7 +104,7 @@ fun RecipeDetailContent(
     var isTtsSpeaking by remember { mutableStateOf(false) }
 
     // Timer State from ViewModel
-    val activeTimerMinutes by voiceViewModel.activeTimerMinutes.collectAsState()
+    val isTimerRunning by voiceViewModel.isTimerRunning.collectAsState()
     val remainingSeconds by voiceViewModel.timerRemainingSeconds.collectAsState()
 
     // TTS engine — initialised once, language set inside the onInit callback
@@ -144,10 +144,24 @@ fun RecipeDetailContent(
         engine
     }
 
+    // Stop TTS when voice capture starts (User says "Hey Toma" or taps Mic)
+    LaunchedEffect(voiceUiState) {
+        if (voiceUiState == VoiceUiState.Listening && isTtsSpeaking) {
+            tts.stop()
+            isTtsSpeaking = false
+            // Note: resumeAudioCapture is NOT called here because the mic is already being used for command
+        }
+    }
+
     // Wake-word lifecycle: arm on enter, disarm on leave
     DisposableEffect(Unit) {
+        voiceViewModel.onStopTtsRequest = {
+            if (ttsReady) tts.stop()
+            isTtsSpeaking = false
+        }
         voiceViewModel.startWakeWord()
         onDispose {
+            voiceViewModel.onStopTtsRequest = null
             voiceViewModel.stopWakeWord()
             tts.shutdown()
         }
@@ -201,6 +215,22 @@ fun RecipeDetailContent(
         }
     }
 
+    // Keep VoiceViewModel in sync with the current step index so its smart-timer logic
+    // can make step-aware cancellation decisions.
+    LaunchedEffect(currentStepIndex) {
+        voiceViewModel.onStepChanged(currentStepIndex)
+    }
+
+    // Speak ViewModel-initiated announcements (e.g. "이전 타이머를 취소했어요") via the
+    // screen's TTS engine so they blend naturally with step narration.
+    LaunchedEffect(voiceViewModel, ttsReady) {
+        if (!ttsReady) return@LaunchedEffect
+        voiceViewModel.voiceAnnouncement.collect { message ->
+            voiceViewModel.pauseAudioCapture()
+            tts.speak(message, TextToSpeech.QUEUE_ADD, null, "announce_${System.currentTimeMillis()}")
+        }
+    }
+
     Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFFF8F9FA)) {
         Column(
             modifier = Modifier
@@ -219,16 +249,14 @@ fun RecipeDetailContent(
 
             // Timer Overlay Card
             AnimatedVisibility(
-                visible = activeTimerMinutes != null,
+                visible = isTimerRunning,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
-                activeTimerMinutes?.let {
-                    TimerDisplayCard(
-                        remainingSeconds = remainingSeconds,
-                        onCancel = { voiceViewModel.cancelTimer() }
-                    )
-                }
+                TimerDisplayCard(
+                    remainingSeconds = remainingSeconds,
+                    onCancel = { voiceViewModel.cancelTimer() }
+                )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -267,9 +295,9 @@ fun RecipeDetailContent(
                     if (minutes != null && minutes > 0) {
                         voiceViewModel.triggerTimer(minutes)
                     } else {
-                        // Fallback: search for time in the title if not in the current step
-                        val titleMinutes = "([0-9]+)\\s*분".toRegex().find(title)?.groupValues?.get(1)?.toIntOrNull()
-                        if (titleMinutes != null) voiceViewModel.triggerTimer(titleMinutes)
+                        // If no specific time in step, try to find in the whole text or prompt for manual input
+                        // For now, show a descriptive error via VoiceUiState
+                        voiceViewModel.showTimerManualGuidance()
                     }
                 },
                 onSpeechClick = {

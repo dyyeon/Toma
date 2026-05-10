@@ -218,7 +218,7 @@ class OpenAiManager {
         }
 
         val requestJson = JSONObject().apply {
-            put("model", "gpt-4o")
+            put("model", OpenAiConfig.DEFAULT_TEXT_MODEL)
             put("messages", messages)
             put("response_format", JSONObject().apply {
                 put("type", "json_object")
@@ -282,7 +282,7 @@ class OpenAiManager {
         }
 
         val requestJson = JSONObject().apply {
-            put("model", "gpt-4o-mini")
+            put("model", OpenAiConfig.DEFAULT_TEXT_MODEL)
             put("messages", JSONArray().apply {
                 put(JSONObject().apply {
                     put("role", "system")
@@ -345,7 +345,7 @@ class OpenAiManager {
                 val base64Image = Base64.encodeToString(outputStream.toByteArray(), Base64.NO_WRAP)
 
                 val requestJson = JSONObject().apply {
-                    put("model", "gpt-4o")
+                    put("model", OpenAiConfig.ADVANCED_MODEL)
                     put("messages", JSONArray().apply {
                         put(JSONObject().apply {
                             put("role", "user")

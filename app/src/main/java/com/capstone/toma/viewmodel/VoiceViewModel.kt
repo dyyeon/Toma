@@ -2,12 +2,16 @@ package com.capstone.toma.viewmodel
 
 import android.Manifest
 import android.app.Application
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.net.Uri
 import android.os.Build
+import android.os.IBinder
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
@@ -50,12 +54,6 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val _enrollmentStatus = MutableStateFlow<EnrollmentStatus>(EnrollmentStatus.Idle)
     val enrollmentStatus = _enrollmentStatus.asStateFlow()
 
-    private val _activeTimerMinutes = MutableStateFlow<Int?>(null)
-    val activeTimerMinutes = _activeTimerMinutes.asStateFlow()
-
-    private val _timerRemainingSeconds = MutableStateFlow(0)
-    val timerRemainingSeconds = _timerRemainingSeconds.asStateFlow()
-
     private val _uiState = MutableStateFlow<VoiceUiState>(VoiceUiState.Idle)
     val uiState = _uiState.asStateFlow()
 
@@ -65,6 +63,10 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val _recognizedTextEvent = kotlinx.coroutines.flow.MutableSharedFlow<String>()
     val recognizedTextEvent = _recognizedTextEvent.asSharedFlow()
 
+    // Announcements spoken by the screen's TTS engine (e.g. timer replacement notices)
+    private val _voiceAnnouncement = kotlinx.coroutines.flow.MutableSharedFlow<String>()
+    val voiceAnnouncement = _voiceAnnouncement.asSharedFlow()
+
     private val openAiManager = OpenAiManager()
 
     private val audioStreamManager = AudioStreamManager(application)
@@ -72,7 +74,6 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val wakeWordManager = WakeWordManager(application, onDevicePersonalizer) {
         onWakeWordDetected()
     }
-    private val timerManager = TimerManager(application)
     private val toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
     
     // API Key from BuildConfig (set in build.gradle.kts)
@@ -99,11 +100,46 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val ENROLLMENT_CHUNK_BYTES = 64000 // 2 seconds at 16kHz mono 16-bit
     private val MAX_ENROLLMENT_SAMPLES = 10 // Reduced for on-device personalization
 
+    // --- Timer Logic (Foreground Service) ---
+    private var timerService: TimerService? = null
+    private val _timerRemainingSeconds = MutableStateFlow(0)
+    val timerRemainingSeconds: StateFlow<Int> = _timerRemainingSeconds.asStateFlow()
+    private val _isTimerRunning = MutableStateFlow(false)
+    val isTimerRunning: StateFlow<Boolean> = _isTimerRunning.asStateFlow()
+
+    // Smart-timer context: track original duration and which step started it
+    private var timerOriginalSeconds = 0
+    private var timerStartedAtStep = -1
+    private var currentStepIndex = -1
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as TimerService.TimerBinder
+            val srv = binder.getService()
+            timerService = srv
+            viewModelScope.launch {
+                srv.remainingSeconds.collect { _timerRemainingSeconds.value = it }
+            }
+            viewModelScope.launch {
+                srv.isTimerRunning.collect { _isTimerRunning.value = it }
+            }
+        }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            timerService = null
+            _isTimerRunning.value = false
+        }
+    }
+
+    // Callback for RecipeDetailScreen to stop TTS
+    var onStopTtsRequest: (() -> Unit)? = null
+
     init {
         wakeWordManager.verboseLogging = true
-        // audioStreamManager.startCapture() // Removed from init to start only when needed
-        // realtimeManager.connect() // Moved to startWakeWord to avoid main thread load on launch
         observeAudioStream()
+        
+        // Bind to TimerService
+        val intent = Intent(application, TimerService::class.java)
+        application.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
     fun startWakeWord() {
@@ -144,6 +180,9 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private fun onWakeWordDetected() {
         viewModelScope.launch {
             if (_uiState.value == VoiceUiState.Idle) {
+                // IMPORTANT: Stop any ongoing TTS when wake-word is detected
+                onStopTtsRequest?.invoke()
+
                 _uiState.value = VoiceUiState.Listening
                 // Play earcon to notify user
                 toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
@@ -175,12 +214,10 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                             if (!isNotificationPermissionGranted()) {
                                 _uiState.value = VoiceUiState.Error("알림 권한이 없어 타이머 알람을 받을 수 없어요.")
                             } else {
-                                _uiState.value = VoiceUiState.Result("${intent.durationMin}분 타이머를 맞췄어요.")
-                                timerManager.setTimer(intent.durationMin)
+                                triggerTimer(intent.durationMin)
                             }
                         }
                         TomaIntent.RECOMMENDED_TIMER -> {
-                            // Actual timer value is extracted from step text by RecipeDetailScreen
                             _uiState.value = VoiceUiState.Result("추천 시간으로 타이머를 맞춰드릴게요.")
                         }
                         TomaIntent.NEXT_STEP -> {
@@ -244,6 +281,10 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startListeningManually() {
         if (_uiState.value != VoiceUiState.Idle) return
+        
+        // Stop any ongoing TTS when mic button is tapped
+        onStopTtsRequest?.invoke()
+
         viewModelScope.launch(Dispatchers.IO) {
             realtimeManager.connect()
             audioStreamManager.startCapture()
@@ -602,46 +643,88 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    /** Called by RecipeDetailScreen when RECOMMENDED_TIMER fires and the step text yields a duration. */
-    private var timerJob: kotlinx.coroutines.Job? = null
+    /** --- Timer Logic (Foreground Service Integration) --- */
 
     fun triggerTimer(minutes: Int) {
         viewModelScope.launch {
-            if (!isNotificationPermissionGranted()) {
-                _uiState.value = VoiceUiState.Error("알림 권한이 없어 타이머 알람을 받을 수 없어요.")
-                delay(3000)
-                if (_uiState.value is VoiceUiState.Error) _uiState.value = VoiceUiState.Idle
-                return@launch
+            if (_isTimerRunning.value) {
+                cancelTimerSilently()
+                _voiceAnnouncement.emit("이전 타이머를 취소하고 새 타이머를 시작할게요.")
+                delay(300)
             }
-            
-            _activeTimerMinutes.value = minutes
-            _timerRemainingSeconds.value = minutes * 60
-            
-            _uiState.value = VoiceUiState.Result("${minutes}분 타이머를 시작합니다.")
-            timerManager.setTimer(minutes)
-            
-            // Start local countdown for UI display
-            timerJob?.cancel()
-            timerJob = viewModelScope.launch {
-                while (_timerRemainingSeconds.value > 0) {
-                    delay(1000)
-                    _timerRemainingSeconds.value -= 1
-                }
-                _activeTimerMinutes.value = null
+            timerOriginalSeconds = minutes * 60
+            timerStartedAtStep = currentStepIndex
+
+            val intent = Intent(getApplication(), TimerService::class.java).apply {
+                action = "START"
+                putExtra("minutes", minutes)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getApplication<Application>().startForegroundService(intent)
+            } else {
+                getApplication<Application>().startService(intent)
             }
 
+            _uiState.value = VoiceUiState.Result("${minutes}분 타이머를 시작합니다.")
             delay(3000)
             if (_uiState.value is VoiceUiState.Result) _uiState.value = VoiceUiState.Idle
         }
     }
 
     fun cancelTimer() {
-        timerJob?.cancel()
-        _activeTimerMinutes.value = null
-        _timerRemainingSeconds.value = 0
+        cancelTimerSilently()
         _uiState.value = VoiceUiState.Result("타이머를 취소했습니다.")
         viewModelScope.launch {
             delay(2000)
+            if (_uiState.value is VoiceUiState.Result) _uiState.value = VoiceUiState.Idle
+        }
+    }
+
+    /** Stops the foreground service and resets tracking state without a UI message. */
+    private fun cancelTimerSilently() {
+        val stopIntent = Intent(getApplication(), TimerService::class.java).apply { action = "STOP" }
+        getApplication<Application>().startService(stopIntent)
+        timerStartedAtStep = -1
+        timerOriginalSeconds = 0
+    }
+
+    /**
+     * Called by RecipeDetailScreen whenever the displayed step index changes.
+     * Applies smart-cancel rules so stale timers don't outlive their cooking phase.
+     */
+    fun onStepChanged(newIndex: Int) {
+        currentStepIndex = newIndex
+        if (!_isTimerRunning.value || timerStartedAtStep < 0) return
+
+        val remaining = _timerRemainingSeconds.value
+        val stepDelta = newIndex - timerStartedAtStep
+        val percentRemaining =
+            if (timerOriginalSeconds > 0) remaining.toFloat() / timerOriginalSeconds else 0f
+
+        when {
+            // Jumped 2+ steps → cooking phase is completely over
+            stepDelta >= 2 -> {
+                cancelTimerSilently()
+                viewModelScope.launch { _voiceAnnouncement.emit("이전 단계 타이머를 종료했어요.") }
+            }
+            // Moved 1 step forward but barely used the timer (>80% left) → skipped early, cancel silently
+            stepDelta == 1 && percentRemaining > 0.8f -> cancelTimerSilently()
+            // Moved 1 step forward and timer is nearly done (<20% left) → let it finish
+            stepDelta == 1 && percentRemaining < 0.2f -> { /* no-op */ }
+            // Moved 1 step forward in the middle range → cancel and notify
+            stepDelta == 1 -> {
+                cancelTimerSilently()
+                viewModelScope.launch { _voiceAnnouncement.emit("이전 단계 타이머를 취소했어요.") }
+            }
+            // Going backward → leave timer running
+        }
+    }
+
+    /** Shows a message when the user requests a timer but the recipe context doesn't specify a time. */
+    fun showTimerManualGuidance() {
+        viewModelScope.launch {
+            _uiState.value = VoiceUiState.Result("이 단계에는 조리 시간이 없네요. \"3분 타이머 맞춰줘\"와 같이 직접 말씀해주세요!")
+            delay(4000)
             if (_uiState.value is VoiceUiState.Result) _uiState.value = VoiceUiState.Idle
         }
     }
@@ -652,5 +735,8 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         audioStreamManager.stopCapture()
         realtimeManager.disconnect()
         wakeWordManager.release()
+        try {
+            getApplication<Application>().unbindService(serviceConnection)
+        } catch (_: Exception) {}
     }
 }
