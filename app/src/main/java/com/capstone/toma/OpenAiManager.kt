@@ -3,6 +3,8 @@ package com.capstone.toma
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import android.util.Base64
 import com.capstone.toma.model.normalizeRecipeCategory
@@ -439,14 +441,10 @@ class OpenAiManager {
 
     private fun decodeImageForAnalysis(context: Context, uri: Uri): Bitmap? {
         val resolver = context.contentResolver
-        val bounds = BitmapFactory.Options().apply {
-            inJustDecodeBounds = true
-        }
 
-        resolver.openInputStream(uri)?.use { input ->
-            BitmapFactory.decodeStream(input, null, bounds)
-        }
-
+        // Pass 1: read dimensions only to calculate the down-sample factor
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
         val maxDimension = 1024
@@ -455,21 +453,40 @@ class OpenAiManager {
             sampleSize *= 2
         }
 
-        val options = BitmapFactory.Options().apply {
-            inSampleSize = sampleSize
-        }
+        // Pass 2: read EXIF orientation — camera photos are almost always rotated
+        val rotationDegrees = resolver.openInputStream(uri)?.use { input ->
+            try {
+                when (ExifInterface(input).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )) {
+                    ExifInterface.ORIENTATION_ROTATE_90  -> 90f
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                    else -> 0f
+                }
+            } catch (_: Exception) { 0f }
+        } ?: 0f
 
+        // Pass 3: decode and scale
         val decoded = resolver.openInputStream(uri)?.use { input ->
-            BitmapFactory.decodeStream(input, null, options)
+            BitmapFactory.decodeStream(input, null, BitmapFactory.Options().apply { inSampleSize = sampleSize })
         } ?: return null
 
-        return Bitmap.createScaledBitmap(
+        val scaled = Bitmap.createScaledBitmap(
             decoded,
             if (decoded.width > decoded.height) maxDimension else (decoded.width * maxDimension / decoded.height),
             if (decoded.height > decoded.width) maxDimension else (decoded.height * maxDimension / decoded.width),
             true
-        ).also {
-            if (it != decoded) decoded.recycle()
+        ).also { if (it != decoded) decoded.recycle() }
+
+        // Apply EXIF rotation so GPT-4o sees the image right-side-up
+        return if (rotationDegrees != 0f) {
+            Bitmap.createBitmap(scaled, 0, 0, scaled.width, scaled.height,
+                Matrix().apply { postRotate(rotationDegrees) }, true)
+                .also { scaled.recycle() }
+        } else {
+            scaled
         }
     }
 

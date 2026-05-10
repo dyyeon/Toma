@@ -16,9 +16,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.RecordVoiceOver
@@ -26,9 +25,12 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SmartDisplay
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
+import coil.compose.SubcomposeAsyncImage
+import org.json.JSONObject
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -377,7 +379,7 @@ fun YoutubeImportCard(
     enabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val icons = listOf(Icons.Filled.SmartDisplay, Icons.Default.Link, Icons.Default.Description)
+    val icons = listOf(Icons.Filled.SmartDisplay, Icons.Default.Description, Icons.Default.Description)
     var iconIndex by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
@@ -596,16 +598,28 @@ fun RecentAnalysisSection(
     }
 }
 
+private fun extractImageUrl(recipeDataJson: String?): String? {
+    if (recipeDataJson.isNullOrBlank()) return null
+    return runCatching {
+        JSONObject(recipeDataJson).optString("image_url").takeIf { it.isNotBlank() }
+    }.getOrNull()
+}
+
 @Composable
 fun RecentAnalysisCard(
     item: RecentRecipeItem,
     onClick: () -> Unit
 ) {
     val (icon, bgColor, iconColor, badgeText) = when (item.sourceType) {
-        RecipeSourceType.TEXT -> listOf(Icons.Default.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7), "TEXT")
-        RecipeSourceType.YOUTUBE -> listOf(Icons.Default.SmartDisplay, Color(0xFFFFF1E8), TomaMainOrange, "YOUTUBE")
+        RecipeSourceType.TEXT -> listOf(Icons.AutoMirrored.Filled.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7), "TEXT")
+        RecipeSourceType.YOUTUBE -> listOf(Icons.Filled.SmartDisplay, Color(0xFFFFF1E8), TomaMainOrange, "YOUTUBE")
         RecipeSourceType.IMAGE -> listOf(Icons.Default.CameraAlt, Color(0xFFFFECEC), TomaMainRed, "IMAGE")
         RecipeSourceType.WEB -> listOf(Icons.Default.Public, Color(0xFFE7F5FF), Color(0xFF228BE6), "WEB")
+    }
+
+    val thumbnailUrl = when (item.sourceType) {
+        RecipeSourceType.WEB, RecipeSourceType.YOUTUBE, RecipeSourceType.IMAGE -> extractImageUrl(item.recipeDataJson)
+        else -> null
     }
 
     Surface(
@@ -619,35 +633,77 @@ fun RecentAnalysisCard(
         shadowElevation = 2.dp
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // 상단 아이콘/배경 영역
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .background(bgColor as Color),
+                    .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
-                // 워터마크 느낌의 대형 아이콘
-                Icon(
-                    imageVector = icon as androidx.compose.ui.graphics.vector.ImageVector,
-                    contentDescription = null,
-                    tint = (iconColor as Color).copy(alpha = 0.4f),
-                    modifier = Modifier.size(48.dp)
-                )
-
-                // 우측 상단 배지
-                Surface(
-                    shape = RoundedCornerShape(bottomStart = 12.dp),
-                    color = iconColor,
-                    modifier = Modifier.align(Alignment.TopEnd)
-                ) {
-                    Text(
-                        text = badgeText as String,
-                        color = Color.White,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                if (thumbnailUrl != null) {
+                    SubcomposeAsyncImage(
+                        model = thumbnailUrl,
+                        contentDescription = null,
+                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                        error = {
+                            // URL 로드 실패 시 아이콘 placeholder
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(bgColor as Color),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = icon as androidx.compose.ui.graphics.vector.ImageVector,
+                                    contentDescription = null,
+                                    tint = (iconColor as Color).copy(alpha = 0.4f),
+                                    modifier = Modifier.size(48.dp)
+                                )
+                            }
+                        }
                     )
+                    // 썸네일 위에 배지 오버레이
+                    Surface(
+                        shape = RoundedCornerShape(bottomStart = 12.dp),
+                        color = (iconColor as Color).copy(alpha = 0.85f),
+                        modifier = Modifier.align(Alignment.TopEnd)
+                    ) {
+                        Text(
+                            text = badgeText as String,
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                } else {
+                    // 썸네일 없을 때 아이콘 배경
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(bgColor as Color),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = icon as androidx.compose.ui.graphics.vector.ImageVector,
+                            contentDescription = null,
+                            tint = (iconColor as Color).copy(alpha = 0.4f),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(bottomStart = 12.dp),
+                            color = iconColor,
+                            modifier = Modifier.align(Alignment.TopEnd)
+                        ) {
+                            Text(
+                                text = badgeText as String,
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
                 }
             }
 

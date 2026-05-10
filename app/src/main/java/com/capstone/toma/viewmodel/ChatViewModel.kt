@@ -65,7 +65,7 @@ class ChatViewModel : ViewModel() {
 
     fun clearErrorEvent() {
         _errorEvent.value = null
-        _uiState.update { it.copy(errorDialogMessage = null, isTyping = false) }
+        _uiState.update { it.copy(errorDialogMessage = null, isTyping = false, isSpecificAnalysis = false) }
     }
 
     fun onInputTextChange(text: String) {
@@ -147,7 +147,8 @@ class ChatViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 messages = it.messages + userMessage + aiMessage,
-                isTyping = true
+                isTyping = true,
+                isSpecificAnalysis = true
             )
         }
 
@@ -177,7 +178,8 @@ class ChatViewModel : ViewModel() {
                                     message
                                 }
                             },
-                            isTyping = false
+                            isTyping = false,
+                            isSpecificAnalysis = false
                         )
                     }
                     handleNavigation(result, fixedSourceType)
@@ -193,6 +195,7 @@ class ChatViewModel : ViewModel() {
                                 }
                             },
                             isTyping = false,
+                            isSpecificAnalysis = false,
                             errorDialogMessage = result.message
                         )
                     }
@@ -301,7 +304,10 @@ class ChatViewModel : ViewModel() {
             val sourceType = fixedSourceType
                 ?: sessionSourceType
                 ?: if (keyword.startsWith("http")) {
-                    if (keyword.contains("youtube.com") || keyword.contains("youtu.be")) {
+                    if (keyword.contains("youtube.com/watch") ||
+                        keyword.contains("youtube.com/shorts/") ||
+                        keyword.contains("youtu.be/") ||
+                        keyword.contains("youtube.com/embed/")) {
                         com.capstone.toma.model.RecipeSourceType.YOUTUBE
                     } else {
                         com.capstone.toma.model.RecipeSourceType.WEB

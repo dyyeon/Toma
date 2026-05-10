@@ -1,11 +1,15 @@
 package com.capstone.toma.viewmodel
 
+import android.Manifest
 import android.app.Application
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.media.ToneGenerator
 import android.net.Uri
+import android.os.Build
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.capstone.toma.*
@@ -57,7 +61,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     private val openAiManager = OpenAiManager()
 
-    private val audioStreamManager = AudioStreamManager()
+    private val audioStreamManager = AudioStreamManager(application)
     private val onDevicePersonalizer = OnDevicePersonalizer(application)
     private val wakeWordManager = WakeWordManager(application, onDevicePersonalizer) {
         onWakeWordDetected()
@@ -162,8 +166,16 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 withContext(Dispatchers.Main) {
                     when (intent) {
                         is TomaIntent.SET_TIMER -> {
-                            _uiState.value = VoiceUiState.Result("${intent.durationMin}분 타이머를 맞췄어요.")
-                            timerManager.setTimer(intent.durationMin)
+                            if (!isNotificationPermissionGranted()) {
+                                _uiState.value = VoiceUiState.Error("알림 권한이 없어 타이머 알람을 받을 수 없어요.")
+                            } else {
+                                _uiState.value = VoiceUiState.Result("${intent.durationMin}분 타이머를 맞췄어요.")
+                                timerManager.setTimer(intent.durationMin)
+                            }
+                        }
+                        TomaIntent.RECOMMENDED_TIMER -> {
+                            // Actual timer value is extracted from step text by RecipeDetailScreen
+                            _uiState.value = VoiceUiState.Result("추천 시간으로 타이머를 맞춰드릴게요.")
                         }
                         TomaIntent.NEXT_STEP -> {
                             _uiState.value = VoiceUiState.Result("다음 단계로 넘어갑니다.")
@@ -246,6 +258,26 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Pauses PCM capture so TTS can use the speaker without Samsung's hardware AEC
+     * suppressing the output. Audio focus is released so TTS can claim it freely.
+     * Call [resumeAudioCapture] once TTS finishes (via UtteranceProgressListener).
+     */
+    fun pauseAudioCapture() {
+        viewModelScope.launch(Dispatchers.IO) {
+            audioStreamManager.stopCapture()
+        }
+    }
+
+    /**
+     * Restarts PCM capture and re-requests audio focus after TTS has finished speaking.
+     */
+    fun resumeAudioCapture() {
+        viewModelScope.launch(Dispatchers.IO) {
+            audioStreamManager.startCapture()
+        }
+    }
+
     fun onMicClick() {
         // Manual trigger (optional, keeps current UI working)
         if (_uiState.value == VoiceUiState.Idle) {
@@ -262,6 +294,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     fun startEnrollmentRecording(context: Context) {
         if (_enrollmentStatus.value != EnrollmentStatus.Idle && _enrollmentStatus.value !is EnrollmentStatus.Success && _enrollmentStatus.value != EnrollmentStatus.Failed) return
 
+        wakeWordManager.bypassVad = true
         viewModelScope.launch {
             // Step 1: Collect ambient noise if starting a new session
             if (_enrollmentCount.value == 0) {
@@ -283,6 +316,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                         enrollmentBuffer.write(wavBytes)
                         
                         if (enrollmentBuffer.size() >= ENROLLMENT_CHUNK_BYTES) {
+                            Log.d("Enrollment", "Processing frame for enrollment... (Buffer size: ${enrollmentBuffer.size()} bytes)")
                             val pcmBytes = enrollmentBuffer.toByteArray().take(ENROLLMENT_CHUNK_BYTES).toByteArray()
                             enrollmentBuffer.reset()
                             
@@ -297,7 +331,13 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                                 val tempFile = File(context.cacheDir, "enroll_verify_temp.wav")
                                 saveAsWav(pcmBytes, tempFile)
 
-                                val isValid = verifyWithWhisper(tempFile)
+                                    // FIX #10: Amplitude guard — reject silent or barely-audible
+                                // recordings on-device before spending an API round-trip.
+                                // RMS threshold ~800 / 32768 ≈ 2.4 % of full scale.
+                                // Recordings below this are noise or an accidental tap, not speech.
+                                val isLoudEnough = isPcmLoudEnough(pcmBytes)
+                                val isValid = isLoudEnough && verifyWithWhisper(tempFile)
+                                if (!isLoudEnough) Log.d("Enrollment", "❌ 거부됨: 음량이 너무 낮음 (RMS < 800)")
 
                                 withContext(Dispatchers.Main) {
                                     if (isValid) {
@@ -324,14 +364,17 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                                                 onDevicePersonalizer.saveToFile(weightsFile)
                                                 wakeWordManager.loadPersonalWeights(onDevicePersonalizer)
                                                 wakeWordManager.clearLastEmbedding()
+                                                wakeWordManager.bypassVad = false
                                                 _enrollmentStatus.value = EnrollmentStatus.Idle
                                             } else {
+                                                wakeWordManager.bypassVad = false
                                                 _enrollmentStatus.value = EnrollmentStatus.Failed
                                             }
                                         } else {
                                             _enrollmentStatus.value = EnrollmentStatus.Idle
                                         }
                                     } else {
+                                        wakeWordManager.bypassVad = false
                                         _enrollmentStatus.value = EnrollmentStatus.Failed
                                         delay(1000)
                                         _enrollmentStatus.value = EnrollmentStatus.Idle
@@ -382,10 +425,31 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             isValid
 
         } catch (e: Exception) {
-            // FIXED: Corrected Log.e() call argument by adding "VoiceViewModel" tag
-            Log.e("VoiceViewModel", e.toString())
-            true // 에러 시 통과 (네트워크 문제로 인한 거부 방지)
+            // FIX #11: Previously returned true on any exception to "avoid rejecting due to
+            // network issues." This had the opposite effect: bad recordings (silent, wrong word,
+            // far-field) were silently accepted whenever the device was offline, building a
+            // corrupted voice profile that caused the personalised model to fail.
+            // Return false and surface the error — the UI already handles EnrollmentStatus.Failed
+            // with a retry prompt, which is safer than silently accepting bad data.
+            Log.e("VoiceViewModel", "Whisper verification error: ${e.message}")
+            false
         }
+    }
+
+    // Calculates RMS amplitude of 16-bit little-endian PCM bytes.
+    // Returns true if the signal is loud enough to be recognisable speech.
+    private fun isPcmLoudEnough(pcmBytes: ByteArray, minRms: Float = 800f): Boolean {
+        var sumSq = 0.0
+        var i = 0
+        while (i < pcmBytes.size - 1) {
+            val sample = ((pcmBytes[i].toInt() and 0xFF) or (pcmBytes[i + 1].toInt() shl 8)).toShort().toFloat()
+            sumSq += sample * sample
+            i += 2
+        }
+        val count = pcmBytes.size / 2
+        val rms = if (count > 0) kotlin.math.sqrt(sumSq / count).toFloat() else 0f
+        Log.d("Enrollment", "RMS amplitude: ${"%.1f".format(rms)} (threshold: $minRms)")
+        return rms >= minRms
     }
 
     private fun saveAsWav(pcmBytes: ByteArray, file: File, sampleRate: Int = 16000) {
@@ -438,6 +502,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopEnrollmentRecording() {
+        wakeWordManager.bypassVad = false
         audioStreamManager.stopEnrollmentMode()
         enrollmentBuffer.reset()
     }
@@ -520,6 +585,30 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                     delay(10000) // 10초 대기 후 재시도
                 }
             }
+        }
+    }
+
+    /** Returns true when the app is allowed to post notifications (required for timer alarms). */
+    private fun isNotificationPermissionGranted(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
+        return ContextCompat.checkSelfPermission(
+            getApplication(), Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /** Called by RecipeDetailScreen when RECOMMENDED_TIMER fires and the step text yields a duration. */
+    fun triggerTimer(minutes: Int) {
+        viewModelScope.launch {
+            if (!isNotificationPermissionGranted()) {
+                _uiState.value = VoiceUiState.Error("알림 권한이 없어 타이머 알람을 받을 수 없어요.")
+                delay(3000)
+                if (_uiState.value is VoiceUiState.Error) _uiState.value = VoiceUiState.Idle
+                return@launch
+            }
+            _uiState.value = VoiceUiState.Result("${minutes}분 타이머를 시작합니다.")
+            timerManager.setTimer(minutes)
+            delay(3000)
+            if (_uiState.value is VoiceUiState.Result) _uiState.value = VoiceUiState.Idle
         }
     }
 

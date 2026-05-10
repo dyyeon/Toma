@@ -1,13 +1,47 @@
 package com.capstone.toma.navigation
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
+import java.io.File
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -28,6 +62,13 @@ import org.json.JSONObject
 import com.capstone.toma.ui.screen.*
 import com.capstone.toma.viewmodel.*
 
+/** Returns true for any YouTube URL including Shorts (/shorts/), standard (/watch?v=), and youtu.be. */
+private fun String.isYoutubeUrl(): Boolean =
+    contains("youtube.com/watch") ||
+    contains("youtube.com/shorts/") ||
+    contains("youtu.be/") ||
+    contains("youtube.com/embed/")
+
 private val voiceSuggestions = listOf(
     "오늘 저녁 뭐 먹을까",
     "냉장고 재료로 뭐 해먹지",
@@ -37,6 +78,7 @@ private val voiceSuggestions = listOf(
     "자취생 요리 알려줘"
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TomaNavHost(
     navController: NavHostController = rememberNavController()
@@ -51,6 +93,58 @@ fun TomaNavHost(
     val voiceUiState by voiceViewModel.uiState.collectAsState()
 
     val context = LocalContext.current
+
+    var showImageSourceSheet by remember { mutableStateOf(false) }
+    // Holds the File and URI created before launching TakePicture so the callback can reference them
+    var pendingCameraFile by remember { mutableStateOf<File?>(null) }
+    var pendingCameraUri  by remember { mutableStateOf<Uri?>(null) }
+
+    // Helper: create a fresh timestamped file under cacheDir/camera/ and return its FileProvider URI.
+    // The directory is created eagerly; TakePicture writes the JPEG content into the file.
+    fun prepareCameraUri(): Pair<File, Uri> {
+        val dir  = File(context.cacheDir, "camera").also { it.mkdirs() }
+        val file = File(dir, "capture_${System.currentTimeMillis()}.jpg")
+        val uri  = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        return file to uri
+    }
+
+    // Declared first so the permission launcher can reference it
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        val uri  = pendingCameraUri
+        val file = pendingCameraFile
+        pendingCameraUri  = null
+        pendingCameraFile = null
+
+        if (success && uri != null) {
+            chatViewModel.resetChat()
+            navController.navigate(TomaDestination.Chat.route)
+            chatViewModel.startLinkAnalysis(
+                userDisplay   = "카메라로 레시피 찾기",
+                initialAiText = "사진을 분석하고 있어요. 잠시만 기다려 주세요... 📸",
+                fixedSourceType = com.capstone.toma.model.RecipeSourceType.IMAGE
+            ) { _ ->
+                com.capstone.toma.OpenAiManager().analyzeRecipeImageSuspend(context, uri.toString())
+            }
+        } else {
+            // User cancelled — delete the pre-allocated temp file
+            file?.delete()
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            val (file, uri) = prepareCameraUri()
+            pendingCameraFile = file
+            pendingCameraUri  = uri
+            cameraLauncher.launch(uri)
+        } else {
+            homeViewModel.showError("카메라 권한이 필요해요. 설정에서 허용해 주세요.", isDialog = true)
+        }
+    }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -69,6 +163,31 @@ fun TomaNavHost(
         } else {
             homeViewModel.showError("이미지를 선택하지 않았어요.")
         }
+    }
+
+    // ModalBottomSheet uses an internal Popup layer, so it renders above NavHost regardless of order
+    if (showImageSourceSheet) {
+        ImageSourceBottomSheet(
+            onDismiss = { showImageSourceSheet = false },
+            onCameraSelected = {
+                showImageSourceSheet = false
+                val hasPerm = ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.CAMERA
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasPerm) {
+                    val (file, uri) = prepareCameraUri()
+                    pendingCameraFile = file
+                    pendingCameraUri  = uri
+                    cameraLauncher.launch(uri)
+                } else {
+                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
+            },
+            onGallerySelected = {
+                showImageSourceSheet = false
+                imagePickerLauncher.launch("image/*")
+            }
+        )
     }
 
     NavHost(
@@ -99,7 +218,7 @@ fun TomaNavHost(
                     if (query.isNotBlank()) {
                         val isValidUrl = query.startsWith("http://") || query.startsWith("https://")
                         if (isValidUrl) {
-                            val isYoutube = query.contains("youtube.com") || query.contains("youtu.be")
+                            val isYoutube = query.isYoutubeUrl()
                             val webPageManager = WebPageManager()
                             val youtubeManager = YoutubeManager()
                             chatViewModel.resetChat()
@@ -209,7 +328,7 @@ fun TomaNavHost(
                     val link = homeUiState.youtubeLink
 
                     if (link.isNotBlank()) {
-                        val isYoutube = link.contains("youtube.com") || link.contains("youtu.be")
+                        val isYoutube = link.isYoutubeUrl()
                         val isValidUrl = link.startsWith("http://") || link.startsWith("https://")
 
                         if (isValidUrl) {
@@ -313,7 +432,7 @@ fun TomaNavHost(
                         }
                     }
                 },
-                onPhotoScanClick = { imagePickerLauncher.launch("image/*") },
+                onPhotoScanClick = { showImageSourceSheet = true },
                 onRecentItemClick = { itemId ->
                     val item = homeUiState.recentItems.find { it.id == itemId }
                     item?.let {
@@ -450,7 +569,7 @@ fun TomaNavHost(
                     val inputText = chatUiState.inputText.trim()
                     val isUrl = inputText.startsWith("http://") || inputText.startsWith("https://")
                     if (isUrl) {
-                        val isYoutube = inputText.contains("youtube.com") || inputText.contains("youtu.be")
+                        val isYoutube = inputText.isYoutubeUrl()
                         val webPageManager = WebPageManager()
                         val youtubeManager = YoutubeManager()
                         chatViewModel.onInputTextChange("")
@@ -632,7 +751,8 @@ fun TomaNavHost(
                     navController.navigate(TomaDestination.RecipeComplete.createRoute(kw, data)) {
                         popUpTo(TomaDestination.RecipeDetail.route) { inclusive = true }
                     }
-                }
+                },
+                voiceViewModel = voiceViewModel
             )
         }
 
@@ -662,4 +782,107 @@ fun TomaNavHost(
 
 private fun NavHostController.navigateSingleTop(route: String) {
     navigate(route) { launchSingleTop = true }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ImageSourceBottomSheet(
+    onDismiss: () -> Unit,
+    onCameraSelected: () -> Unit,
+    onGallerySelected: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Color.White,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 48.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = "이미지 가져오기",
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 18.sp,
+                color = Color(0xFF212529)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Camera option
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onCameraSelected() },
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFFFFF1E8),
+                border = BorderStroke(1.dp, Color(0xFFEE8C2B).copy(alpha = 0.25f)),
+                shadowElevation = 0.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CameraAlt,
+                        contentDescription = null,
+                        tint = Color(0xFFEE8C2B)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            text = "카메라로 촬영",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = Color(0xFF212529)
+                        )
+                        Text(
+                            text = "지금 바로 사진을 찍어 분석해요",
+                            fontSize = 13.sp,
+                            color = Color(0xFF868E96)
+                        )
+                    }
+                }
+            }
+
+            // Gallery option
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onGallerySelected() },
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFFF8F9FA),
+                border = BorderStroke(1.dp, Color(0xFFF1F3F5)),
+                shadowElevation = 0.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhotoLibrary,
+                        contentDescription = null,
+                        tint = Color(0xFF868E96)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column {
+                        Text(
+                            text = "갤러리에서 선택",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = Color(0xFF212529)
+                        )
+                        Text(
+                            text = "앨범에서 사진을 골라 분석해요",
+                            fontSize = 13.sp,
+                            color = Color(0xFF868E96)
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

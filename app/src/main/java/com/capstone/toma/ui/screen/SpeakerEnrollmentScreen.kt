@@ -34,6 +34,15 @@ fun SpeakerEnrollmentScreen(
     val enrollmentCount by voiceViewModel.enrollmentCount.collectAsState()
     val enrollmentStatus by voiceViewModel.enrollmentStatus.collectAsState()
 
+    // Reset audio session on entering to ensure clean capture
+    DisposableEffect(Unit) {
+        voiceViewModel.stopWakeWord()
+        voiceViewModel.startWakeWord()
+        onDispose {
+            voiceViewModel.stopEnrollmentRecording()
+        }
+    }
+
     // Bixby-style sequential UI: calm, focused, single-state
     val mainText = when (enrollmentStatus) {
         VoiceViewModel.EnrollmentStatus.Idle -> "\"헤이 토마\" 라고\n말해주세요"

@@ -61,6 +61,7 @@ data class AiChatUiState(
     val inputText: String = "",
     val messages: List<ChatMessage> = emptyList(),
     val isTyping: Boolean = false,
+    val isSpecificAnalysis: Boolean = false,
     val errorDialogMessage: String? = null
 )
 
@@ -216,7 +217,9 @@ fun AiChatScreen(
                     ChatBubble(message = message)
                 }
 
-                if (uiState.isTyping) {
+                // Three-dots indicator is suppressed during link/image analysis because
+                // startLinkAnalysis() already shows a dedicated status bubble with progress text.
+                if (uiState.isTyping && !uiState.isSpecificAnalysis) {
                     item {
                         TypingIndicatorBubble()
                     }

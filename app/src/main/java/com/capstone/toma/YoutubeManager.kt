@@ -20,11 +20,21 @@ class YoutubeManager {
     }
 
     /**
+     * Converts a YouTube Shorts URL to a standard watch URL.
+     * Jina AI cannot reliably fetch /shorts/ pages, but /watch?v= always works.
+     * extractVideoId() is still called on the original URL so thumbnail building is unaffected.
+     */
+    fun normalizeUrl(url: String): String {
+        val shortsId = Regex("youtube\\.com/shorts/([^?/]+)").find(url)?.groupValues?.get(1)
+        return if (shortsId != null) "https://www.youtube.com/watch?v=$shortsId" else url
+    }
+
+    /**
      * Fetch YouTube info using Jina AI Reader.
      * Jina AI is excellent at extracting titles, descriptions, and metadata from YouTube pages.
      */
     fun fetchVideoInfo(url: String, onResult: (title: String?, content: String?, imageUrl: String?) -> Unit) {
-        val jinaUrl = "https://r.jina.ai/$url"
+        val jinaUrl = "https://r.jina.ai/${normalizeUrl(url)}"
         
         val request = Request.Builder()
             .url(jinaUrl)

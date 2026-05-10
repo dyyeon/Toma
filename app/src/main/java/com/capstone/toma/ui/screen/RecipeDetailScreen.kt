@@ -1,5 +1,7 @@
 package com.capstone.toma.ui.screen
 
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,33 +12,36 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.capstone.toma.TomaIntent
+import com.capstone.toma.VoiceUiState
 import com.capstone.toma.ui.theme.*
 import com.capstone.toma.viewmodel.RecipeStorageViewModel
+import com.capstone.toma.viewmodel.VoiceViewModel
 import org.json.JSONObject
+import java.util.Locale
 
 @Composable
 fun RecipeDetailScreen(
     keyword: String = "",
     recipeDataJson: String? = null,
     onBackClick: () -> Unit = {},
-    onFinish: (String, String?) -> Unit = { _, _ -> }
+    onFinish: (String, String?) -> Unit = { _, _ -> },
+    voiceViewModel: VoiceViewModel
 ) {
     val storageViewModel: RecipeStorageViewModel = viewModel()
     val recipeData = remember(recipeDataJson) {
@@ -51,7 +56,8 @@ fun RecipeDetailScreen(
         isFavorite = isFavorite,
         onBackClick = onBackClick,
         onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) },
-        onFinish = onFinish
+        onFinish = onFinish,
+        voiceViewModel = voiceViewModel
     )
 }
 
@@ -62,7 +68,8 @@ fun RecipeDetailContent(
     isFavorite: Boolean,
     onBackClick: () -> Unit,
     onFavoriteClick: () -> Unit,
-    onFinish: (String, String?) -> Unit
+    onFinish: (String, String?) -> Unit,
+    voiceViewModel: VoiceViewModel
 ) {
     val recipeData = remember(recipeDataJson) {
         recipeDataJson?.let { try { JSONObject(it) } catch (e: Exception) { null } }
@@ -79,6 +86,76 @@ fun RecipeDetailContent(
 
     var currentStepIndex by remember { mutableIntStateOf(0) }
     val totalSteps = steps.size
+
+    val context = LocalContext.current
+    val voiceUiState by voiceViewModel.uiState.collectAsState()
+
+    // TTS engine — initialised once, language set inside the onInit callback
+    var ttsReady by remember { mutableStateOf(false) }
+    val tts: TextToSpeech = remember(context) {
+        lateinit var engine: TextToSpeech
+        engine = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                engine.language = Locale.KOREAN
+                engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {}
+                    override fun onDone(utteranceId: String?) {
+                        voiceViewModel.resumeAudioCapture()
+                    }
+                    override fun onError(utteranceId: String?) {
+                        voiceViewModel.resumeAudioCapture()
+                    }
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        voiceViewModel.resumeAudioCapture()
+                    }
+                })
+                ttsReady = true
+            }
+        }
+        engine
+    }
+
+    // Wake-word lifecycle: arm on enter, disarm on leave
+    DisposableEffect(Unit) {
+        voiceViewModel.startWakeWord()
+        onDispose {
+            voiceViewModel.stopWakeWord()
+            tts.shutdown()
+        }
+    }
+
+    // Voice command handler — runs only while this screen is in the composition
+    LaunchedEffect(voiceViewModel) {
+        voiceViewModel.intentEvent.collect { intent ->
+            when (intent) {
+                TomaIntent.NEXT_STEP -> {
+                    if (currentStepIndex < totalSteps) currentStepIndex++
+                    else onFinish(keyword, recipeDataJson)
+                }
+                TomaIntent.PREVIOUS_STEP -> {
+                    if (currentStepIndex > 0) currentStepIndex--
+                }
+                TomaIntent.REPEAT_STEP -> {
+                    val text = if (currentStepIndex == 0)
+                        "재료 준비 단계입니다. ${ingredients.joinToString(", ")}"
+                    else
+                        steps.getOrNull(currentStepIndex - 1) ?: ""
+                    if (ttsReady && text.isNotBlank()) {
+                        voiceViewModel.pauseAudioCapture()
+                        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "utterance_repeat")
+                    }
+                }
+                TomaIntent.RECOMMENDED_TIMER -> {
+                    val stepText = steps.getOrNull(currentStepIndex - 1) ?: ""
+                    val minutes = "([0-9]+)\\s*분".toRegex().find(stepText)?.groupValues?.get(1)?.toIntOrNull()
+                    if (minutes != null && minutes > 0) {
+                        voiceViewModel.triggerTimer(minutes)
+                    }
+                }
+                else -> {}
+            }
+        }
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFFF8F9FA)) {
         Column(
@@ -117,19 +194,39 @@ fun RecipeDetailContent(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            AiSuggestionSection()
+            AiSuggestionSection(
+                onTimerClick = {
+                    val stepText = if (currentStepIndex == 0) "" else steps.getOrNull(currentStepIndex - 1) ?: ""
+                    val minutes = "([0-9]+)\\s*분".toRegex().find(stepText)?.groupValues?.get(1)?.toIntOrNull()
+                    if (minutes != null && minutes > 0) {
+                        voiceViewModel.triggerTimer(minutes)
+                    }
+                },
+                onSpeechClick = {
+                    val text = if (currentStepIndex == 0)
+                        "재료 준비 단계입니다. ${ingredients.joinToString(", ")}"
+                    else
+                        steps.getOrNull(currentStepIndex - 1) ?: ""
+                    if (ttsReady && text.isNotBlank()) {
+                        voiceViewModel.pauseAudioCapture()
+                        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "utterance_suggestion")
+                    }
+                }
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
 
             BottomControlSection(
                 onPrevClick = { if (currentStepIndex > 0) currentStepIndex-- },
                 onNextClick = {
-                    if (currentStepIndex < totalSteps) {
-                        currentStepIndex++
-                    } else {
-                        onFinish(keyword, recipeDataJson)
-                    }
-                }
+                    if (currentStepIndex < totalSteps) currentStepIndex++
+                    else onFinish(keyword, recipeDataJson)
+                },
+                onMicClick = {
+                    if (voiceUiState == VoiceUiState.Idle) voiceViewModel.startListeningManually()
+                    else voiceViewModel.stopListeningManually()
+                },
+                isMicActive = voiceUiState == VoiceUiState.Listening
             )
             Spacer(modifier = Modifier.height(24.dp))
         }
@@ -289,15 +386,23 @@ private fun InfoCardDetail(
 }
 
 @Composable
-private fun AiSuggestionSection() {
+private fun AiSuggestionSection(
+    onTimerClick: () -> Unit = {},
+    onSpeechClick: () -> Unit = {}
+) {
     Column {
         Text("AI 제안", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Black)
         Spacer(modifier = Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            val suggestions = listOf("팁 확인" to Icons.Default.Lightbulb, "타이머" to Icons.Default.AvTimer, "음성안내" to Icons.Default.VolumeUp)
+            val suggestions = listOf("팁 확인" to Icons.Default.Lightbulb, "타이머" to Icons.Default.AvTimer, "음성안내" to Icons.AutoMirrored.Filled.VolumeUp)
             suggestions.forEach { (text, icon) ->
                 Surface(
-                    modifier = Modifier.weight(1f).clickable { },
+                    modifier = Modifier.weight(1f).clickable {
+                        when (text) {
+                            "타이머" -> onTimerClick()
+                            "음성안내" -> onSpeechClick()
+                        }
+                    },
                     shape = RoundedCornerShape(16.dp),
                     color = Color(0xFFF1F3F5),
                 ) {
@@ -316,9 +421,13 @@ private fun AiSuggestionSection() {
 }
 
 @Composable
-private fun BottomControlSection(onPrevClick: () -> Unit, onNextClick: () -> Unit) {
+private fun BottomControlSection(
+    onPrevClick: () -> Unit,
+    onNextClick: () -> Unit,
+    onMicClick: () -> Unit = {},
+    isMicActive: Boolean = false
+) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-        // 이전 버튼
         Surface(
             modifier = Modifier.size(56.dp).clickable { onPrevClick() },
             shape = CircleShape, color = Color.White, border = BorderStroke(1.dp, Color(0xFFEEEEEE))
@@ -327,14 +436,19 @@ private fun BottomControlSection(onPrevClick: () -> Unit, onNextClick: () -> Uni
         }
 
         Surface(
-            modifier = Modifier.size(76.dp).clickable { },
+            modifier = Modifier.size(76.dp).clickable { onMicClick() },
             shape = CircleShape,
-            color = TomaMainOrange,
+            color = if (isMicActive) Color(0xFFE53935) else TomaMainOrange,
             shadowElevation = 8.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Box(modifier = Modifier.size(64.dp).border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape))
-                Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(32.dp), tint = Color.White)
+                Icon(
+                    if (isMicActive) Icons.Default.MicOff else Icons.Default.Mic,
+                    contentDescription = if (isMicActive) "음성 인식 중지" else "음성 명령",
+                    modifier = Modifier.size(32.dp),
+                    tint = Color.White
+                )
             }
         }
 
@@ -351,15 +465,3 @@ private fun BottomControlSection(onPrevClick: () -> Unit, onNextClick: () -> Uni
 
 private fun titleCase(str: String) = str.lowercase().replaceFirstChar { it.uppercase() }
 
-@Preview(showBackground = true, showSystemUi = true)
-@Composable
-fun RecipeDetailScreenPreview() {
-    RecipeDetailContent(
-        keyword = "간장계란밥",
-        recipeDataJson = null,
-        isFavorite = true,
-        onBackClick = {},
-        onFavoriteClick = {},
-        onFinish = { _, _ -> }
-    )
-}

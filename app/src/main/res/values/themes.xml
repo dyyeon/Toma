@@ -2,9 +2,13 @@
 <resources>
     <style name="Theme.App.Starting" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">#FFFFFF</item>
-
         <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_full</item>
+        <item name="postSplashScreenTheme">@style/Theme.Toma</item>
+    </style>
 
-        <item name="postSplashScreenTheme">@android:style/Theme.Material.Light.NoActionBar</item>
+    <style name="Theme.Toma" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">#EE8C2B</item>
+        <item name="android:statusBarColor">#F8F9FA</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>
