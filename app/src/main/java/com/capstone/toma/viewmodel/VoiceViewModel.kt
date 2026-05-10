@@ -50,6 +50,12 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val _enrollmentStatus = MutableStateFlow<EnrollmentStatus>(EnrollmentStatus.Idle)
     val enrollmentStatus = _enrollmentStatus.asStateFlow()
 
+    private val _activeTimerMinutes = MutableStateFlow<Int?>(null)
+    val activeTimerMinutes = _activeTimerMinutes.asStateFlow()
+
+    private val _timerRemainingSeconds = MutableStateFlow(0)
+    val timerRemainingSeconds = _timerRemainingSeconds.asStateFlow()
+
     private val _uiState = MutableStateFlow<VoiceUiState>(VoiceUiState.Idle)
     val uiState = _uiState.asStateFlow()
 
@@ -597,6 +603,8 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Called by RecipeDetailScreen when RECOMMENDED_TIMER fires and the step text yields a duration. */
+    private var timerJob: kotlinx.coroutines.Job? = null
+
     fun triggerTimer(minutes: Int) {
         viewModelScope.launch {
             if (!isNotificationPermissionGranted()) {
@@ -605,9 +613,35 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 if (_uiState.value is VoiceUiState.Error) _uiState.value = VoiceUiState.Idle
                 return@launch
             }
+            
+            _activeTimerMinutes.value = minutes
+            _timerRemainingSeconds.value = minutes * 60
+            
             _uiState.value = VoiceUiState.Result("${minutes}분 타이머를 시작합니다.")
             timerManager.setTimer(minutes)
+            
+            // Start local countdown for UI display
+            timerJob?.cancel()
+            timerJob = viewModelScope.launch {
+                while (_timerRemainingSeconds.value > 0) {
+                    delay(1000)
+                    _timerRemainingSeconds.value -= 1
+                }
+                _activeTimerMinutes.value = null
+            }
+
             delay(3000)
+            if (_uiState.value is VoiceUiState.Result) _uiState.value = VoiceUiState.Idle
+        }
+    }
+
+    fun cancelTimer() {
+        timerJob?.cancel()
+        _activeTimerMinutes.value = null
+        _timerRemainingSeconds.value = 0
+        _uiState.value = VoiceUiState.Result("타이머를 취소했습니다.")
+        viewModelScope.launch {
+            delay(2000)
             if (_uiState.value is VoiceUiState.Result) _uiState.value = VoiceUiState.Idle
         }
     }

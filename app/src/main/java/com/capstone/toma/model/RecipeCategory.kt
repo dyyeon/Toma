@@ -17,13 +17,13 @@ private val japaneseKeywords = listOf(
 
 private val chineseKeywords = listOf(
     "중식", "chinese", "중국", "짜장", "짜장면", "짬뽕", "마파두부", "탕수육",
-    "깐풍기", "유산슬", "딤섬", "볶음면", "볶음밥", "중화", "중국식"
+    "깐풍기", "유산슬", "딤섬", "볶음면", "중화", "중국식", "마라탕", "마라", "양꼬치"
 )
 
 private val koreanKeywords = listOf(
     "한식", "korean", "한국", "국", "찌개", "탕", "전골", "비빔밥", "볶음밥",
     "김치", "불고기", "갈비", "잡채", "떡볶이", "김밥", "칼국수", "수제비",
-    "된장", "청국장", "순두부", "제육", "나물", "분식", "한식식"
+    "된장", "청국장", "순두부", "제육", "나물", "분식", "한식", "무침", "조림"
 )
 
 private val westernKeywords = listOf(
@@ -45,10 +45,12 @@ fun normalizeRecipeCategory(
 
     return when {
         source.isBlank() -> "기타"
+        // 1순위: 한식 (민감한 분류 문제 해결을 위해 한국어 서비스 기준 한식 우선 순위 부여)
+        koreanKeywords.any(source::contains) -> "한식"
+        // 2순위: 기타 명확한 카테고리들
         dessertKeywords.any(source::contains) -> "디저트"
         japaneseKeywords.any(source::contains) -> "일식"
         chineseKeywords.any(source::contains) -> "중식"
-        koreanKeywords.any(source::contains) -> "한식"
         westernKeywords.any(source::contains) -> "양식"
         else -> when (rawCategory?.trim()) {
             "한식", "양식", "중식", "일식", "디저트", "기타" -> rawCategory.trim()

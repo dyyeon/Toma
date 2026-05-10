@@ -44,13 +44,19 @@ fun SpeakerEnrollmentScreen(
     }
 
     // Bixby-style sequential UI: calm, focused, single-state
-    val mainText = when (enrollmentStatus) {
-        VoiceViewModel.EnrollmentStatus.Idle -> "\"헤이 토마\" 라고\n말해주세요"
-        VoiceViewModel.EnrollmentStatus.CollectingAmbient -> "잠시 조용히 해주세요...\n(주변 소음 수집 중 5초)"
-        VoiceViewModel.EnrollmentStatus.Recording -> "🔴 듣고 있어요..."
-        VoiceViewModel.EnrollmentStatus.Verifying -> "⏳ 확인 중..."
-        is VoiceViewModel.EnrollmentStatus.Success -> "✅ 인식됨! ($enrollmentCount/10)"
-        VoiceViewModel.EnrollmentStatus.Failed -> "다시 말씀해주세요"
+    val mainText = when {
+        isUploading -> "개인화 정보를\n안전하게 저장 중입니다"
+        enrollmentCount >= 10 -> "모든 녹음 완료!\n분석을 시작합니다"
+        enrollmentStatus == VoiceViewModel.EnrollmentStatus.Idle -> {
+            if (enrollmentCount == 0) "\"헤이 토마\" 라고\n말해볼까요?"
+            else "좋아요! 다음에도\n\"헤이 토마\"라고 해주세요"
+        }
+        enrollmentStatus == VoiceViewModel.EnrollmentStatus.CollectingAmbient -> "잠시 조용히 해주세요...\n주변 소음을 파악하고 있어요"
+        enrollmentStatus == VoiceViewModel.EnrollmentStatus.Recording -> "🔴 듣고 있어요...\n지금 말씀해주세요!"
+        enrollmentStatus == VoiceViewModel.EnrollmentStatus.Verifying -> "⏳ 목소리 데이터를\n확인하고 있어요"
+        enrollmentStatus is VoiceViewModel.EnrollmentStatus.Success -> "✅ 아주 잘 들려요!\n($enrollmentCount/10)"
+        enrollmentStatus == VoiceViewModel.EnrollmentStatus.Failed -> "잘 들리지 않았어요\n조금 더 크게 말씀해주세요"
+        else -> ""
     }
 
     LaunchedEffect(enrollmentCount) {
@@ -121,10 +127,19 @@ fun SpeakerEnrollmentScreen(
             contentAlignment = Alignment.TopCenter
         ) {
             if (isUploading) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = TomaMainOrange)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("개인화 작업 완료 중...", fontSize = 14.sp, color = TomaSecondaryText)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(
+                        color = TomaMainOrange,
+                        modifier = Modifier.size(48.dp),
+                        strokeWidth = 4.dp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = "개인화 작업 완료 중...",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = TomaSecondaryText
+                    )
                 }
             } else {
                 // Button is only enabled in Idle, Success (ready for next), or Failed (retry) states

@@ -119,8 +119,11 @@ fun TomaNavHost(
         pendingCameraFile = null
 
         if (success && uri != null) {
-            chatViewModel.resetChat()
-            navController.navigate(TomaDestination.Chat.route)
+            val currentRoute = navController.currentBackStackEntry?.destination?.route
+            if (currentRoute != TomaDestination.Chat.route) {
+                chatViewModel.resetChat()
+                navController.navigate(TomaDestination.Chat.route)
+            }
             chatViewModel.startLinkAnalysis(
                 userDisplay   = "카메라로 레시피 찾기",
                 initialAiText = "사진을 분석하고 있어요. 잠시만 기다려 주세요... 📸",
@@ -151,8 +154,11 @@ fun TomaNavHost(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            chatViewModel.resetChat()
-            navController.navigate(TomaDestination.Chat.route)
+            val currentRoute = navController.currentBackStackEntry?.destination?.route
+            if (currentRoute != TomaDestination.Chat.route) {
+                chatViewModel.resetChat()
+                navController.navigate(TomaDestination.Chat.route)
+            }
             chatViewModel.startLinkAnalysis(
                 userDisplay = "사진으로 레시피 찾기",
                 initialAiText = "사진을 분석하고 있어요. 잠시만 기다려 주세요... 📸",
@@ -200,8 +206,11 @@ fun TomaNavHost(
                 voiceViewModel.stopWakeWord()
                 val enrolled = UserManager.isEnrolled(context)
                 val skipped = UserManager.hasSkipped(context)
-                if (!enrolled && skipped.not()) {
-                    navController.navigate(TomaDestination.SpeakerEnrollment.route)
+                // Mandatory enrollment check: only proceed to Home if enrolled or skipped
+                if (!enrolled && !skipped) {
+                    navController.navigate(TomaDestination.SpeakerEnrollment.route) {
+                        popUpTo(TomaDestination.Home.route) { inclusive = false }
+                    }
                 } else if (enrolled) {
                     val modelFile = java.io.File(context.filesDir, "hey_toma_personal.onnx")
                     if (!modelFile.exists()) {
@@ -583,6 +592,7 @@ fun TomaNavHost(
                 uiState = chatUiState,
                 onBackClick = { navController.popBackStack() },
                 onInputTextChange = chatViewModel::onInputTextChange,
+                onAddImageClick = { showImageSourceSheet = true },
                 onSendMessage = {
                     val inputText = chatUiState.inputText.trim()
                     val isUrl = inputText.startsWith("http://") || inputText.startsWith("https://")

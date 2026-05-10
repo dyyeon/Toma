@@ -636,45 +636,92 @@ private fun HeroCard(recipe: StoredRecipe, onFavoriteToggle: () -> Unit, onImage
     val hasImage = !recipe.imageUri.isNullOrBlank()
 
     Surface(
-        modifier = Modifier.fillMaxWidth().height(280.dp).clickable(onClick = onImagePick),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(280.dp)
+            .clickable(onClick = onImagePick),
         shape = RoundedCornerShape(32.dp),
         shadowElevation = 8.dp,
         color = Color.Transparent
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            RecipeArtwork(recipe = recipe, modifier = Modifier.fillMaxSize())
+            RecipeArtworkStable(recipe = recipe, modifier = Modifier.fillMaxSize())
 
-            if (hasImage) {
-                Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.1f), Color.Black.copy(alpha = 0.5f)))))
-            }
+            // Gradient overlay to make text and icons pop
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color.Black.copy(alpha = 0.35f),
+                                Color.Transparent,
+                                Color.Black.copy(alpha = 0.6f)
+                            )
+                        )
+                    )
+            )
 
+            // Category Badge (Top Start)
             Surface(
                 color = StorageAccent,
                 shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.align(Alignment.TopStart).padding(16.dp)
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(16.dp)
             ) {
-                Text(recipe.category, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                Text(
+                    text = recipe.category,
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
             }
 
+            // Bookmark Button (Top End)
             IconButton(
                 onClick = onFavoriteToggle,
-                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.White.copy(alpha = 0.9f), CircleShape)
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+                    .size(44.dp)
+                    .background(Color.White.copy(alpha = 0.25f), CircleShape)
             ) {
-                Icon(if (recipe.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "즐겨찾기", tint = StorageAccent)
+                Icon(
+                    imageVector = if (recipe.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                    contentDescription = "즐겨찾기",
+                    tint = Color.White
+                )
             }
 
+            // Image Edit Button (Bottom Start)
             Surface(
-                color = Color.White.copy(alpha = 0.9f),
+                color = Color.White.copy(alpha = 0.95f),
                 shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.align(Alignment.BottomStart).padding(16.dp).clickable(onClick = onImagePick)
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(16.dp)
+                    .clickable(onClick = onImagePick),
+                shadowElevation = 4.dp
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, tint = StorageAccent, modifier = Modifier.size(18.dp))
-                    Text(if (hasImage) "이미지 변경" else "이미지 등록", color = StorageInk, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Icon(
+                        imageVector = Icons.Default.AddPhotoAlternate,
+                        contentDescription = null,
+                        tint = StorageAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = if (hasImage) "이미지 변경" else "이미지 등록",
+                        color = StorageInk,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
@@ -683,12 +730,7 @@ private fun HeroCard(recipe: StoredRecipe, onFavoriteToggle: () -> Unit, onImage
 
 @Composable
 private fun RecipeArtwork(recipe: StoredRecipe, modifier: Modifier = Modifier) {
-    Box(modifier = modifier.background(Brush.linearGradient(palette(recipe.category)))) {
-        DefaultRecipeArtwork(category = recipe.category, title = recipe.title, modifier = Modifier.fillMaxSize())
-        if (!recipe.imageUri.isNullOrBlank()) {
-            AsyncImage(model = recipe.imageUri, contentDescription = "${recipe.title} 음식 사진", contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-        }
-    }
+    RecipeArtworkStable(recipe = recipe, modifier = modifier)
 }
 
 @Composable

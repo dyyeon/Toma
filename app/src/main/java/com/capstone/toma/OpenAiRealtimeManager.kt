@@ -105,8 +105,51 @@ class OpenAiRealtimeManager(
             }
             "response.text.done" -> {
                 val content = json.optString("text")
-                Log.d(TAG, "🤖 AI Response: $content")
-                onResult(content)
+                if (!content.isNullOrBlank()) {
+                    Log.d(TAG, "🤖 AI Response: $content")
+                    onResult(content)
+                }
+            }
+            "input_audio_buffer.speech_started" -> {
+                Log.d(TAG, "🎙️ Speech Started")
+            }
+            "input_audio_buffer.speech_stopped" -> {
+                Log.d(TAG, "🔇 Speech Stopped - Requesting Response")
+                // Force response generation once speech stops
+                webSocket?.send(JSONObject().apply {
+                    put("type", "response.create")
+                    put("response", JSONObject().apply {
+                        put("instructions", "Analyze the user's last speech and return the JSON intent.")
+                    })
+                }.toString())
+            }
+            "response.done" -> {
+                // OpenAI Realtime API can return text in several event formats.
+                // We check for 'response.done' as a final catch-all.
+                val response = json.optJSONObject("response")
+                val output = response?.optJSONArray("output")
+                output?.let {
+                    for (i in 0 until it.length()) {
+                        val item = it.optJSONObject(i)
+                        // If it's a text message output
+                        if (item?.optString("type") == "message") {
+                            val contentArray = item.optJSONArray("content")
+                            if (contentArray != null) {
+                                for (j in 0 until contentArray.length()) {
+                                    val contentObj = contentArray.optJSONObject(j)
+                                    if (contentObj?.optString("type") == "text") {
+                                        val textValue = contentObj.optString("text")
+                                        if (textValue.isNotBlank()) {
+                                            Log.d(TAG, "🤖 AI Response (deep): $textValue")
+                                            onResult(textValue)
+                                            return@let // Found it, stop searching
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
             "error" -> {
                 Log.e(TAG, "🚨 OpenAI Error: $text")

@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -31,6 +33,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.capstone.toma.OpenAiManager
 import com.capstone.toma.R
 import com.capstone.toma.ui.theme.*
@@ -54,7 +57,8 @@ data class ChatMessage(
     val id: String,
     val text: String,
     val isUser: Boolean,
-    val timestamp: String
+    val timestamp: String,
+    val imageUri: String? = null // Optional image URI for user messages
 )
 
 data class AiChatUiState(
@@ -62,7 +66,8 @@ data class AiChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val isTyping: Boolean = false,
     val isSpecificAnalysis: Boolean = false,
-    val errorDialogMessage: String? = null
+    val errorDialogMessage: String? = null,
+    val pendingImageUri: String? = null // Image currently being analyzed
 )
 
 @Composable
@@ -72,6 +77,7 @@ fun AiChatScreen(
     onInputTextChange: (String) -> Unit,
     onSendMessage: () -> Unit,
     onMicClick: () -> Unit = {},
+    onAddImageClick: () -> Unit = {},
     onErrorDismiss: () -> Unit = {}
 ) {
     val listState = rememberLazyListState()
@@ -195,7 +201,8 @@ fun AiChatScreen(
                 isTranscribing = isTranscribing,
                 onInputTextChange = onInputTextChange,
                 onSendMessage = onSendMessage,
-                onMicClick = { if (isRecording) stopAndTranscribe() else startRecording() }
+                onMicClick = { if (isRecording) stopAndTranscribe() else startRecording() },
+                onAddImageClick = onAddImageClick
             )
         }
     ) { paddingValues ->
@@ -311,6 +318,7 @@ private fun ChatBubble(message: ChatMessage) {
         verticalAlignment = Alignment.Bottom
     ) {
         if (!isUser) {
+            // ... [existing avatar code] ...
             Surface(
                 shape = CircleShape,
                 color = Color.White,
@@ -349,20 +357,41 @@ private fun ChatBubble(message: ChatMessage) {
         val bubbleBgColor = if (isUser) TomaMainOrange else Color.White
         val textColor = if (isUser) Color.White else TomaPrimaryText
 
-        Surface(
-            shape = bubbleShape,
-            color = bubbleBgColor,
-            shadowElevation = if (isUser) 2.dp else 4.dp,
-            border = if (isUser) null else BorderStroke(1.dp, TomaCardBorder),
-            modifier = Modifier.widthIn(max = 250.dp)
-        ) {
-            Text(
-                text = message.text,
-                color = textColor,
-                fontSize = 15.sp,
-                lineHeight = 24.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-            )
+        Column(horizontalAlignment = if (isUser) Alignment.End else Alignment.Start) {
+            if (message.imageUri != null) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .padding(bottom = 8.dp)
+                        .widthIn(max = 200.dp)
+                        .heightIn(max = 200.dp),
+                    border = BorderStroke(1.dp, TomaCardBorder),
+                    shadowElevation = 2.dp
+                ) {
+                    AsyncImage(
+                        model = message.imageUri,
+                        contentDescription = "User Image",
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.Crop
+                    )
+                }
+            }
+
+            Surface(
+                shape = bubbleShape,
+                color = bubbleBgColor,
+                shadowElevation = if (isUser) 2.dp else 4.dp,
+                border = if (isUser) null else BorderStroke(1.dp, TomaCardBorder),
+                modifier = Modifier.widthIn(max = 250.dp)
+            ) {
+                Text(
+                    text = message.text,
+                    color = textColor,
+                    fontSize = 15.sp,
+                    lineHeight = 24.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                )
+            }
         }
 
         if (!isUser) {
@@ -447,7 +476,8 @@ private fun ChatInputBar(
     isTranscribing: Boolean = false,
     onInputTextChange: (String) -> Unit,
     onSendMessage: () -> Unit,
-    onMicClick: () -> Unit
+    onMicClick: () -> Unit,
+    onAddImageClick: () -> Unit = {}
 ) {
     val micBusy = isTyping || isTranscribing
 
@@ -468,10 +498,30 @@ private fun ChatInputBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .padding(horizontal = 12.dp, vertical = 12.dp)
                 .navigationBarsPadding(),
             verticalAlignment = Alignment.Bottom
         ) {
+            // [추가] '+' 버튼 (이미지 업로드)
+            Surface(
+                onClick = onAddImageClick,
+                enabled = !micBusy,
+                shape = CircleShape,
+                color = Color(0xFFF1F3F5),
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "이미지 추가",
+                        tint = TomaSecondaryText,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
             // 마이크 버튼
             Surface(
                 onClick = onMicClick,

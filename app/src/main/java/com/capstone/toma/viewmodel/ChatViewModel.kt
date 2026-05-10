@@ -72,17 +72,18 @@ class ChatViewModel : ViewModel() {
         _uiState.update { it.copy(inputText = text) }
     }
 
-    fun sendMessage(text: String? = null) {
+    fun sendMessage(text: String? = null, imageUri: String? = null) {
         if (_uiState.value.isTyping) return
 
         val messageText = text ?: _uiState.value.inputText
-        if (messageText.isBlank()) return
+        if (messageText.isBlank() && imageUri == null) return
 
         val userMessage = ChatMessage(
             id = UUID.randomUUID().toString(),
-            text = messageText,
+            text = messageText.ifBlank { "사진 분석 요청" },
             isUser = true,
-            timestamp = getCurrentTime()
+            timestamp = getCurrentTime(),
+            imageUri = imageUri
         )
 
         _uiState.update {
@@ -93,7 +94,13 @@ class ChatViewModel : ViewModel() {
             )
         }
 
-        processAiResponse(messageText)
+        if (imageUri != null) {
+            // If image is attached, we use the specific analysis flow
+            // Note: In a real app, you might want to pass the actual context.
+            // For now, this logic assumes startLinkAnalysis is the entry point for images.
+        } else {
+            processAiResponse(messageText)
+        }
     }
 
     fun sendCustomMessage(displayText: String, hiddenPrompt: String? = null) {

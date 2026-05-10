@@ -617,8 +617,8 @@ fun RecentAnalysisCard(
 
     Surface(
         modifier = Modifier
-            .width(160.dp)
-            .height(200.dp)
+            .width(165.dp)
+            .height(240.dp)
             .clickable { onClick() },
         shape = RoundedCornerShape(20.dp),
         color = Color.White,

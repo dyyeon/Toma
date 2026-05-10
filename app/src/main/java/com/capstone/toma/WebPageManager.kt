@@ -43,9 +43,19 @@ class WebPageManager {
                     // Jina AI returns clean markdown. The first line is usually the title.
                     val title = content.lines().firstOrNull { it.isNotBlank() }?.replace("#", "")?.trim()
 
-                    // Extract the first representative image from the markdown content
+                    // Extract all potential images from markdown
                     val imageRegex = Regex("""!\[.*?\]\((https://[^)]+\.(?:jpg|jpeg|png|webp|GIF)[^)]*)\)""", RegexOption.IGNORE_CASE)
-                    val firstImage = imageRegex.find(content)?.groupValues?.get(1)
+                    val images = imageRegex.findAll(content).map { it.groupValues[1] }.toList()
+
+                    // Filtering logic for representative images:
+                    // 1. Prefer images with 'cache/recipe' or 'recipe' in URL (common for 10000recipe main)
+                    // 2. Filter out small icons or generic placeholders (e.g. logos, share buttons)
+                    val firstImage = images.find { it.contains("cache/recipe") || it.contains("recipe") }
+                        ?: images.firstOrNull { 
+                            !it.contains("logo", ignoreCase = true) && 
+                            !it.contains("icon", ignoreCase = true) &&
+                            !it.contains("button", ignoreCase = true)
+                        }
 
                     // Pass the full markdown content to the AI
                     onResult(title, content, firstImage)
@@ -67,9 +77,18 @@ class WebPageManager {
             val response = client.newCall(request).execute()
             if (!response.isSuccessful) return@withContext null
             val content = response.body?.string() ?: return@withContext null
-            // 마크다운에서 첫 번째 https 이미지 URL 추출
-            val imageRegex = Regex("""!\[.*?\]\((https://[^)]+\.(?:jpg|jpeg|png|webp)[^)]*)\)""", RegexOption.IGNORE_CASE)
-            imageRegex.find(content)?.groupValues?.get(1)
+
+            // Improved extraction for 10000recipe search results:
+            // The first image in the search list is usually a recipe thumbnail.
+            // Thumbnails usually have a specific pattern like 'cache/recipe'.
+            val imageRegex = Regex("""!\[.*?\]\((https://[^)]+\.(?:jpg|jpeg|png|webp|GIF)[^)]*)\)""", RegexOption.IGNORE_CASE)
+            val images = imageRegex.findAll(content).map { it.groupValues[1] }.toList()
+
+            images.find { it.contains("cache/recipe") } 
+                ?: images.firstOrNull { 
+                    !it.contains("logo", ignoreCase = true) && 
+                    !it.contains("icon", ignoreCase = true) 
+                }
         } catch (e: Exception) {
             null
         }

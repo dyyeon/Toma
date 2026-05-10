@@ -2,20 +2,26 @@ package com.capstone.toma.ui.screen
 
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -57,7 +63,8 @@ fun RecipeDetailScreen(
         onBackClick = onBackClick,
         onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) },
         onFinish = onFinish,
-        voiceViewModel = voiceViewModel
+        voiceViewModel = voiceViewModel,
+        storageViewModel = storageViewModel
     )
 }
 
@@ -69,7 +76,8 @@ fun RecipeDetailContent(
     onBackClick: () -> Unit,
     onFavoriteClick: () -> Unit,
     onFinish: (String, String?) -> Unit,
-    voiceViewModel: VoiceViewModel
+    voiceViewModel: VoiceViewModel,
+    storageViewModel: RecipeStorageViewModel
 ) {
     val recipeData = remember(recipeDataJson) {
         recipeDataJson?.let { try { JSONObject(it) } catch (e: Exception) { null } }
@@ -88,7 +96,16 @@ fun RecipeDetailContent(
     val totalSteps = steps.size
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val voiceUiState by voiceViewModel.uiState.collectAsState()
+
+    // TTS Control State
+    var isTtsEnabled by remember { mutableStateOf(true) }
+    var isTtsSpeaking by remember { mutableStateOf(false) }
+
+    // Timer State from ViewModel
+    val activeTimerMinutes by voiceViewModel.activeTimerMinutes.collectAsState()
+    val remainingSeconds by voiceViewModel.timerRemainingSeconds.collectAsState()
 
     // TTS engine — initialised once, language set inside the onInit callback
     var ttsReady by remember { mutableStateOf(false) }
@@ -98,15 +115,27 @@ fun RecipeDetailContent(
             if (status == TextToSpeech.SUCCESS) {
                 engine.language = Locale.KOREAN
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {}
+                    override fun onStart(utteranceId: String?) {
+                        isTtsSpeaking = true
+                    }
                     override fun onDone(utteranceId: String?) {
-                        voiceViewModel.resumeAudioCapture()
+                        isTtsSpeaking = false
+                        // Small delay before resuming mic to let the speaker hardware fully settle
+                        scope.launch {
+                            delay(300)
+                            voiceViewModel.resumeAudioCapture()
+                        }
                     }
                     override fun onError(utteranceId: String?) {
+                        isTtsSpeaking = false
                         voiceViewModel.resumeAudioCapture()
                     }
                     override fun onError(utteranceId: String?, errorCode: Int) {
+                        isTtsSpeaking = false
                         voiceViewModel.resumeAudioCapture()
+                    }
+                    override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                        isTtsSpeaking = false
                     }
                 })
                 ttsReady = true
@@ -121,6 +150,21 @@ fun RecipeDetailContent(
         onDispose {
             voiceViewModel.stopWakeWord()
             tts.shutdown()
+        }
+    }
+
+    // Auto-TTS when step changes or TTS engine becomes ready
+    LaunchedEffect(currentStepIndex, ttsReady) {
+        if (isTtsEnabled && ttsReady) {
+            val text = if (currentStepIndex == 0)
+                "재료 준비 단계입니다. 필수 재료는 ${ingredients.joinToString(", ")}입니다."
+            else
+                steps.getOrNull(currentStepIndex - 1) ?: ""
+            
+            if (text.isNotBlank()) {
+                voiceViewModel.pauseAudioCapture()
+                tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "utterance_auto")
+            }
         }
     }
 
@@ -162,6 +206,7 @@ fun RecipeDetailContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp)
+                .verticalScroll(rememberScrollState())
         ) {
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -169,8 +214,22 @@ fun RecipeDetailContent(
                 onBackClick = onBackClick,
                 keyword = title,
                 isFavorite = isFavorite,
-                onFavoriteClick = onFavoriteClick
+                onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) }
             )
+
+            // Timer Overlay Card
+            AnimatedVisibility(
+                visible = activeTimerMinutes != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                activeTimerMinutes?.let {
+                    TimerDisplayCard(
+                        remainingSeconds = remainingSeconds,
+                        onCancel = { voiceViewModel.cancelTimer() }
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -179,7 +238,8 @@ fun RecipeDetailContent(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Box(modifier = Modifier.weight(1f)) {
+            // Instructions or Ingredients area - constrained by content, not weight
+            Box(modifier = Modifier.fillMaxWidth()) {
                 if (currentStepIndex == 0) {
                     IngredientsSection(ingredients)
                 } else {
@@ -190,26 +250,42 @@ fun RecipeDetailContent(
                 }
             }
 
+            Spacer(modifier = Modifier.height(32.dp))
+
             InfoCardRow(timeStr, difficulty)
 
             Spacer(modifier = Modifier.height(24.dp))
 
             AiSuggestionSection(
+                isTtsEnabled = isTtsEnabled,
+                isTtsSpeaking = isTtsSpeaking,
+                onTtsToggle = { isTtsEnabled = !isTtsEnabled },
                 onTimerClick = {
                     val stepText = if (currentStepIndex == 0) "" else steps.getOrNull(currentStepIndex - 1) ?: ""
+                    // Updated Regex to handle multiple formats: "3분", "3분간", "15~20분" (takes the first number)
                     val minutes = "([0-9]+)\\s*분".toRegex().find(stepText)?.groupValues?.get(1)?.toIntOrNull()
                     if (minutes != null && minutes > 0) {
                         voiceViewModel.triggerTimer(minutes)
+                    } else {
+                        // Fallback: search for time in the title if not in the current step
+                        val titleMinutes = "([0-9]+)\\s*분".toRegex().find(title)?.groupValues?.get(1)?.toIntOrNull()
+                        if (titleMinutes != null) voiceViewModel.triggerTimer(titleMinutes)
                     }
                 },
                 onSpeechClick = {
-                    val text = if (currentStepIndex == 0)
-                        "재료 준비 단계입니다. ${ingredients.joinToString(", ")}"
-                    else
-                        steps.getOrNull(currentStepIndex - 1) ?: ""
-                    if (ttsReady && text.isNotBlank()) {
-                        voiceViewModel.pauseAudioCapture()
-                        tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "utterance_suggestion")
+                    if (isTtsSpeaking) {
+                        tts.stop()
+                        isTtsSpeaking = false
+                        voiceViewModel.resumeAudioCapture()
+                    } else {
+                        val text = if (currentStepIndex == 0)
+                            "재료 준비 단계입니다. ${ingredients.joinToString(", ")}"
+                        else
+                            steps.getOrNull(currentStepIndex - 1) ?: ""
+                        if (ttsReady && text.isNotBlank()) {
+                            voiceViewModel.pauseAudioCapture()
+                            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "utterance_suggestion")
+                        }
                     }
                 }
             )
@@ -387,6 +463,9 @@ private fun InfoCardDetail(
 
 @Composable
 private fun AiSuggestionSection(
+    isTtsEnabled: Boolean = true,
+    isTtsSpeaking: Boolean = false,
+    onTtsToggle: () -> Unit = {},
     onTimerClick: () -> Unit = {},
     onSpeechClick: () -> Unit = {}
 ) {
@@ -394,25 +473,58 @@ private fun AiSuggestionSection(
         Text("AI 제안", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Black)
         Spacer(modifier = Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            val suggestions = listOf("팁 확인" to Icons.Default.Lightbulb, "타이머" to Icons.Default.AvTimer, "음성안내" to Icons.AutoMirrored.Filled.VolumeUp)
+            val suggestions = listOf(
+                "자동 안내" to if (isTtsEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                "타이머" to Icons.Default.AvTimer,
+                (if (isTtsSpeaking) "안내 중지" else "다시듣기") to if (isTtsSpeaking) Icons.Default.StopCircle else Icons.AutoMirrored.Filled.VolumeUp
+            )
             suggestions.forEach { (text, icon) ->
+                val isStopButton = text == "안내 중지"
                 Surface(
                     modifier = Modifier.weight(1f).clickable {
                         when (text) {
+                            "자동 안내" -> onTtsToggle()
                             "타이머" -> onTimerClick()
-                            "음성안내" -> onSpeechClick()
+                            "다시듣기", "안내 중지" -> onSpeechClick()
                         }
                     },
                     shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFFF1F3F5),
+                    color = when {
+                        text == "자동 안내" && isTtsEnabled -> TomaMainOrange.copy(alpha = 0.1f)
+                        isStopButton -> TomaMainRed.copy(alpha = 0.1f)
+                        else -> Color(0xFFF1F3F5)
+                    },
+                    border = when {
+                        text == "자동 안내" && isTtsEnabled -> BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.3f))
+                        isStopButton -> BorderStroke(1.dp, TomaMainRed.copy(alpha = 0.3f))
+                        else -> null
+                    }
                 ) {
                     Column(
                         modifier = Modifier.padding(vertical = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.DarkGray)
+                        Icon(
+                            imageVector = icon, 
+                            contentDescription = null, 
+                            modifier = Modifier.size(20.dp), 
+                            tint = when {
+                                text == "자동 안내" && isTtsEnabled -> TomaMainOrange
+                                isStopButton -> TomaMainRed
+                                else -> Color.DarkGray
+                            }
+                        )
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(text, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+                        Text(
+                            text = text, 
+                            fontSize = 11.sp, 
+                            fontWeight = FontWeight.Bold, 
+                            color = when {
+                                text == "자동 안내" && isTtsEnabled -> TomaMainOrange
+                                isStopButton -> TomaMainRed
+                                else -> Color.DarkGray
+                            }
+                        )
                     }
                 }
             }
@@ -459,6 +571,65 @@ private fun BottomControlSection(
             shadowElevation = 4.dp
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.padding(16.dp), tint = Color.White)
+        }
+    }
+}
+
+@Composable
+private fun TimerDisplayCard(
+    remainingSeconds: Int,
+    onCancel: () -> Unit
+) {
+    val minutes = remainingSeconds / 60
+    val seconds = remainingSeconds % 60
+    val timeText = String.format("%02d:%02d", minutes, seconds)
+    
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = TomaMainOrange.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.2f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(TomaMainOrange, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Timer,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            
+            Spacer(modifier = Modifier.width(16.dp))
+            
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "타이머 작동 중",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TomaMainOrange
+                )
+                Text(
+                    text = timeText,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.Black
+                )
+            }
+            
+            TextButton(onClick = onCancel) {
+                Text("취소", color = Color.Gray, fontWeight = FontWeight.Bold)
+            }
         }
     }
 }

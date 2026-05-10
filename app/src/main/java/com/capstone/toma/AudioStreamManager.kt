@@ -110,6 +110,8 @@ class AudioStreamManager(private val context: Context) {
     fun startCapture() {
         if (isRunning) return
         isRunning = true
+        
+        // Request audio focus with exclusive gain to prevent hardware AEC interference during playback
         requestAudioFocus()
         audioRecord = createAndStartAudioRecord()
 
@@ -149,9 +151,14 @@ class AudioStreamManager(private val context: Context) {
     }
 
     fun stopCapture() {
+        if (!isRunning) return
         isRunning = false
-        audioRecord?.stop()
-        audioRecord?.release()
+        try {
+            audioRecord?.stop()
+            audioRecord?.release()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping AudioRecord: ${e.message}")
+        }
         audioRecord = null
         releaseAudioFocus()
     }
