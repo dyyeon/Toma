@@ -186,18 +186,24 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private fun onWakeWordDetected() {
         viewModelScope.launch {
             if (_uiState.value != VoiceUiState.Idle) return@launch
-            // Disarm first: flush any further accumulating detections in the async ONNX pipeline
-            // so a second fire cannot stack on top of this one while we're LISTENING.
+            Log.d("VoiceViewModel", "📢 WakeWord Detected")
             wakeWordManager.disarm()
             onStopTtsRequest?.invoke()
-            // If TTS was interrupted its onStop() callback never calls resumeAudioCapture(),
-            // so we must ensure the mic is live before routing audio to the realtime API.
             resumeAudioCapture()
+            // Reconnect if the WebSocket dropped (e.g. after a previous API error)
+            if (!realtimeManager.connected) {
+                Log.d("VoiceViewModel", "🔄 Realtime not connected — reconnecting before LISTENING")
+                realtimeManager.connect()
+                delay(500) // brief window for WebSocket handshake
+            }
             _uiState.value = VoiceUiState.Listening
             toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
 
-            delay(5000)
-            if (_uiState.value == VoiceUiState.Listening) returnToIdle()
+            delay(8000)
+            if (_uiState.value == VoiceUiState.Listening) {
+                Log.d("VoiceViewModel", "Voice session timed out")
+                returnToIdle()
+            }
         }
     }
 
@@ -294,17 +300,19 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startListeningManually() {
         if (_uiState.value != VoiceUiState.Idle) return
-        // Disarm before entering LISTENING so the ONNX pipeline cannot race-fire
-        // onWakeWordDetected() while we're already processing a manual command.
         wakeWordManager.disarm()
         onStopTtsRequest?.invoke()
-        // If TTS was active its onStop callback does not resume capture; do it here
-        // so PCM flows to realtimeManager.sendAudio() as soon as state is LISTENING.
         resumeAudioCapture()
+        // Reconnect if the WebSocket dropped since startWakeWord() was called.
+        // connect() is idempotent — returns immediately if already connected.
+        if (!realtimeManager.connected) {
+            Log.d("VoiceViewModel", "🔄 Realtime not connected — reconnecting for manual listen")
+            viewModelScope.launch(Dispatchers.IO) {
+                realtimeManager.connect()
+            }
+        }
         _uiState.value = VoiceUiState.Listening
         toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
-        // Audio capture + realtime WebSocket are already live from startWakeWord().
-        // observeAudioStream() routes PCM to sendAudio() now that state is LISTENING.
     }
 
     fun stopListeningManually() {

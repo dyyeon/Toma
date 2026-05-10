@@ -20,10 +20,10 @@ import kotlin.concurrent.thread
  */
 class AudioStreamManager(private val context: Context) {
     private val TAG = "AudioStream"
-    private val SAMPLE_RATE = 16000
+    private val SAMPLE_RATE = 24000 // CHANGED: 24kHz for OpenAI Realtime API compatibility
     private val CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO
     private val AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT
-    private val BUFFER_SIZE = 1280 // 80ms chunks for openWakeWord
+    private val BUFFER_SIZE = 1280 // Standard chunk for pipeline processing
 
     private var audioRecord: AudioRecord? = null
     private var isRunning = false

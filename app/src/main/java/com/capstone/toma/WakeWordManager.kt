@@ -42,7 +42,7 @@ class WakeWordManager(
     private val SILENCE_RESET_FRAMES = 25         // 25 × 80ms ≈ 2s of silence → state reset
 
     // VAD (Voice Activity Detection) — pre-filter before ONNX inference
-    private val VAD_RMS_THRESHOLD = 500f          // raised from 300: filters fridge/fan hum reliably
+    private val VAD_RMS_THRESHOLD = 350f          // 300 let through too much hum; 500 blocked real speech on some devices
     private var consecutiveSilentFrames = 0
 
     // Anti-conflict gate: set false while the app is in active LISTENING mode to prevent
@@ -50,7 +50,7 @@ class WakeWordManager(
     @Volatile var isArmed: Boolean = true
         private set
     
-    private val SAMPLE_RATE = 16000
+    private val SAMPLE_RATE = 24000 // CHANGED: Matched with AudioStreamManager for Realtime API
     private val CHUNK_SIZE = 1280 // 80ms at 16kHz
     private val MEL_WINDOW_SIZE = 76
     private val EMBEDDING_WINDOW_SIZE = 16
