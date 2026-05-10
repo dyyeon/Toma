@@ -67,11 +67,13 @@ class OpenAiManager {
             - Handle recipe follow-ups: modifications, substitutions, portion changes, storage tips, pairing suggestions.
 
             CATEGORY RULES:
-            - "한식" (Korean): MUST include any dish using Kimchi (김치), Doenjang (된장), Gochujang (고추장), or traditional Korean techniques.
-              Example: "김치볶음밥" is ALWAYS "한식", NOT "중식".
-            - "중식" (Chinese): 짜장면, 짬뽕, 탕수육, 마라탕, etc.
-            - "일식" (Japanese): 초밥, 라멘, 돈카츠, etc.
-            - "양식" (Western): 파스타, 스테이크, 샌드위치, etc.
+            - Determine the category based on the CULTURAL ORIGIN of the dish.
+            - "한식" (Korean): Kimchi, Doenjang, Gochujang dishes. "김치볶음밥" is always Korean.
+            - "중식" (Chinese): 짜장면, 짬뽕, 탕수육, 마라탕, 마라샹궈, 훠궈, etc.
+              ※ CRITICAL: "마라탕" is Chinese, NEVER Korean.
+            - "일식" (Japanese): 초밥, 라멘, 우동, 돈카츠, etc.
+            - "양식" (Western): 파스타, 피자, 스테이크, 햄버거, etc.
+            - "동남아식" (Southeast Asian): 팟타이, 쌀국수, etc.
             - "디저트" (Dessert): 케이크, 쿠키, etc.
 
             CRITICAL RULES:
@@ -380,7 +382,7 @@ class OpenAiManager {
                                           "response": "short Korean message",
                                           "recipe_data": {
                                             "title": "dish name",
-                                            "category": "한식/양식/중식/일식/디저트/기타 중 하나",
+                                            "category": "한식/양식/중식/일식/동남아식/디저트/기타 중 하나",
                                             "ingredients": ["ingredient"],
                                             "steps": ["step"],
                                             "difficulty": "쉬움/보통/어려움",
@@ -388,6 +390,11 @@ class OpenAiManager {
                                             "image_url": "$imageUri"
                                           }
                                         }
+                                        CATEGORY RULES:
+                                        - Maratang (마라탕) is CHINESE (중식).
+                                        - Tteokbokki (떡복이) is KOREAN (한식).
+                                        - Pizza/Pasta is WESTERN (양식).
+                                        - Sushi is JAPANESE (일식).
                                         If the image is a recipe text image, extract the recipe.
                                         If the image is food without text, infer a likely recipe.
                                         """.trimIndent()

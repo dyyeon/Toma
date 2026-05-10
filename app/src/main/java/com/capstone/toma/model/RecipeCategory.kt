@@ -2,6 +2,20 @@ package com.capstone.toma.model
 
 import java.util.Locale
 
+// Hard-coded overrides applied BEFORE keyword heuristics.
+// Prevents false positives like "마라탕" matching "탕" in koreanKeywords.
+private val titleCorrectionMap = mapOf(
+    "마라탕" to "중식", "마라샹궈" to "중식",
+    "짜장면" to "중식", "짬뽕" to "중식",
+    "탕수육" to "중식", "훠궈" to "중식",
+    "초밥" to "일식", "사시미" to "일식",
+    "라멘" to "일식", "우동" to "일식",
+    "돈카츠" to "일식",
+    "피자" to "양식", "파스타" to "양식",
+    "스테이크" to "양식", "햄버거" to "양식",
+    "팟타이" to "동남아식", "쌀국수" to "동남아식"
+)
+
 private val dessertKeywords = listOf(
     "디저트", "dessert", "cake", "케이크", "cookie", "쿠키", "pudding", "푸딩",
     "waffle", "와플", "pancake", "팬케이크", "빙수", "ice cream", "아이스크림",
@@ -33,10 +47,23 @@ private val westernKeywords = listOf(
     "그라탱", "gratin", "라자냐", "lasagna", "뇨끼", "gnocchi", "수프", "soup"
 )
 
+private val southeastKeywords = listOf(
+    "동남아", "베트남", "태국", "타이", "팟타이", "쌀국수", "나시고렝", "카오팟",
+    "푸팟퐁커리", "반미", "똠양꿍", "분짜", "동남아식"
+)
+
 fun normalizeRecipeCategory(
     rawCategory: String?,
     title: String = ""
 ): String {
+    // 0순위: 제목 기반 정정 맵 확인 (가장 높은 우선순위)
+    // "마라탕"이 "탕" 키워드로 인해 한식으로 오분류되는 것을 방지합니다.
+    titleCorrectionMap.forEach { (keyword, category) ->
+        if (title.contains(keyword, ignoreCase = true)) {
+            return category
+        }
+    }
+
     val source = buildString {
         append(rawCategory.orEmpty())
         append(' ')
@@ -52,8 +79,9 @@ fun normalizeRecipeCategory(
         japaneseKeywords.any(source::contains) -> "일식"
         chineseKeywords.any(source::contains) -> "중식"
         westernKeywords.any(source::contains) -> "양식"
+        southeastKeywords.any(source::contains) -> "동남아식"
         else -> when (rawCategory?.trim()) {
-            "한식", "양식", "중식", "일식", "디저트", "기타" -> rawCategory.trim()
+            "한식", "양식", "중식", "일식", "동남아식", "디저트", "기타" -> rawCategory.trim()
             else -> "기타"
         }
     }
