@@ -284,19 +284,19 @@ fun RecipeDetailContent(
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            val currentStepText = if (currentStepIndex == 0) "" else steps.getOrNull(currentStepIndex - 1) ?: ""
+            val isTimerRecommended = "([0-9]+)\\s*분".toRegex().containsMatchIn(currentStepText)
+
             AiSuggestionSection(
                 isTtsEnabled = isTtsEnabled,
                 isTtsSpeaking = isTtsSpeaking,
+                isTimerRecommended = isTimerRecommended,
                 onTtsToggle = { isTtsEnabled = !isTtsEnabled },
                 onTimerClick = {
-                    val stepText = if (currentStepIndex == 0) "" else steps.getOrNull(currentStepIndex - 1) ?: ""
-                    // Updated Regex to handle multiple formats: "3분", "3분간", "15~20분" (takes the first number)
-                    val minutes = "([0-9]+)\\s*분".toRegex().find(stepText)?.groupValues?.get(1)?.toIntOrNull()
+                    val minutes = "([0-9]+)\\s*분".toRegex().find(currentStepText)?.groupValues?.get(1)?.toIntOrNull()
                     if (minutes != null && minutes > 0) {
                         voiceViewModel.triggerTimer(minutes)
                     } else {
-                        // If no specific time in step, try to find in the whole text or prompt for manual input
-                        // For now, show a descriptive error via VoiceUiState
                         voiceViewModel.showTimerManualGuidance()
                     }
                 },
@@ -493,6 +493,7 @@ private fun InfoCardDetail(
 private fun AiSuggestionSection(
     isTtsEnabled: Boolean = true,
     isTtsSpeaking: Boolean = false,
+    isTimerRecommended: Boolean = false,
     onTtsToggle: () -> Unit = {},
     onTimerClick: () -> Unit = {},
     onSpeechClick: () -> Unit = {}
@@ -508,6 +509,8 @@ private fun AiSuggestionSection(
             )
             suggestions.forEach { (text, icon) ->
                 val isStopButton = text == "안내 중지"
+                val isTimerActive = text == "타이머" && isTimerRecommended
+
                 Surface(
                     modifier = Modifier.weight(1f).clickable {
                         when (text) {
@@ -519,11 +522,13 @@ private fun AiSuggestionSection(
                     shape = RoundedCornerShape(16.dp),
                     color = when {
                         text == "자동 안내" && isTtsEnabled -> TomaMainOrange.copy(alpha = 0.1f)
+                        isTimerActive -> TomaMainOrange.copy(alpha = 0.1f)
                         isStopButton -> TomaMainRed.copy(alpha = 0.1f)
                         else -> Color(0xFFF1F3F5)
                     },
                     border = when {
                         text == "자동 안내" && isTtsEnabled -> BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.3f))
+                        isTimerActive -> BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.3f))
                         isStopButton -> BorderStroke(1.dp, TomaMainRed.copy(alpha = 0.3f))
                         else -> null
                     }
@@ -538,6 +543,7 @@ private fun AiSuggestionSection(
                             modifier = Modifier.size(20.dp), 
                             tint = when {
                                 text == "자동 안내" && isTtsEnabled -> TomaMainOrange
+                                isTimerActive -> TomaMainOrange
                                 isStopButton -> TomaMainRed
                                 else -> Color.DarkGray
                             }
@@ -549,6 +555,7 @@ private fun AiSuggestionSection(
                             fontWeight = FontWeight.Bold, 
                             color = when {
                                 text == "자동 안내" && isTtsEnabled -> TomaMainOrange
+                                isTimerActive -> TomaMainOrange
                                 isStopButton -> TomaMainRed
                                 else -> Color.DarkGray
                             }
