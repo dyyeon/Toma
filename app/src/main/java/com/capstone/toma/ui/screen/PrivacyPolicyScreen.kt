@@ -95,7 +95,7 @@ fun PrivacyPolicyScreen(onBackClick: () -> Unit = {}) {
             PolicyArticle(
                 number = "제3조",
                 title = "개인정보의 외부 API 위탁",
-                content = "본 앱은 AI 분석 및 음성 인식을 위해 Google(Gemini) 및 OpenAI(Whisper) 등의 외부 API를 활용하며, 분석 목적 외에는 데이터를 사용하지 않습니다."
+                content = "본 앱은 AI 분석 및 음성 인식을 위해 외부 API를 활용하며, 분석 목적 외에는 데이터를 사용하지 않습니다."
             )
 
             PolicyArticle(
