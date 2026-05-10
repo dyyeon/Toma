@@ -1,5 +1,8 @@
 package com.capstone.toma.model
 
+import org.json.JSONArray
+import org.json.JSONObject
+
 enum class RecipeSourceType {
     TEXT, YOUTUBE, WEB, IMAGE
 }
@@ -29,3 +32,20 @@ data class StoredRecipe(
     val timeText: String,
     val imageUri: String? = null
 )
+
+fun StoredRecipe.toRecipeDataJson(): String {
+    return JSONObject().apply {
+        put("title", title)
+        put("category", category)
+        put("story", story)
+        put("time", time)
+        put("difficulty", difficulty)
+        put("servings", servings)
+        put("calories", calories)
+        put("rating", rating)
+        put("source_type", sourceType.name)
+        put("ingredients", JSONArray(ingredients))
+        put("steps", JSONArray(steps))
+        imageUri?.takeIf { it.isNotBlank() }?.let { put("image_url", it) }
+    }.toString()
+}

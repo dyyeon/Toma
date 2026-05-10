@@ -58,6 +58,7 @@ import com.capstone.toma.YoutubeManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.capstone.toma.VoiceRequestResult
+import com.capstone.toma.model.toRecipeDataJson
 import org.json.JSONObject
 import com.capstone.toma.ui.screen.*
 import com.capstone.toma.viewmodel.*
@@ -461,7 +462,24 @@ fun TomaNavHost(
         }
 
         composable(TomaDestination.RecipeStorage.route) {
-            RecipeStorageScreen(onBackClick = { navController.popBackStack() })
+            RecipeStorageScreen(
+                onBackClick = { navController.popBackStack() },
+                onStartGuide = { recipe ->
+                    val recipeData = recipe.toRecipeDataJson()
+                    homeViewModel.saveRecentRecipe(
+                        keyword = recipe.title,
+                        recipeDataJson = recipeData,
+                        sourceType = recipe.sourceType
+                    )
+                    navController.navigate(
+                        TomaDestination.RecipeDetail.createRoute(
+                            recipe.title,
+                            recipe.sourceType,
+                            recipeData
+                        )
+                    )
+                }
+            )
         }
 
         composable(TomaDestination.RecentHistory.route) {

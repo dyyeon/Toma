@@ -31,10 +31,8 @@ import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -95,7 +93,8 @@ private val StorageMuted = Color(0xFF868E96)
 
 @Composable
 fun RecipeStorageScreen(
-    onBackClick: () -> Unit = {}
+    onBackClick: () -> Unit = {},
+    onStartGuide: (StoredRecipe) -> Unit = {}
 ) {
     val context = LocalContext.current
     val isPreview = LocalInspectionMode.current
@@ -234,7 +233,8 @@ fun RecipeStorageScreen(
                     openedId = null
                 },
                 onFavoriteToggle = { storageViewModel?.toggleFavorite(opened) },
-                onImagePick = { showImagePickerDialog = true }
+                onImagePick = { showImagePickerDialog = true },
+                onStartGuide = { onStartGuide(opened) }
             )
         }
     }
@@ -316,8 +316,11 @@ private fun StorageDetail(
     recipe: StoredRecipe,
     onBack: () -> Unit,
     onFavoriteToggle: () -> Unit,
-    onImagePick: () -> Unit
+    onImagePick: () -> Unit,
+    onStartGuide: () -> Unit
 ) {
+    val canStartGuide = remember(recipe) { recipe.steps.isNotEmpty() }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize().background(StorageBg),
         contentPadding = PaddingValues(24.dp, inner.calculateTopPadding() + 16.dp, 24.dp, inner.calculateBottomPadding() + 40.dp),
@@ -346,23 +349,28 @@ private fun StorageDetail(
                 }
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MetricChip(icon = Icons.Default.Star, text = String.format("%.1f", recipe.rating), color = Color(0xFFFAB005))
-                    MetricChip(icon = Icons.Default.RestaurantMenu, text = recipe.difficulty, color = Color(0xFF20C997))
-                    MetricChip(icon = Icons.Default.LocalFireDepartment, text = "${recipe.calories} kcal", color = TomaMainOrange)
+                    MetricChip(
+                        icon = Icons.Default.RestaurantMenu,
+                        text = recipe.difficulty,
+                        color = Color(0xFF20C997)
+                    )
                 }
 
-                Surface(
-                    color = Color.White,
-                    shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.dp, StorageCardBorder)
-                ) {
-                    Text(
-                        text = "\"${recipe.story}\"",
-                        color = Color(0xFF495057),
-                        lineHeight = 24.sp,
-                        fontSize = 14.sp,
-                        modifier = Modifier.padding(16.dp)
+                Button(
+                    onClick = onStartGuide,
+                    enabled = canStartGuide,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = StorageAccent,
+                        contentColor = Color.White,
+                        disabledContainerColor = StorageAccent.copy(alpha = 0.45f),
+                        disabledContentColor = Color.White.copy(alpha = 0.85f)
                     )
+                ) {
+                    Text("안내 시작", fontSize = 16.sp, fontWeight = FontWeight.ExtraBold)
                 }
             }
         }
