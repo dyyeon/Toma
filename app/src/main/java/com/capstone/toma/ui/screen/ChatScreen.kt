@@ -513,7 +513,8 @@ private fun ChatInputBar(
     Surface(
         color = Color.White,
         shadowElevation = 16.dp,
-        border = BorderStroke(1.dp, TomaCardBorder)
+        border = BorderStroke(1.dp, TomaCardBorder),
+        modifier = Modifier.imePadding()
     ) {
         Row(
             modifier = Modifier
