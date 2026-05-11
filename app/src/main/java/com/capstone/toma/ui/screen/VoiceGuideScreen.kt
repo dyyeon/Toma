@@ -8,25 +8,30 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import java.util.Locale
 import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.VoiceUiState
-import com.capstone.toma.viewmodel.VoiceViewModel
 
 private val TomaMainOrange = Color(0xFFEE8C2B)
 private val TomaBackground = Color(0xFFF8F9FA)
@@ -40,16 +45,12 @@ fun VoiceGuideScreen(
     suggestions: List<String>,
     onMicClick: () -> Unit,
     onSuggestionClick: (String) -> Unit,
-    onBackClick: () -> Unit = {},
-    voiceViewModel: VoiceViewModel
+    onBackClick: () -> Unit = {}
 ) {
-    val durationSeconds by voiceViewModel.recordingDurationSeconds.collectAsState()
-    val isListening = uiState == VoiceUiState.Listening
-
     val statusText = when (uiState) {
         VoiceUiState.Idle -> "READY"
-        VoiceUiState.Listening -> "RECORDING"
-        VoiceUiState.Processing -> "ANALYZING"
+        VoiceUiState.Listening -> "LISTENING"
+        VoiceUiState.Processing -> "PROCESSING"
         VoiceUiState.Speaking -> "SPEAKING"
         VoiceUiState.Training -> "TRAINING"
         VoiceUiState.Recovering -> "RECOVERING"
@@ -59,7 +60,7 @@ fun VoiceGuideScreen(
 
     val helperText = when (uiState) {
         VoiceUiState.Idle -> "레시피나 메뉴를 음성으로 요청해보세요"
-        VoiceUiState.Listening -> "녹음 중 • 탭하여 종료"
+        VoiceUiState.Listening -> "말씀하시는 내용을 듣고 있어요..."
         VoiceUiState.Processing -> "음성을 열심히 분석하고 있어요"
         VoiceUiState.Speaking -> "TOMA가 답변을 말하고 있어요"
         VoiceUiState.Training -> "목소리를 학습하고 있어요"
@@ -72,16 +73,16 @@ fun VoiceGuideScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(TomaBackground)
-            .padding(bottom = 24.dp)
     ) {
-        TomaTopAppBar(showBackButton = true, onBackClick = onBackClick)
+        TomaTopAppBar(
+            showBackButton = true,
+            onBackClick = onBackClick
+        )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 24.dp)
+            modifier = Modifier.padding(horizontal = 24.dp)
         ) {
             Text(
                 text = "무엇을 도와드릴까요?",
@@ -105,39 +106,21 @@ fun VoiceGuideScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(220.dp),
+                    .height(260.dp),
                 contentAlignment = Alignment.Center
             ) {
                 VoiceMicButton(
-                    isListening = isListening,
+                    isListening = uiState == VoiceUiState.Listening,
                     onClick = onMicClick
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Timer shown only while recording.
-                AnimatedVisibility(
-                    visible = isListening,
-                    enter = fadeIn(),
-                    exit = fadeOut()
-                ) {
-                    val mm = (durationSeconds / 60).coerceAtLeast(0)
-                    val ss = (durationSeconds % 60).coerceAtLeast(0)
-                    Text(
-                        text = String.format(Locale.US, "%02d:%02d", mm, ss),
-                        color = TomaMainOrange,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 2.sp,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-
                 StatusBadge(
                     statusText = statusText,
                     isError = uiState is VoiceUiState.Error
@@ -156,12 +139,33 @@ fun VoiceGuideScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 AnimatedVisibility(
+                    visible = uiState == VoiceUiState.Listening,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    ListeningEqualizer()
+                }
+
+                AnimatedVisibility(
+                    visible = uiState is VoiceUiState.Result,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    val result = uiState as? VoiceUiState.Result
+                    if (result != null) {
+                        ResultCard(text = result.text)
+                    }
+                }
+
+                AnimatedVisibility(
                     visible = uiState is VoiceUiState.Error,
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically()
                 ) {
                     val error = uiState as? VoiceUiState.Error
-                    if (error != null) ErrorCard(message = error.message)
+                    if (error != null) {
+                        ErrorCard(message = error.message)
+                    }
                 }
             }
 
@@ -183,7 +187,10 @@ fun VoiceGuideScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 suggestions.forEach { item ->
-                    SuggestionChip(text = item, onClick = { onSuggestionClick(item) })
+                    SuggestionChip(
+                        text = item,
+                        onClick = { onSuggestionClick(item) }
+                    )
                 }
             }
 
@@ -197,49 +204,87 @@ private fun VoiceMicButton(
     isListening: Boolean,
     onClick: () -> Unit
 ) {
-    // Single source of animation — only active while listening.
-    // Idle: static button. Listening: breathing scale 1.0 ↔ 1.07, 900ms, EaseInOut.
-    val transition = rememberInfiniteTransition(label = "micPulse")
-    val animatedScale by transition.animateFloat(
-        initialValue = 1.0f,
-        targetValue = 1.0f,
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseRatio by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = if (isListening) 1.15f else 1.05f,
         animationSpec = infiniteRepeatable(
-            animation = keyframes {
-                durationMillis = 900
-                1.0f at 0 using FastOutSlowInEasing
-                1.07f at 450 using FastOutSlowInEasing
-                1.0f at 900
-            },
-            repeatMode = RepeatMode.Restart
+            animation = tween(if (isListening) 600 else 1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
         ),
-        label = "scale"
+        label = "pulseRatio"
     )
 
-    // Apply scale only while listening; otherwise static at 1.0.
-    val finalScale = if (isListening) animatedScale else 1.0f
+    val animatedScale by animateFloatAsState(
+        targetValue = if (pressed) 0.9f else 1f,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "micScale"
+    )
 
-    Surface(
-        onClick = onClick,
-        shape = CircleShape,
-        color = TomaMainOrange, // always orange — no red/stop color swap
-        shadowElevation = 6.dp,
+    val glowAlpha by animateFloatAsState(
+        targetValue = when {
+            isListening -> 0.25f
+            pressed -> 0.15f
+            else -> 0.1f
+        },
+        animationSpec = tween(300),
+        label = "micGlowAlpha"
+    )
+
+    Box(
+        contentAlignment = Alignment.Center,
         modifier = Modifier
-            .size(140.dp)
+            .size(240.dp)
             .graphicsLayer {
-                scaleX = finalScale
-                scaleY = finalScale
+                scaleX = animatedScale
+                scaleY = animatedScale
+            }
+            .drawBehind {
+                val radius = (150.dp.toPx()) * pulseRatio
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        0f to TomaMainOrange.copy(alpha = glowAlpha),
+                        0.7f to TomaMainOrange.copy(alpha = glowAlpha * 0.5f),
+                        1f to Color.Transparent,
+                        center = center,
+                        radius = radius
+                    ),
+                    radius = radius,
+                    center = center
+                )
             }
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
+        Surface(
+            onClick = onClick,
+            interactionSource = interactionSource,
+            shape = CircleShape,
+            color = TomaMainOrange,
+            shadowElevation = if (pressed) 4.dp else 12.dp,
+            modifier = Modifier.size(170.dp)
         ) {
-            Icon(
-                imageVector = if (isListening) Icons.Default.Stop else Icons.Default.Mic,
-                contentDescription = if (isListening) "Stop" else "Mic",
-                tint = Color.White,
-                modifier = Modifier.size(56.dp)
-            )
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Mic,
+                    contentDescription = "Mic",
+                    tint = Color.White,
+                    modifier = Modifier.size(52.dp)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "TAP TO SPEAK",
+                    color = Color.White.copy(alpha = 0.9f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.5.sp
+                )
+            }
         }
     }
 }
@@ -259,6 +304,71 @@ private fun StatusBadge(statusText: String, isError: Boolean = false) {
             letterSpacing = 1.sp,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
         )
+    }
+}
+
+@Composable
+private fun ListeningEqualizer() {
+    val infiniteTransition = rememberInfiniteTransition(label = "equalizer")
+
+    val heights = List(5) { index ->
+        infiniteTransition.animateFloat(
+            initialValue = 0.3f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = 400 + (index * 100),
+                    easing = FastOutLinearInEasing
+                ),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "bar_$index"
+        )
+    }
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.height(40.dp)
+    ) {
+        heights.forEach { heightRatio ->
+            Box(
+                modifier = Modifier
+                    .width(6.dp)
+                    .height(32.dp * heightRatio.value)
+                    .background(TomaMainOrange, RoundedCornerShape(50))
+            )
+        }
+    }
+}
+
+@Composable
+private fun ResultCard(text: String) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = Color.White,
+        shadowElevation = 6.dp,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.CheckCircle,
+                contentDescription = null,
+                tint = Color(0xFF20C997),
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = text,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = TomaPrimaryText,
+                lineHeight = 22.sp
+            )
+        }
     }
 }
 
@@ -312,4 +422,36 @@ private fun SuggestionChip(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
         )
     }
+}
+
+private val previewSuggestions = listOf(
+    "메뉴 추천해줘",
+    "재료로 요리 찾아줘",
+    "간단한 레시피 알려줘",
+    "빠른 요리 찾아줘",
+    "쉬운 요리 추천해줘"
+)
+
+@Preview(name = "1. Idle 상태", showBackground = true, showSystemUi = true)
+@Composable
+private fun VoiceGuideIdlePreview() {
+    VoiceGuideScreen(uiState = VoiceUiState.Idle, suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
+}
+
+@Preview(name = "2. Listening 상태", showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun TomaVoiceGuideListeningPreview() {
+    VoiceGuideScreen(uiState = VoiceUiState.Listening, suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
+}
+
+@Preview(name = "3. Result 결과", showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun TomaVoiceGuideResultPreview() {
+    VoiceGuideScreen(uiState = VoiceUiState.Result("김치볶음밥 레시피를 찾아드릴게요."), suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
+}
+
+@Preview(name = "4. Error 에러", showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun TomaVoiceGuideErrorPreview() {
+    VoiceGuideScreen(uiState = VoiceUiState.Error("음성을 인식하지 못했어요. 다시 시도해 주세요."), suggestions = previewSuggestions, onMicClick = {}, onSuggestionClick = {})
 }

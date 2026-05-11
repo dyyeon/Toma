@@ -391,7 +391,6 @@ fun RecipeDetailContent(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 24.dp)
-                .verticalScroll(rememberScrollState())
         ) {
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -418,35 +417,42 @@ fun RecipeDetailContent(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            val progress =
-                if (totalSteps > 0) currentStepIndex.toFloat() / totalSteps.toFloat() else 0f
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                val progress =
+                    if (totalSteps > 0) currentStepIndex.toFloat() / totalSteps.toFloat() else 0f
 
-            ProgressSection(
-                current = currentStepIndex,
-                total = totalSteps,
-                progress = progress
-            )
+                ProgressSection(
+                    current = currentStepIndex,
+                    total = totalSteps,
+                    progress = progress
+                )
 
-            Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(32.dp))
 
-            Box(modifier = Modifier.fillMaxWidth()) {
-                if (currentStepIndex == 0) {
-                    IngredientsSection(ingredients)
-                } else {
-                    CurrentStepSection(
-                        stepNumber = currentStepIndex,
-                        stepText = steps.getOrNull(currentStepIndex - 1).orEmpty()
-                    )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if (currentStepIndex == 0) {
+                        IngredientsSection(ingredients)
+                    } else {
+                        CurrentStepSection(
+                            stepNumber = currentStepIndex,
+                            stepText = steps.getOrNull(currentStepIndex - 1).orEmpty()
+                        )
+                    }
                 }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                InfoCardRow(timeStr, difficulty)
+
+                Spacer(modifier = Modifier.height(24.dp))
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
-
-            InfoCardRow(timeStr, difficulty)
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            AiSuggestionSection(
+            CookingAssistControls(
                 isTtsEnabled = isTtsEnabled,
                 isTtsSpeaking = isTtsSpeaking,
                 isTimerRecommended = isTimerRecommended,
@@ -747,7 +753,7 @@ private fun InfoCardDetail(
 }
 
 @Composable
-private fun AiSuggestionSection(
+private fun CookingAssistControls(
     isTtsEnabled: Boolean = true,
     isTtsSpeaking: Boolean = false,
     isTimerRecommended: Boolean = false,
@@ -756,24 +762,16 @@ private fun AiSuggestionSection(
     onSpeechClick: () -> Unit = {}
 ) {
     Column {
-        Text(
-            text = "AI 제안",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.Black
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
+        Spacer(modifier = Modifier.width(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            val suggestions = listOf(
+            val controls = listOf(
                 "자동 안내" to if (isTtsEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
                 "타이머" to Icons.Default.AvTimer,
-                (if (isTtsSpeaking) "안내 중지" else "다시듣기") to
+                (if (isTtsSpeaking) "안내 중지" else "다시 듣기") to
                         if (isTtsSpeaking) Icons.Default.StopCircle else Icons.AutoMirrored.Filled.VolumeUp
             )
 
-            suggestions.forEach { (text, icon) ->
+            controls.forEachIndexed { index, (text, icon) ->
                 val isStopButton = text == "안내 중지"
                 val isTimerActive = text == "타이머" && isTimerRecommended
 
@@ -781,10 +779,10 @@ private fun AiSuggestionSection(
                     modifier = Modifier
                         .weight(1f)
                         .clickable {
-                            when (text) {
-                                "자동 안내" -> onTtsToggle()
-                                "타이머" -> onTimerClick()
-                                "다시듣기", "안내 중지" -> onSpeechClick()
+                            when (index) {
+                                0 -> onTtsToggle()
+                                1 -> onTimerClick()
+                                2 -> onSpeechClick()
                             }
                         },
                     shape = RoundedCornerShape(16.dp),

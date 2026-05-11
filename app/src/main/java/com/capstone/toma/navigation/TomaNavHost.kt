@@ -511,8 +511,7 @@ fun TomaNavHost(
                 onBackClick = {
                     voiceViewModel.stopListeningManually()
                     navController.popBackStack()
-                },
-                voiceViewModel = voiceViewModel
+                }
             )
         }
 
