@@ -2,6 +2,7 @@ package com.capstone.toma.ui.screen
 
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -108,6 +109,10 @@ fun RecipeDetailContent(
 
     var isTtsEnabled by remember { mutableStateOf(true) }
     var isTtsSpeaking by remember { mutableStateOf(false) }
+    // Tracks the pending re-arm coroutine so a rapid onStart→onDone sequence
+    // never stacks two delayed arm() calls on top of each other.
+    // @Volatile gives TTS-thread visibility without a lock.
+    val pendingTtsResume = remember { object { @Volatile var job: kotlinx.coroutines.Job? = null } }
 
     val isTimerRunning by voiceViewModel.isTimerRunning.collectAsState()
     val remainingSeconds by voiceViewModel.timerRemainingSeconds.collectAsState()
@@ -119,24 +124,58 @@ fun RecipeDetailContent(
             if (status == TextToSpeech.SUCCESS) {
                 engine.language = Locale.KOREAN
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) { isTtsSpeaking = true }
-                    override fun onDone(utteranceId: String?) {
-                        isTtsSpeaking = false
-                        scope.launch {
-                            delay(300)
+
+                    // Called on TTS's internal thread.  voiceViewModel calls and
+                    // scope.launch() are both thread-safe from any thread.
+
+                    // Disarm the wake word detector immediately so TTS audio
+                    // cannot feed back into the microphone pipeline.
+                    private fun pauseWakeWordForTts() {
+                        pendingTtsResume.job?.cancel()   // drop any prior pending re-arm
+                        voiceViewModel.pauseAudioCapture()
+                        Log.d("WakeWord", "🔇 Disarmed during TTS playback")
+                    }
+
+                    // Schedule re-arm after a short tail-silence window so the
+                    // last few milliseconds of TTS audio have left the microphone
+                    // before the detector wakes up again.
+                    private fun resumeWakeWordAfterTtsDelay() {
+                        pendingTtsResume.job?.cancel()   // cancel any already-pending re-arm
+                        pendingTtsResume.job = scope.launch {
+                            delay(700)
                             voiceViewModel.resumeAudioCapture()
+                            Log.d("WakeWord", "🔓 Re-armed after TTS playback")
                         }
                     }
+
+                    override fun onStart(utteranceId: String?) {
+                        pauseWakeWordForTts()
+                        isTtsSpeaking = true
+                    }
+
+                    override fun onDone(utteranceId: String?) {
+                        isTtsSpeaking = false
+                        resumeWakeWordAfterTtsDelay()
+                    }
+
                     override fun onError(utteranceId: String?) {
                         isTtsSpeaking = false
-                        voiceViewModel.resumeAudioCapture()
+                        resumeWakeWordAfterTtsDelay()
                     }
+
                     override fun onError(utteranceId: String?, errorCode: Int) {
                         isTtsSpeaking = false
-                        voiceViewModel.resumeAudioCapture()
+                        resumeWakeWordAfterTtsDelay()
                     }
+
+                    // onStop fires when TTS is explicitly cancelled — most often
+                    // because the wake-word detector just triggered and called
+                    // onStopTtsRequest.  In that case the wake-word flow itself
+                    // manages re-arming (via returnToIdle), so we must NOT
+                    // schedule an extra arm() here.
                     override fun onStop(utteranceId: String?, interrupted: Boolean) {
                         isTtsSpeaking = false
+                        pendingTtsResume.job?.cancel()  // discard any pending re-arm too
                     }
                 })
                 ttsReady = true

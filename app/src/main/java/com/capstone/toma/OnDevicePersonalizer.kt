@@ -140,13 +140,45 @@ class OnDevicePersonalizer(private val context: Context) {
         val m = means ?: return 0f
         val s = stds ?: return 0f
 
-        var dot = bias
+        // Single pass: compute dot product, weight L2-norm, and scaled-input norm together.
+        var dot = bias.toDouble()
+        var wNormSq = 0.0
+        var scaledNormSq = 0.0
         for (i in w.indices) {
             val xScaled = (embedding[i] - m[i]) / s[i]
             dot += w[i] * xScaled
+            wNormSq += w[i].toDouble() * w[i]
+            scaledNormSq += xScaled.toDouble() * xScaled
         }
 
-        return (1f / (1f + exp(-dot.toDouble()))).toFloat()
+        // ── Saturation fix ──────────────────────────────────────────────────
+        // With EMBEDDING_SIZE=1536 and weights clamped to ±10, the raw logit
+        // can reach ±15 360.  sigmoid(x) collapses to exactly 0.0 or 1.0 in
+        // float32 for |x| > ~88, so threshold tuning becomes ineffective.
+        //
+        // Dividing by ‖w‖ normalises the logit to a scale independent of
+        // weight magnitude and dimension count.  For a random (out-of-
+        // distribution) input, the normalised logit is O(1), giving meaningful
+        // sigmoid values; for a strongly aligned input (the actual wake word)
+        // it is still large, preserving detection.
+        //
+        // Tune NOTE: after this change the effective score range is compressed.
+        // If real "Hey Toma" utterances start to miss, lower detectionThreshold
+        // (e.g. 0.60).  If false positives remain, raise it (e.g. 0.85).
+        // ────────────────────────────────────────────────────────────────────
+        val wNorm = kotlin.math.sqrt(wNormSq).toFloat().coerceAtLeast(1e-6f)
+        val normalizedLogit = (dot / wNorm).toFloat()
+        val score = (1f / (1f + exp(-normalizedLogit.toDouble()))).toFloat()
+
+        Log.d(TAG,
+            "predict | rawLogit=${"%.1f".format(dot)} " +
+            "wNorm=${"%.2f".format(wNorm)} " +
+            "normLogit=${"%.4f".format(normalizedLogit)} " +
+            "scaledInputNorm=${"%.2f".format(kotlin.math.sqrt(scaledNormSq))} " +
+            "score=${"%.4f".format(score)}"
+        )
+
+        return score
     }
 
     fun saveToFile(file: File) {

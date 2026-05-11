@@ -60,7 +60,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val openAiManager = OpenAiManager()
     private val audioStreamManager = AudioStreamManager(application)
     private val onDevicePersonalizer = OnDevicePersonalizer(application)
-    private val wakeWordManager = WakeWordManager(application, onDevicePersonalizer) {
+    val wakeWordManager = WakeWordManager(application, onDevicePersonalizer) {
         onWakeWordDetected()
     }
     private val toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)

@@ -28,15 +28,73 @@ class WakeWordManager(
 ) {
     private val TAG = "WakeWord"
 
-    var detectionThreshold: Float = 0.35f
+    // ─── Sensitivity knobs ────────────────────────────────────────────────────
+    // detectionThreshold: minimum classifier score to count as a candidate hit.
+    //   • Higher → fewer false positives, but you must say the word more clearly.
+    //   • Lower  → more sensitive, but unrelated speech may trigger it.
+    //   Tuning guide:
+    //     Still firing on normal speech? Raise toward 0.85f.
+    //     Missing clear "Hey Toma" utterances?  Lower toward 0.60f.
+    //   Current: 0.75f  (raised from 0.30f — scores of 0.99–1.0 on non-wake
+    //   speech showed the old floor was far too permissive)
+    var detectionThreshold: Float = 0.75f
+
+    // REQUIRED_CONSECUTIVE: how many consecutive frames must exceed the threshold
+    // before a detection fires.  One "frame" = one classifier output (~80 ms of audio).
+    //   • Higher → a single loud syllable or brief noise won't trigger detection;
+    //              the full wake phrase must sustain a high score across this many frames.
+    //   • Lower  → faster response, but also more vulnerable to spurious spikes.
+    //   Tuning guide:
+    //     Still getting spike-triggered detections? Raise to 6.
+    //     Real utterances sometimes missed?         Lower to 4.
+    //   Current: 5  (raised from 3 — prevents brief, confident-but-wrong spikes)
+    var requiredConsecutive: Int = 5
+    // ─────────────────────────────────────────────────────────────────────────
+
     var verboseLogging: Boolean = true
     private var consecutiveDetections = 0
-    private val REQUIRED_CONSECUTIVE = 4
-    private val RESET_FLOOR = 0.3f
-    private val SILENCE_RESET_FRAMES = 25
+    private val RESET_FLOOR = 0.20f
+    private val SILENCE_RESET_FRAMES = 50
 
-    private val VAD_RMS_THRESHOLD = 120f
+    // ─── Demo-mode signal-quality gates ──────────────────────────────────────
+    // VAD_RMS_THRESHOLD: frames below this RMS are discarded before the pipeline.
+    // Higher = fewer false positives from low-level ambient noise (fans, HVAC).
+    // Raise toward 400 for very quiet rooms; lower toward 250 for noisy venues.
+    // Demo-safe default: 350 (was 200 — far too permissive for a quiet-room demo).
+    var VAD_RMS_THRESHOLD = 350f
+
+    // MIN_VAD_PASSES_BEFORE_SCORING: consecutive VAD-passing frames required before
+    // the classifier pipeline opens.  A brief transient (click, rustle, breath)
+    // passes VAD for at most 1 frame; real speech passes for many frames in a row.
+    // 2 frames ≈ 160 ms of sustained signal — enough to reject one-shot noise.
+    private val MIN_VAD_PASSES_BEFORE_SCORING = 2
+    private var consecutiveVadPasses = 0
+
+    // Rolling RMS history across ALL frames (including silent ones).
+    // Window: RMS_WINDOW_SIZE × ~80 ms ≈ 1.28 s.  Including silent frames is
+    // intentional: after a brief noise burst the zeros from preceding silence drag
+    // the average down, so MIN_SCORING_RMS is not met even though the burst itself
+    // exceeded VAD_RMS_THRESHOLD.  By the time real wake-word speech has sustained
+    // long enough to fill the mel/embedding buffers (≥ 16 pipeline frames), the
+    // window contains mostly speech frames and the average rises well above 300.
+    private val RMS_WINDOW_SIZE = 16
+    private val rmsHistory = FloatArray(RMS_WINDOW_SIZE) { 0f }
+    private var rmsHistoryIdx = 0
+    @Volatile private var recentAvgRms = 0f
+
+    // MIN_SCORING_RMS: rolling average RMS must exceed this before a score above
+    // detectionThreshold is counted toward a detection.  Purposely set below
+    // VAD_RMS_THRESHOLD so that legitimate speech (which fills the window over
+    // ~1-2 s) passes, while a 1-2 frame burst (whose zeros dominate the average)
+    // is rejected.  Raise toward 400 to be more aggressive.
+    private val MIN_SCORING_RMS = 300f
+    // ─────────────────────────────────────────────────────────────────────────
+
     private var consecutiveSilentFrames = 0
+
+    // ✅ 시간 윈도우: 600ms 안에 3회 연속이어야 유효
+    private var firstDetectionTime = 0L
+    private val DETECTION_WINDOW_MS = 600L
 
     @Volatile
     var isArmed: Boolean = true
@@ -58,12 +116,15 @@ class WakeWordManager(
     var useOnDevicePersonalizer = false
         private set
     private var lastDetectionTime = 0L
-    private val detectionCooldownMs = 3000L
+    // detectionCooldownMs: minimum gap between two consecutive detections.
+    // 7 000 ms keeps a quiet-room demo from firing twice on the same utterance
+    // or on the TTS reply audio.  Lower toward 3 000 for production use.
+    var detectionCooldownMs = 7000L
 
     var bypassVad: Boolean = false
 
     private val pipelineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-    private val chunkChannel = Channel<ShortArray>(32)
+    private val chunkChannel = Channel<ShortArray>(64)
 
     private val pcmBuffer = ArrayDeque<Short>()
     private val melBuffer = mutableListOf<FloatArray>()
@@ -110,7 +171,7 @@ class WakeWordManager(
                 }
             }
 
-            Log.d(TAG, "✅ 3-Stage ONNX Pipeline initialized")
+            Log.d(TAG, "✅ 3-Stage ONNX Pipeline initialized (threshold=$detectionThreshold, consecutive=$requiredConsecutive, vad=$VAD_RMS_THRESHOLD, window=${DETECTION_WINDOW_MS}ms)")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Model load failed: ${e.message}")
         }
@@ -155,46 +216,67 @@ class WakeWordManager(
 
     fun arm() {
         isArmed = true
-        if (verboseLogging) Log.d(TAG, "🔓 Wake-word ARMED")
+        consecutiveDetections = 0
+        firstDetectionTime = 0L
+        consecutiveSilentFrames = 0
+        if (verboseLogging) Log.d(TAG, "🔓 Wake-word ARMED (threshold=$detectionThreshold, vad=$VAD_RMS_THRESHOLD, window=${DETECTION_WINDOW_MS}ms)")
     }
 
     fun disarm() {
         isArmed = false
         consecutiveDetections = 0
+        firstDetectionTime = 0L
         if (verboseLogging) Log.d(TAG, "🔒 Wake-word DISARMED — counter flushed")
     }
 
     fun processFrame(pcmData: ByteArray) {
-        if (!isArmed) {
-            if (verboseLogging) Log.d(TAG, "processFrame skipped: isArmed=false")
+        if (!isArmed) return
+        if (melSession == null || embSession == null) {
+            if (verboseLogging) Log.w(TAG, "processFrame skipped: models not loaded yet")
             return
         }
-        if (melSession == null || embSession == null) return
-        if (!useOnDevicePersonalizer && clfSession == null) return
+        if (!useOnDevicePersonalizer && clfSession == null) {
+            if (verboseLogging) Log.w(TAG, "processFrame skipped: classifier not loaded yet")
+            return
+        }
 
         val shortBuf = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
         val shorts = ShortArray(shortBuf.remaining()) { shortBuf.get() }
 
         val rms = computeRms(shorts)
-        if (verboseLogging) {
-            Log.d(TAG, "RMS=${"%.1f".format(rms)}")
-        }
+
+        // Keep a rolling RMS average across all frames (including silent ones).
+        rmsHistory[rmsHistoryIdx % RMS_WINDOW_SIZE] = rms
+        rmsHistoryIdx++
+        recentAvgRms = rmsHistory.average().toFloat()
 
         if (!bypassVad && rms < VAD_RMS_THRESHOLD) {
-            if (verboseLogging) {
-                Log.v(TAG, "VAD skip: rms=${"%.1f".format(rms)} < threshold=$VAD_RMS_THRESHOLD")
-            }
             consecutiveSilentFrames++
+            consecutiveVadPasses = 0
+            if (verboseLogging && consecutiveSilentFrames % 10 == 0) {
+                Log.v(TAG, "VAD skip: rms=${"%.1f".format(rms)} (silent ${consecutiveSilentFrames} frames, avgRms=${"%.1f".format(recentAvgRms)})")
+            }
             if (consecutiveSilentFrames >= SILENCE_RESET_FRAMES) {
                 consecutiveDetections = 0
+                firstDetectionTime = 0L
                 consecutiveSilentFrames = 0
-                if (verboseLogging) {
-                    Log.v(TAG, "🔇 Long silence (${SILENCE_RESET_FRAMES * 80}ms) — detection state reset")
-                }
+                if (verboseLogging) Log.v(TAG, "🔇 Long silence — detection state reset")
             }
             return
         }
+
         consecutiveSilentFrames = 0
+        consecutiveVadPasses++
+
+        // Require at least MIN_VAD_PASSES_BEFORE_SCORING consecutive VAD-passing
+        // frames before opening the classifier pipeline.  This rejects transients
+        // (a single loud click or breath) that pass VAD for only one frame.
+        if (!bypassVad && consecutiveVadPasses < MIN_VAD_PASSES_BEFORE_SCORING) {
+            if (verboseLogging) Log.d(TAG, "🔕 VAD warmup: pass ${consecutiveVadPasses}/$MIN_VAD_PASSES_BEFORE_SCORING, rms=${"%.1f".format(rms)}")
+            return
+        }
+
+        if (verboseLogging) Log.d(TAG, "VAD pass: rms=${"%.1f".format(rms)} vadPasses=$consecutiveVadPasses avgRms=${"%.1f".format(recentAvgRms)}")
 
         for (s in shorts) pcmBuffer.addLast(s)
 
@@ -276,7 +358,9 @@ class WakeWordManager(
         melBuffer.clear()
         embeddingBuffer.clear()
         consecutiveDetections = 0
+        firstDetectionTime = 0L
         consecutiveSilentFrames = 0
+        consecutiveVadPasses = 0
         Log.d(TAG, "🧹 All buffers and cached embedding cleared")
     }
 
@@ -313,12 +397,14 @@ class WakeWordManager(
         var score = 0f
         try {
             if (useOnDevicePersonalizer) {
+                if (verboseLogging) Log.d(TAG, "⚙️ Scoring path: on-device personalizer")
                 score = personalizer.predict(currentEmb)
+
             } else if (isPersonalModel) {
-                val flat = currentEmb
+                if (verboseLogging) Log.d(TAG, "⚙️ Scoring path: personal ONNX model")
                 val inputTensor = OnnxTensor.createTensor(
                     ortEnv,
-                    FloatBuffer.wrap(flat),
+                    FloatBuffer.wrap(currentEmb),
                     longArrayOf(1, (EMBEDDING_WINDOW_SIZE * EMBEDDING_DIM).toLong())
                 )
                 inputTensor.use {
@@ -350,11 +436,12 @@ class WakeWordManager(
                         }
                     }
                 }
+
             } else {
-                val data = currentEmb.copyOf()
+                if (verboseLogging) Log.d(TAG, "⚙️ Scoring path: default ONNX model")
                 val inputTensor = OnnxTensor.createTensor(
                     ortEnv,
-                    FloatBuffer.wrap(data),
+                    FloatBuffer.wrap(currentEmb.copyOf()),
                     longArrayOf(1, EMBEDDING_WINDOW_SIZE.toLong(), EMBEDDING_DIM.toLong())
                 )
                 inputTensor.use {
@@ -368,44 +455,65 @@ class WakeWordManager(
                 }
             }
 
-            if (verboseLogging) {
-                Log.d(
-                    TAG,
-                    "🎤 Score: ${"%.3f".format(score)}, Consecutive: $consecutiveDetections/$REQUIRED_CONSECUTIVE"
-                )
+            Log.d(TAG, "Score: $score consecutive: $consecutiveDetections")
+            if (verboseLogging && score > 0.05f) {
+                Log.d(TAG, "🎤 Score=${"%.3f".format(score)} consecutive=$consecutiveDetections/$requiredConsecutive")
             }
 
             when {
+                score >= detectionThreshold && recentAvgRms < MIN_SCORING_RMS -> {
+                    // Score crossed the threshold but the rolling average energy is too
+                    // low — this is a brief transient that happened to score high, not
+                    // a real wake word utterance.  Reset rather than accumulate.
+                    Log.d(TAG, "🔕 Score=${"%.3f".format(score)} gated: avgRms=${"%.1f".format(recentAvgRms)} < MIN ${"%.1f".format(MIN_SCORING_RMS)} — weak signal, skipping")
+                    consecutiveDetections = 0
+                    firstDetectionTime = 0L
+                }
+
                 score >= detectionThreshold -> {
-                    consecutiveDetections++
-                    if (verboseLogging) {
-                        Log.d(
-                            TAG,
-                            "threshold passed: score=${"%.3f".format(score)}, consecutive=$consecutiveDetections"
-                        )
+                    val now = System.currentTimeMillis()
+
+                    // ✅ 시간 윈도우 체크 — 첫 감지 후 600ms 안에 연속이어야 유효
+                    if (consecutiveDetections == 0) {
+                        firstDetectionTime = now
+                    } else if (now - firstDetectionTime > DETECTION_WINDOW_MS) {
+                        Log.d(TAG, "⏱️ Detection window expired (${now - firstDetectionTime}ms) — reset and restart")
+                        consecutiveDetections = 0
+                        firstDetectionTime = now
                     }
-                    if (consecutiveDetections >= REQUIRED_CONSECUTIVE) {
-                        val now = System.currentTimeMillis()
+
+                    consecutiveDetections++
+                    Log.d(TAG, "✅ threshold passed: score=${"%.3f".format(score)}, consecutive=$consecutiveDetections/$requiredConsecutive")
+
+                    if (consecutiveDetections >= requiredConsecutive) {
                         if (now - lastDetectionTime > detectionCooldownMs) {
                             lastDetectionTime = now
                             consecutiveDetections = 0
+                            firstDetectionTime = 0L
                             Log.d(TAG, "🔥 [Hey Toma] DETECTED! score=${"%.3f".format(score)}")
                             triggerHaptic()
                             onWakeWordDetected()
                             embeddingBuffer.clear()
                         } else {
                             consecutiveDetections = 0
+                            firstDetectionTime = 0L
                             if (verboseLogging) Log.d(TAG, "⏱️ Cooldown active — ignoring detection")
                         }
                     }
                 }
+
                 score < RESET_FLOOR -> {
-                    consecutiveDetections = 0
+                    if (consecutiveDetections > 0) {
+                        consecutiveDetections = 0
+                        firstDetectionTime = 0L
+                    }
                 }
+
                 else -> {
                     if (consecutiveDetections > 0) consecutiveDetections--
                 }
             }
+
         } catch (e: Exception) {
             Log.e(TAG, "Classifier error: ${e.message}")
         }
@@ -414,8 +522,8 @@ class WakeWordManager(
     private fun triggerHaptic() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                vibratorManager.defaultVibrator.vibrate(
+                val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator.vibrate(
                     VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE)
                 )
             } else {
@@ -424,8 +532,7 @@ class WakeWordManager(
                 @Suppress("DEPRECATION")
                 vibrator.vibrate(100)
             }
-        } catch (e: Exception) {
-        }
+        } catch (_: Exception) {}
     }
 
     fun release() {

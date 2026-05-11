@@ -28,8 +28,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.activity.ComponentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.capstone.toma.viewmodel.SpeakerEnrollmentViewModel
+import com.capstone.toma.viewmodel.VoiceViewModel
 import kotlinx.coroutines.delay
 
 private val TomaMainOrange = Color(0xFFEE8C2B)
@@ -44,12 +46,19 @@ fun SpeakerEnrollmentScreen(
     onBackClick: () -> Unit = {}
 ) {
     val vm: SpeakerEnrollmentViewModel = viewModel()
+    val voiceVm: VoiceViewModel = viewModel(
+        viewModelStoreOwner = LocalContext.current as ComponentActivity
+    )
     val step by vm.step.collectAsState()
     val sampleIndex by vm.sampleIndex.collectAsState()
     val isRecording by vm.isRecording.collectAsState()
     val errorMessage by vm.errorMessage.collectAsState()
     val recordingHint by vm.recordingHint.collectAsState()
     val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        vm.setWakeWordManager(voiceVm.wakeWordManager)
+    }
 
     LaunchedEffect(errorMessage) {
         val msg = errorMessage ?: return@LaunchedEffect
@@ -117,11 +126,15 @@ fun SpeakerEnrollmentScreen(
             )
 
             SpeakerEnrollmentViewModel.Step.Complete -> {
-                LaunchedEffect(Unit) {
-                    delay(2000)
-                    onFinish()
+                val isPersonalizing by vm.isPersonalizing.collectAsState()
+                // Wait for on-device training to finish before dismissing
+                LaunchedEffect(isPersonalizing) {
+                    if (!isPersonalizing) {
+                        delay(1500)
+                        onFinish()
+                    }
                 }
-                CompleteContent()
+                CompleteContent(isPersonalizing = isPersonalizing)
             }
         }
     }
@@ -354,7 +367,7 @@ private fun RecordingContent(
 }
 
 @Composable
-private fun CompleteContent() {
+private fun CompleteContent(isPersonalizing: Boolean = false) {
     Column(
         modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -377,6 +390,22 @@ private fun CompleteContent() {
             textAlign = TextAlign.Center,
             lineHeight = 26.sp
         )
+
+        if (isPersonalizing) {
+            Spacer(modifier = Modifier.height(32.dp))
+            CircularProgressIndicator(
+                color = TomaMainOrange,
+                modifier = Modifier.size(32.dp),
+                strokeWidth = 3.dp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "내 목소리 학습 중…",
+                fontSize = 13.sp,
+                color = TomaSecondaryText,
+                textAlign = TextAlign.Center
+            )
+        }
     }
 }
 
