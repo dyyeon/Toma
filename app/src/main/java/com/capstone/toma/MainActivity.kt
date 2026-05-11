@@ -28,9 +28,6 @@ import com.capstone.toma.ui.theme.TomaTheme
 import com.capstone.toma.viewmodel.VoiceViewModel
 import androidx.activity.compose.rememberLauncherForActivityResult
 
-/**
- * CHANGED: openWakeWord migration - Swapped Vosk with new Audio & WakeWord logic
- */
 class MainActivity : ComponentActivity() {
 
     private val voiceViewModel: VoiceViewModel by viewModels()
@@ -39,9 +36,6 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
         super.onCreate(savedInstanceState)
 
-        // RECORD_AUDIO and SCHEDULE_EXACT_ALARM are requested eagerly at startup because
-        // they are required for the app to function at all. POST_NOTIFICATIONS is handled
-        // in Compose below so we can show a proper rationale dialog after denial.
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(
                 arrayOf(
@@ -60,18 +54,13 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+    // ✅ onStop/onStart 모두 제거
+    // 백그라운드 처리는 RecipeDetailScreen의 DisposableEffect(ON_PAUSE/ON_RESUME)가 담당
 }
 
-/**
- * Requests POST_NOTIFICATIONS on API 33+ before showing app content.
- * If the user denies, a rationale dialog explains the cooking-timer use-case and
- * offers a shortcut to app settings. Content is always rendered — the permission
- * degrades gracefully (timer still fires; notification just won't appear).
- */
 @Composable
 private fun NotificationPermissionGate(content: @Composable () -> Unit) {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-        // Below API 33: POST_NOTIFICATIONS does not exist — nothing to request
         content()
         return
     }
@@ -99,26 +88,21 @@ private fun NotificationPermissionGate(content: @Composable () -> Unit) {
             text = {
                 Text(
                     "요리 중 타이머 알람을 받으려면 알림 권한이 필요해요.\n" +
-                    "권한을 허용하지 않으면 화면이 꺼진 상태에서 타이머 알람을 받을 수 없어요."
+                            "권한을 허용하지 않으면 화면이 꺼진 상태에서 타이머 알람을 받을 수 없어요."
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     showRationale = false
-                    // Take the user directly to this app's notification settings
                     context.startActivity(
                         Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                             data = Uri.fromParts("package", context.packageName, null)
                         }
                     )
-                }) {
-                    Text("설정 열기")
-                }
+                }) { Text("설정 열기") }
             },
             dismissButton = {
-                TextButton(onClick = { showRationale = false }) {
-                    Text("나중에")
-                }
+                TextButton(onClick = { showRationale = false }) { Text("나중에") }
             }
         )
     }

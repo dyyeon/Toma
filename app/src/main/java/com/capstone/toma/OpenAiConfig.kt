@@ -7,7 +7,7 @@ object OpenAiConfig {
     const val DEFAULT_TEXT_MODEL = "gpt-5.4-mini-2026-03-17"
 
     /** Multimodal model used exclusively for camera-image recipe analysis. */
-    const val IMAGE_MODEL = "gpt-5.4-2026-03-17"
+    const val IMAGE_MODEL = "gpt-4o"
 
     // ── Model names for Manager ────────────────────────────────────────────────
     /** Advanced reasoning — Called by OpenAiManager */

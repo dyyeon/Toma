@@ -13,7 +13,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,11 +38,6 @@ private val TomaPrimaryText = Color(0xFF212529)
 private val TomaSecondaryText = Color(0xFF868E96)
 private val TomaCardBorder = Color(0xFFF1F3F5)
 
-/**
- * Speaker enrollment screen — collects 3 samples of the user reading a fixed
- * sentence so the on-device wake-word model can be personalized. Skipping is
- * always available; the app must work without enrollment.
- */
 @Composable
 fun SpeakerEnrollmentScreen(
     onFinish: () -> Unit,
@@ -50,16 +48,15 @@ fun SpeakerEnrollmentScreen(
     val sampleIndex by vm.sampleIndex.collectAsState()
     val isRecording by vm.isRecording.collectAsState()
     val errorMessage by vm.errorMessage.collectAsState()
+    val recordingHint by vm.recordingHint.collectAsState()
     val context = LocalContext.current
 
-    // Toast surface for transient errors (e.g. mic permission denied).
     LaunchedEffect(errorMessage) {
         val msg = errorMessage ?: return@LaunchedEffect
         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         vm.consumeError()
     }
 
-    // Mic permission launcher — only triggered from the Recording screen.
     var pendingStart by remember { mutableStateOf(false) }
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -91,26 +88,29 @@ fun SpeakerEnrollmentScreen(
             SpeakerEnrollmentViewModel.Step.Recording -> RecordingContent(
                 sampleIndex = sampleIndex,
                 isRecording = isRecording,
+                recordingHint = recordingHint,
                 onMicTap = {
-                    if (isRecording) {
-                        vm.stopRecordingSample()
+                    if (isRecording) return@RecordingContent
+
+                    val hasPermission = ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+
+                    if (hasPermission) {
+                        vm.startRecordingSample()
                     } else {
-                        val hasPermission = ContextCompat.checkSelfPermission(
-                            context, Manifest.permission.RECORD_AUDIO
-                        ) == PackageManager.PERMISSION_GRANTED
-                        if (hasPermission) {
-                            vm.startRecordingSample()
-                        } else {
-                            pendingStart = true
-                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        }
+                        pendingStart = true
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                     }
                 },
                 onOpenSettings = {
                     val intent = Intent(
                         Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                         Uri.fromParts("package", context.packageName, null)
-                    ).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+                    ).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
                     context.startActivity(intent)
                 },
                 onBack = onBackClick
@@ -135,7 +135,11 @@ private fun IntroContent(
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         IconButton(onClick = onBack) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "뒤로", tint = TomaPrimaryText)
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = "뒤로",
+                tint = TomaPrimaryText
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -170,7 +174,10 @@ private fun IntroContent(
                 color = TomaMainOrange.copy(alpha = 0.1f),
                 modifier = Modifier.size(180.dp)
             ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
                     Icon(
                         imageVector = Icons.Default.Mic,
                         contentDescription = null,
@@ -191,7 +198,12 @@ private fun IntroContent(
                 .fillMaxWidth()
                 .height(56.dp)
         ) {
-            Text("등록하기", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            Text(
+                text = "등록하기",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
         }
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -203,7 +215,12 @@ private fun IntroContent(
                 .fillMaxWidth()
                 .height(56.dp)
         ) {
-            Text("나중에 할게요", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = TomaSecondaryText)
+            Text(
+                text = "나중에 할게요",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                color = TomaSecondaryText
+            )
         }
     }
 }
@@ -212,13 +229,18 @@ private fun IntroContent(
 private fun RecordingContent(
     sampleIndex: Int,
     isRecording: Boolean,
+    recordingHint: String,
     onMicTap: () -> Unit,
     onOpenSettings: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         IconButton(onClick = onBack) {
-            Icon(Icons.Default.ArrowBack, contentDescription = "뒤로", tint = TomaPrimaryText)
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = "뒤로",
+                tint = TomaPrimaryText
+            )
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -253,8 +275,9 @@ private fun RecordingContent(
 
         Spacer(modifier = Modifier.height(32.dp))
 
-        // Progress counter: shows currently-collecting sample.
-        val displayedIndex = (sampleIndex + 1).coerceAtMost(SpeakerEnrollmentViewModel.TOTAL_SAMPLES)
+        val displayedIndex =
+            (sampleIndex + 1).coerceAtMost(SpeakerEnrollmentViewModel.TOTAL_SAMPLES)
+
         Text(
             text = "$displayedIndex / ${SpeakerEnrollmentViewModel.TOTAL_SAMPLES}",
             fontSize = 32.sp,
@@ -262,6 +285,18 @@ private fun RecordingContent(
             color = TomaMainOrange,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Text(
+            text = recordingHint,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (isRecording) TomaMainOrange else TomaSecondaryText,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
+            lineHeight = 20.sp
         )
 
         Spacer(modifier = Modifier.weight(1f))
@@ -272,15 +307,19 @@ private fun RecordingContent(
         ) {
             Surface(
                 onClick = onMicTap,
+                enabled = !isRecording,
                 shape = CircleShape,
-                color = TomaMainOrange,
+                color = if (isRecording) TomaMainOrange.copy(alpha = 0.7f) else TomaMainOrange,
                 shadowElevation = 4.dp,
                 modifier = Modifier.size(140.dp)
             ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
                     Icon(
                         imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
-                        contentDescription = if (isRecording) "정지" else "녹음",
+                        contentDescription = if (isRecording) "녹음 중" else "녹음 시작",
                         tint = Color.White,
                         modifier = Modifier.size(56.dp)
                     )
@@ -291,7 +330,7 @@ private fun RecordingContent(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = if (isRecording) "탭하여 정지" else "탭하여 녹음 시작",
+            text = if (isRecording) "말이 끝나면 자동으로 종료돼요" else "탭하여 녹음 시작",
             fontSize = 14.sp,
             fontWeight = FontWeight.Medium,
             color = TomaSecondaryText,
@@ -341,11 +380,7 @@ private fun CompleteContent() {
     }
 }
 
-/**
- * Kept for compatibility with any caller still importing this symbol.
- * Not used by the new flow.
- */
 @Composable
 fun DotProgressBar(count: Int, total: Int, modifier: Modifier = Modifier) {
-    // intentionally empty — legacy stub
+    // legacy stub
 }

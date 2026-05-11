@@ -15,89 +15,62 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.util.*
 
-/**
- * Optimized openWakeWord 3-stage pipeline implementation.
- * Pipeline: PCM -> MelSpectrogram -> Embedding -> Classifier
- */
 class WakeWordManager(
     private val context: Context,
     private val personalizer: OnDevicePersonalizer,
     private val onWakeWordDetected: () -> Unit
 ) {
     private val TAG = "WakeWord"
-    
-    // Detection configuration
-    var detectionThreshold: Float = 0.42f         // calibrated: 0.5 caused misses, 0.42 balances FP/FN
+
+    var detectionThreshold: Float = 0.35f
     var verboseLogging: Boolean = true
     private var consecutiveDetections = 0
-    private val REQUIRED_CONSECUTIVE = 4          // 4 × 80ms = 320ms — snappier response
-    private val RESET_FLOOR = 0.3f               // below this: hard-reset counter immediately
-    private val SILENCE_RESET_FRAMES = 25         // 25 × 80ms ≈ 2s of silence → state reset
+    private val REQUIRED_CONSECUTIVE = 4
+    private val RESET_FLOOR = 0.3f
+    private val SILENCE_RESET_FRAMES = 25
 
-    // VAD (Voice Activity Detection) — pre-filter before ONNX inference
-    private val VAD_RMS_THRESHOLD = 350f          // 300 let through too much hum; 500 blocked real speech on some devices
+    private val VAD_RMS_THRESHOLD = 120f
     private var consecutiveSilentFrames = 0
 
-    // Anti-conflict gate: set false while the app is in active LISTENING mode to prevent
-    // the async ONNX pipeline from firing onWakeWordDetected mid-command.
-    @Volatile var isArmed: Boolean = true
+    @Volatile
+    var isArmed: Boolean = true
         private set
-    
-    private val SAMPLE_RATE = 24000 // CHANGED: Matched with AudioStreamManager for Realtime API
-    private val CHUNK_SIZE = 1280 // 80ms at 16kHz
+
+    private val SAMPLE_RATE = 16000
+    private val CHUNK_SIZE = 1280
     private val MEL_WINDOW_SIZE = 76
     private val EMBEDDING_WINDOW_SIZE = 16
     private val MEL_CHANNELS = 32
     private val EMBEDDING_DIM = 96
 
-    // ONNX Resources
     private val ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
     private var melSession: OrtSession? = null
     private var embSession: OrtSession? = null
     private var clfSession: OrtSession? = null
     private var isPersonalModel = false
-    
-    // On-device personalizer
+
     var useOnDevicePersonalizer = false
         private set
     private var lastDetectionTime = 0L
-    private val detectionCooldownMs = 3000L  // 3초 쿨다운
+    private val detectionCooldownMs = 3000L
 
-    /**
-     * Set to true during Speaker Enrollment or Personalization to allow silent frames 
-     * (ambient noise collection) to reach the feature extraction pipeline.
-     */
     var bypassVad: Boolean = false
 
-    // FIX #5: Dedicated scope for the sequential pipeline consumer.
-    // SupervisorJob means a crash in the pipeline does not cancel the parent scope.
     private val pipelineScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
-
-    // FIX #6: One chunk channel replaces the per-frame CoroutineScope.launch pattern.
-    // Capacity 32 = ~2.5 seconds of buffering headroom before trySend starts dropping.
-    // Drops are controlled (tail-drop on overload) rather than the CONFLATED "keep only
-    // the latest" semantics that destroyed temporal continuity in v1.0.
     private val chunkChannel = Channel<ShortArray>(32)
 
-    // State Buffers
-    // FIX #7: ArrayDeque gives O(1) removeFirst()/addLast() vs ArrayList's O(n) removeAt(0).
-    // At 1280 shorts/chunk the old code did 1280 × O(n) shifts per frame, causing CPU spikes
-    // that stalled the audio thread and indirectly caused more frame drops.
     private val pcmBuffer = ArrayDeque<Short>()
     private val melBuffer = mutableListOf<FloatArray>()
     private val embeddingBuffer = LinkedList<FloatArray>()
-    
-    // 최근 1536차원 embedding 캐시 (Personalizer 학습용)
+
     private var lastEmbedding: FloatArray? = null
 
-    // Ambient collection for negative samples
     private val ambientEmbeddings = mutableListOf<FloatArray>()
     private var isCollectingAmbient = false
 
@@ -106,14 +79,6 @@ class WakeWordManager(
         startPipelineConsumer()
     }
 
-    // FIX #8: Single long-lived coroutine that processes chunks sequentially.
-    // The old code launched a NEW CoroutineScope(Dispatchers.Default).launch per
-    // 80 ms frame, causing:
-    //   a) Concurrent writes to melBuffer / embeddingBuffer (data corruption)
-    //   b) Thread.sleep(80) blocking Dispatchers.Default threads (pool starvation)
-    //   c) Unbounded scope growth (memory leak — scopes never cancelled)
-    // One consumer coroutine serialises all pipeline calls with zero locks needed
-    // on the internal buffers because only this coroutine ever touches them.
     private fun startPipelineConsumer() {
         pipelineScope.launch {
             for (chunk in chunkChannel) {
@@ -124,12 +89,10 @@ class WakeWordManager(
 
     private fun loadModels() {
         try {
-            // Load Base Models (Mel & Embedding) directly from assets as ByteArrays
             melSession = ortEnv.createSession(context.assets.open("melspectrogram.onnx").readBytes())
             embSession = ortEnv.createSession(context.assets.open("embedding_model.onnx").readBytes())
             Log.d(TAG, "✅ Base models (Mel, Embedding) loaded from assets")
 
-            // Load Classifier Model (Check Personal first, then Default)
             val personalWeights = File(context.filesDir, "personal_weights.bin")
             if (personalWeights.exists()) {
                 if (personalizer.loadFromFile(personalWeights)) {
@@ -146,7 +109,7 @@ class WakeWordManager(
                     loadDefaultModel(context)
                 }
             }
-            
+
             Log.d(TAG, "✅ 3-Stage ONNX Pipeline initialized")
         } catch (e: Exception) {
             Log.e(TAG, "❌ Model load failed: ${e.message}")
@@ -190,17 +153,11 @@ class WakeWordManager(
         return kotlin.math.sqrt(sumSq / shorts.size).toFloat()
     }
 
-    /** Re-enables wake-word detection after an active-listening session ends. */
     fun arm() {
         isArmed = true
         if (verboseLogging) Log.d(TAG, "🔓 Wake-word ARMED")
     }
 
-    /**
-     * Disables wake-word detection and flushes any accumulated consecutive-detection count.
-     * Call this the moment the app enters LISTENING state so a previously accumulating score
-     * cannot fire a spurious second trigger.
-     */
     fun disarm() {
         isArmed = false
         consecutiveDetections = 0
@@ -208,23 +165,32 @@ class WakeWordManager(
     }
 
     fun processFrame(pcmData: ByteArray) {
-        if (!isArmed) return  // disarmed during active listening — skip all ONNX work
+        if (!isArmed) {
+            if (verboseLogging) Log.d(TAG, "processFrame skipped: isArmed=false")
+            return
+        }
         if (melSession == null || embSession == null) return
         if (!useOnDevicePersonalizer && clfSession == null) return
 
         val shortBuf = ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer()
         val shorts = ShortArray(shortBuf.remaining()) { shortBuf.get() }
 
-        // VAD guard: skip ONNX inference entirely on silent frames.
-        // Eliminates the continuous runClassifier() flood seen in Logcat during silence.
         val rms = computeRms(shorts)
+        if (verboseLogging) {
+            Log.d(TAG, "RMS=${"%.1f".format(rms)}")
+        }
+
         if (!bypassVad && rms < VAD_RMS_THRESHOLD) {
+            if (verboseLogging) {
+                Log.v(TAG, "VAD skip: rms=${"%.1f".format(rms)} < threshold=$VAD_RMS_THRESHOLD")
+            }
             consecutiveSilentFrames++
             if (consecutiveSilentFrames >= SILENCE_RESET_FRAMES) {
-                // 2+ seconds of silence — flush stale detection state
                 consecutiveDetections = 0
                 consecutiveSilentFrames = 0
-                if (verboseLogging) Log.v(TAG, "🔇 Long silence (${SILENCE_RESET_FRAMES * 80}ms) — detection state reset")
+                if (verboseLogging) {
+                    Log.v(TAG, "🔇 Long silence (${SILENCE_RESET_FRAMES * 80}ms) — detection state reset")
+                }
             }
             return
         }
@@ -234,17 +200,22 @@ class WakeWordManager(
 
         while (pcmBuffer.size >= CHUNK_SIZE) {
             val chunk = ShortArray(CHUNK_SIZE) { pcmBuffer.removeFirst() }
-            chunkChannel.trySend(chunk)
+            val result = chunkChannel.trySend(chunk)
+            if (result.isFailure && verboseLogging) {
+                Log.w(TAG, "⚠️ chunk dropped: pipeline overloaded")
+            }
         }
     }
 
-    // Called exclusively from the single pipeline consumer coroutine — no synchronisation needed
-    // on melBuffer / embeddingBuffer since only one coroutine ever writes them.
     private fun runPipeline(chunk: ShortArray) {
         try {
             val floatPcm = FloatArray(CHUNK_SIZE) { chunk[it].toFloat() / 32768.0f }
-            val pcmTensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(floatPcm), longArrayOf(1, CHUNK_SIZE.toLong()))
-            
+            val pcmTensor = OnnxTensor.createTensor(
+                ortEnv,
+                FloatBuffer.wrap(floatPcm),
+                longArrayOf(1, CHUNK_SIZE.toLong())
+            )
+
             pcmTensor.use {
                 val melInputName = melSession?.inputNames?.iterator()?.next() ?: "input"
                 val melOutput = melSession?.run(Collections.singletonMap(melInputName, pcmTensor))
@@ -270,7 +241,11 @@ class WakeWordManager(
             for (i in 0 until MEL_WINDOW_SIZE) {
                 System.arraycopy(melBuffer[i], 0, flattenedMel, i * MEL_CHANNELS, MEL_CHANNELS)
             }
-            val melInputTensor = OnnxTensor.createTensor(ortEnv, FloatBuffer.wrap(flattenedMel), longArrayOf(1, MEL_WINDOW_SIZE.toLong(), MEL_CHANNELS.toLong(), 1))
+            val melInputTensor = OnnxTensor.createTensor(
+                ortEnv,
+                FloatBuffer.wrap(flattenedMel),
+                longArrayOf(1, MEL_WINDOW_SIZE.toLong(), MEL_CHANNELS.toLong(), 1)
+            )
             melInputTensor.use {
                 val embInputName = embSession?.inputNames?.iterator()?.next() ?: "input"
                 val embOutput = embSession?.run(Collections.singletonMap(embInputName, melInputTensor))
@@ -289,26 +264,14 @@ class WakeWordManager(
     }
 
     fun loadPersonalWeights(personalizer: OnDevicePersonalizer) {
-        // The personalizer is already the one passed in constructor
         this.useOnDevicePersonalizer = true
         Log.d(TAG, "✅ On-device personal model weights activated")
     }
 
-    /**
-     * Returns the most recently computed 1536-dimensional embedding.
-     */
     fun getLastEmbedding(): FloatArray? = lastEmbedding
 
-    /**
-     * Clears the cached embedding and all internal pipeline buffers to prevent bias or stuck detections.
-     * Called from external threads (ViewModel), so the assignment to lastEmbedding is @Volatile-safe
-     * and the buffer clears are guarded here to avoid racing the pipeline consumer.
-     */
     fun clearLastEmbedding() {
         lastEmbedding = null
-        // ArrayDeque (pcmBuffer) is only written by the audio capture thread, but clearing it
-        // from here is safe in practice because clearLastEmbedding is called only after
-        // enrollment completes (enrollment mode stops audio capture first).
         pcmBuffer.clear()
         melBuffer.clear()
         embeddingBuffer.clear()
@@ -336,7 +299,9 @@ class WakeWordManager(
     private fun runClassifier() {
         if (embeddingBuffer.size < EMBEDDING_WINDOW_SIZE) return
 
-        val currentEmb = embeddingBuffer.takeLast(EMBEDDING_WINDOW_SIZE).flatMap { it.toList() }.toFloatArray()
+        val currentEmb = embeddingBuffer.takeLast(EMBEDDING_WINDOW_SIZE)
+            .flatMap { it.toList() }
+            .toFloatArray()
         lastEmbedding = currentEmb
 
         synchronized(this) {
@@ -345,13 +310,12 @@ class WakeWordManager(
             }
         }
 
-        // --- Inference ---
         var score = 0f
         try {
             if (useOnDevicePersonalizer) {
                 score = personalizer.predict(currentEmb)
             } else if (isPersonalModel) {
-                val flat = currentEmb  // already flattened [16×96 = 1536]
+                val flat = currentEmb
                 val inputTensor = OnnxTensor.createTensor(
                     ortEnv,
                     FloatBuffer.wrap(flat),
@@ -374,12 +338,14 @@ class WakeWordManager(
                             }
                             score = innerMap?.let { map ->
                                 (map[1L] ?: map[1] ?: map.entries.find { it.key.toString() == "1" }?.value)
-                                    ?.let { v -> when (v) {
-                                        is Float -> v
-                                        is Double -> v.toFloat()
-                                        is Number -> v.toFloat()
-                                        else -> 0f
-                                    }}
+                                    ?.let { v ->
+                                        when (v) {
+                                            is Float -> v
+                                            is Double -> v.toFloat()
+                                            is Number -> v.toFloat()
+                                            else -> 0f
+                                        }
+                                    }
                             } ?: 0f
                         }
                     }
@@ -402,15 +368,22 @@ class WakeWordManager(
                 }
             }
 
-            // --- Throttled logging: only print when score is high enough to matter ---
-            if (score > 0.1f && verboseLogging) {
-                Log.d(TAG, "🎤 Score: ${"%.3f".format(score)}, Consecutive: $consecutiveDetections/$REQUIRED_CONSECUTIVE")
+            if (verboseLogging) {
+                Log.d(
+                    TAG,
+                    "🎤 Score: ${"%.3f".format(score)}, Consecutive: $consecutiveDetections/$REQUIRED_CONSECUTIVE"
+                )
             }
 
-            // --- Detection gate with floor/decay (replaces binary reset) ---
             when {
                 score >= detectionThreshold -> {
                     consecutiveDetections++
+                    if (verboseLogging) {
+                        Log.d(
+                            TAG,
+                            "threshold passed: score=${"%.3f".format(score)}, consecutive=$consecutiveDetections"
+                        )
+                    }
                     if (consecutiveDetections >= REQUIRED_CONSECUTIVE) {
                         val now = System.currentTimeMillis()
                         if (now - lastDetectionTime > detectionCooldownMs) {
@@ -427,13 +400,9 @@ class WakeWordManager(
                     }
                 }
                 score < RESET_FLOOR -> {
-                    // Clear signal of non-detection — hard reset immediately
                     consecutiveDetections = 0
                 }
                 else -> {
-                    // Hovering between floor and threshold (sustained background noise).
-                    // Gradual decay prevents accumulation while remaining responsive
-                    // if a real word follows immediately after a noise burst.
                     if (consecutiveDetections > 0) consecutiveDetections--
                 }
             }
@@ -446,25 +415,24 @@ class WakeWordManager(
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                vibratorManager.defaultVibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+                vibratorManager.defaultVibrator.vibrate(
+                    VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE)
+                )
             } else {
                 @Suppress("DEPRECATION")
                 val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
                 @Suppress("DEPRECATION")
                 vibrator.vibrate(100)
             }
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+        }
     }
 
     fun release() {
-        chunkChannel.close()      // signals the pipeline consumer to stop
-        pipelineScope.cancel()    // cancels the consumer coroutine and loadModels if still running
+        chunkChannel.close()
+        pipelineScope.cancel()
         melSession?.close()
         embSession?.close()
         clfSession?.close()
-        // FIX #9: OrtEnvironment.getEnvironment() returns a SINGLETON. Calling ortEnv.close()
-        // here destroys the global ONNX Runtime state. If WakeWordManager is ever recreated
-        // (e.g., after ViewModel.onCleared + relaunch), the next OrtSession.createSession()
-        // call will crash with "OrtEnvironment is closed". Never close the environment.
     }
 }

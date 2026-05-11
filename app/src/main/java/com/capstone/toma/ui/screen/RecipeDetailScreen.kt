@@ -32,6 +32,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.capstone.toma.TomaIntent
 import com.capstone.toma.VoiceUiState
@@ -84,10 +87,14 @@ fun RecipeDetailContent(
     }
     val title = recipeData?.optString("title", keyword) ?: keyword
     val steps = remember(recipeData) {
-        recipeData?.optJSONArray("steps")?.let { array -> List(array.length()) { array.getString(it) } } ?: emptyList()
+        recipeData?.optJSONArray("steps")?.let { array ->
+            List(array.length()) { array.getString(it) }
+        } ?: emptyList()
     }
     val ingredients = remember(recipeData) {
-        recipeData?.optJSONArray("ingredients")?.let { array -> List(array.length()) { array.getString(it) } } ?: emptyList()
+        recipeData?.optJSONArray("ingredients")?.let { array ->
+            List(array.length()) { array.getString(it) }
+        } ?: emptyList()
     }
     val difficulty = recipeData?.optString("difficulty") ?: "보통"
     val timeStr = recipeData?.optString("time") ?: "20분"
@@ -99,15 +106,12 @@ fun RecipeDetailContent(
     val scope = rememberCoroutineScope()
     val voiceUiState by voiceViewModel.uiState.collectAsState()
 
-    // TTS Control State
     var isTtsEnabled by remember { mutableStateOf(true) }
     var isTtsSpeaking by remember { mutableStateOf(false) }
 
-    // Timer State from ViewModel
     val isTimerRunning by voiceViewModel.isTimerRunning.collectAsState()
     val remainingSeconds by voiceViewModel.timerRemainingSeconds.collectAsState()
 
-    // TTS engine — initialised once, language set inside the onInit callback
     var ttsReady by remember { mutableStateOf(false) }
     val tts: TextToSpeech = remember(context) {
         lateinit var engine: TextToSpeech
@@ -115,12 +119,9 @@ fun RecipeDetailContent(
             if (status == TextToSpeech.SUCCESS) {
                 engine.language = Locale.KOREAN
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {
-                        isTtsSpeaking = true
-                    }
+                    override fun onStart(utteranceId: String?) { isTtsSpeaking = true }
                     override fun onDone(utteranceId: String?) {
                         isTtsSpeaking = false
-                        // Small delay before resuming mic to let the speaker hardware fully settle
                         scope.launch {
                             delay(300)
                             voiceViewModel.resumeAudioCapture()
@@ -144,37 +145,61 @@ fun RecipeDetailContent(
         engine
     }
 
-    // Stop TTS when voice capture starts (User says "Hey Toma" or taps Mic)
-    LaunchedEffect(voiceUiState) {
-        if (voiceUiState == VoiceUiState.Listening && isTtsSpeaking) {
-            tts.stop()
-            isTtsSpeaking = false
-            // Note: resumeAudioCapture is NOT called here because the mic is already being used for command
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // 백그라운드/포그라운드 처리 — ON_PAUSE/ON_RESUME 기반
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE -> {
+                    if (ttsReady) tts.stop()
+                    isTtsSpeaking = false
+                    voiceViewModel.onAppBackground()
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    voiceViewModel.startWakeWord()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
-    // Wake-word lifecycle: arm on enter, disarm on leave
+    // 화면 진입/이탈 처리
     DisposableEffect(Unit) {
         voiceViewModel.onStopTtsRequest = {
-            if (ttsReady) tts.stop()
-            isTtsSpeaking = false
+            if (ttsReady) {
+                tts.stop()
+                isTtsSpeaking = false
+            }
         }
         voiceViewModel.startWakeWord()
         onDispose {
             voiceViewModel.onStopTtsRequest = null
             voiceViewModel.stopWakeWord()
+            tts.stop()
             tts.shutdown()
         }
     }
 
-    // Auto-TTS when step changes or TTS engine becomes ready
+    // TTS 재생 중 음성 인식 시작되면 즉시 TTS 중단
+    LaunchedEffect(voiceUiState) {
+        if (voiceUiState == VoiceUiState.Listening && isTtsSpeaking) {
+            tts.stop()
+            isTtsSpeaking = false
+        }
+    }
+
+    // 단계 변경 시 자동 TTS
     LaunchedEffect(currentStepIndex, ttsReady) {
         if (isTtsEnabled && ttsReady) {
             val text = if (currentStepIndex == 0)
                 "재료 준비 단계입니다. 필수 재료는 ${ingredients.joinToString(", ")}입니다."
             else
                 steps.getOrNull(currentStepIndex - 1) ?: ""
-            
             if (text.isNotBlank()) {
                 voiceViewModel.pauseAudioCapture()
                 tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "utterance_auto")
@@ -182,9 +207,13 @@ fun RecipeDetailContent(
         }
     }
 
-    // Voice command handler — runs only while this screen is in the composition
+    // 음성 명령 처리
     LaunchedEffect(voiceViewModel) {
         voiceViewModel.intentEvent.collect { intent ->
+            android.util.Log.d(
+                "RecipeDetail",
+                "intentEvent received: $intent, step=$currentStepIndex / $totalSteps"
+            )
             when (intent) {
                 TomaIntent.NEXT_STEP -> {
                     if (currentStepIndex < totalSteps) currentStepIndex++
@@ -205,24 +234,26 @@ fun RecipeDetailContent(
                 }
                 TomaIntent.RECOMMENDED_TIMER -> {
                     val stepText = steps.getOrNull(currentStepIndex - 1) ?: ""
-                    val minutes = "([0-9]+)\\s*분".toRegex().find(stepText)?.groupValues?.get(1)?.toIntOrNull()
-                    if (minutes != null && minutes > 0) {
-                        voiceViewModel.triggerTimer(minutes)
-                    }
+                    val minutes = "([0-9]+)\\s*분".toRegex()
+                        .find(stepText)?.groupValues?.get(1)?.toIntOrNull()
+                    if (minutes != null && minutes > 0) voiceViewModel.triggerTimer(minutes)
+                    else voiceViewModel.showTimerManualGuidance()
+                }
+                // ✅ 추가 — 음성으로 타이머 취소 명령 처리
+                TomaIntent.CANCEL_TIMER -> {
+                    if (isTimerRunning) voiceViewModel.cancelTimer()
                 }
                 else -> {}
             }
         }
     }
 
-    // Keep VoiceViewModel in sync with the current step index so its smart-timer logic
-    // can make step-aware cancellation decisions.
+    // 단계 변경 시 VoiceViewModel 동기화
     LaunchedEffect(currentStepIndex) {
         voiceViewModel.onStepChanged(currentStepIndex)
     }
 
-    // Speak ViewModel-initiated announcements (e.g. "이전 타이머를 취소했어요") via the
-    // screen's TTS engine so they blend naturally with step narration.
+    // 음성 안내 메시지 TTS
     LaunchedEffect(voiceViewModel, ttsReady) {
         if (!ttsReady) return@LaunchedEffect
         voiceViewModel.voiceAnnouncement.collect { message ->
@@ -247,7 +278,6 @@ fun RecipeDetailContent(
                 onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) }
             )
 
-            // Timer Overlay Card
             AnimatedVisibility(
                 visible = isTimerRunning,
                 enter = fadeIn() + expandVertically(),
@@ -261,12 +291,11 @@ fun RecipeDetailContent(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            val progress = if (totalSteps > 0) (currentStepIndex.toFloat() / totalSteps.toFloat()) else 0f
+            val progress = if (totalSteps > 0) currentStepIndex.toFloat() / totalSteps.toFloat() else 0f
             ProgressSection(current = currentStepIndex, total = totalSteps, progress = progress)
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Instructions or Ingredients area - constrained by content, not weight
             Box(modifier = Modifier.fillMaxWidth()) {
                 if (currentStepIndex == 0) {
                     IngredientsSection(ingredients)
@@ -293,12 +322,10 @@ fun RecipeDetailContent(
                 isTimerRecommended = isTimerRecommended,
                 onTtsToggle = { isTtsEnabled = !isTtsEnabled },
                 onTimerClick = {
-                    val minutes = "([0-9]+)\\s*분".toRegex().find(currentStepText)?.groupValues?.get(1)?.toIntOrNull()
-                    if (minutes != null && minutes > 0) {
-                        voiceViewModel.triggerTimer(minutes)
-                    } else {
-                        voiceViewModel.showTimerManualGuidance()
-                    }
+                    val minutes = "([0-9]+)\\s*분".toRegex()
+                        .find(currentStepText)?.groupValues?.get(1)?.toIntOrNull()
+                    if (minutes != null && minutes > 0) voiceViewModel.triggerTimer(minutes)
+                    else voiceViewModel.showTimerManualGuidance()
                 },
                 onSpeechClick = {
                     if (isTtsSpeaking) {
@@ -338,30 +365,39 @@ fun RecipeDetailContent(
 }
 
 @Composable
-private fun RecipeTopBar(onBackClick: () -> Unit, keyword: String, isFavorite: Boolean, onFavoriteClick: () -> Unit) {
+private fun RecipeTopBar(
+    onBackClick: () -> Unit,
+    keyword: String,
+    isFavorite: Boolean,
+    onFavoriteClick: () -> Unit
+) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Surface(
-            modifier = Modifier.size(40.dp).clickable { onBackClick() },
+            modifier = Modifier
+                .size(40.dp)
+                .clickable { onBackClick() },
             shape = CircleShape,
             color = Color.White,
             border = BorderStroke(1.dp, Color(0xFFEEEEEE))
         ) {
-            Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.padding(10.dp), tint = Color.Black)
+            Icon(
+                Icons.Default.Close,
+                contentDescription = null,
+                modifier = Modifier.padding(10.dp),
+                tint = Color.Black
+            )
         }
         Text(
             text = titleCase(keyword),
-            modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
-            fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, color = Color.Black,
-            maxLines = 1, overflow = TextOverflow.Ellipsis
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 16.dp),
+            fontSize = 20.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = Color.Black,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
-        /*IconButton(onClick = onFavoriteClick) {
-            Icon(
-                if (isFavorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                contentDescription = null,
-                tint = if (isFavorite) TomaMainOrange else Color.LightGray,
-                modifier = Modifier.size(28.dp)
-            )
-        }*/
     }
 }
 
@@ -371,25 +407,41 @@ private fun ProgressSection(current: Int, total: Int, progress: Float) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 text = if (current == 0) "재료 준비" else "단계 $current",
-                fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TomaMainOrange
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = TomaMainOrange
             )
             Text(
                 text = " / $total",
-                fontSize = 14.sp, fontWeight = FontWeight.Medium, color = Color.LightGray,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.LightGray,
                 modifier = Modifier.padding(bottom = 2.dp, start = 4.dp)
             )
             Spacer(modifier = Modifier.weight(1f))
             Text(
                 text = "${(progress * 100).toInt()}% 완료",
-                fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.Gray
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Gray
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(6.dp).background(Color(0xFFE9ECEF), CircleShape)) {
-            Box(modifier = Modifier.fillMaxWidth(progress).fillMaxHeight().background(
-                brush = Brush.horizontalGradient(listOf(TomaMainOrange, Color(0xFFFFB347))),
-                shape = CircleShape
-            ))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .background(Color(0xFFE9ECEF), CircleShape)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(progress)
+                    .fillMaxHeight()
+                    .background(
+                        brush = Brush.horizontalGradient(listOf(TomaMainOrange, Color(0xFFFFB347))),
+                        shape = CircleShape
+                    )
+            )
         }
     }
 }
@@ -398,7 +450,12 @@ private fun ProgressSection(current: Int, total: Int, progress: Float) {
 private fun IngredientsSection(ingredients: List<String>) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.ShoppingBasket, contentDescription = null, tint = TomaMainOrange, modifier = Modifier.size(20.dp))
+            Icon(
+                Icons.Default.ShoppingBasket,
+                contentDescription = null,
+                tint = TomaMainOrange,
+                modifier = Modifier.size(20.dp)
+            )
             Spacer(modifier = Modifier.width(8.dp))
             Text("필수 재료 체크", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.Black)
         }
@@ -412,10 +469,22 @@ private fun IngredientsSection(ingredients: List<String>) {
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 ingredients.forEach { ingredient ->
-                    Row(modifier = Modifier.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(modifier = Modifier.size(6.dp).background(TomaMainOrange, CircleShape))
+                    Row(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(TomaMainOrange, CircleShape)
+                        )
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(ingredient, fontSize = 16.sp, color = Color(0xFF495057), fontWeight = FontWeight.Medium)
+                        Text(
+                            ingredient,
+                            fontSize = 16.sp,
+                            color = Color(0xFF495057),
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
             }
@@ -428,15 +497,32 @@ private fun CurrentStepSection(stepNumber: Int, stepText: String) {
     Box(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = stepNumber.toString(),
-            modifier = Modifier.align(Alignment.TopStart).offset(y = (-20).dp).alpha(0.05f),
-            fontSize = 160.sp, fontWeight = FontWeight.Black, color = Color.Black
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(y = (-20).dp)
+                .alpha(0.05f),
+            fontSize = 160.sp,
+            fontWeight = FontWeight.Black,
+            color = Color.Black
         )
-        Column(modifier = Modifier.fillMaxWidth().padding(top = 20.dp)) {
-            Text("How to Cook", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = TomaMainOrange, letterSpacing = 2.sp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 20.dp)
+        ) {
+            Text(
+                "How to Cook",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = TomaMainOrange,
+                letterSpacing = 2.sp
+            )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = stepText,
-                fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFF212529),
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF212529),
                 lineHeight = 38.sp
             )
         }
@@ -445,7 +531,10 @@ private fun CurrentStepSection(stepNumber: Int, stepText: String) {
 
 @Composable
 private fun InfoCardRow(time: String, difficulty: String) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
         InfoCardDetail(
             modifier = Modifier.weight(1f),
             label = "요리시간",
@@ -477,7 +566,10 @@ private fun InfoCardDetail(
         color = Color.White,
         border = BorderStroke(1.dp, Color(0xFFF1F3F5))
     ) {
-        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.Center) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(icon, contentDescription = null, modifier = Modifier.size(16.dp), tint = color)
                 Spacer(modifier = Modifier.width(6.dp))
@@ -503,22 +595,27 @@ private fun AiSuggestionSection(
         Spacer(modifier = Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             val suggestions = listOf(
-                "자동 안내" to if (isTtsEnabled) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                "자동 안내" to if (isTtsEnabled) Icons.AutoMirrored.Filled.VolumeUp
+                else Icons.AutoMirrored.Filled.VolumeOff,
                 "타이머" to Icons.Default.AvTimer,
-                (if (isTtsSpeaking) "안내 중지" else "다시듣기") to if (isTtsSpeaking) Icons.Default.StopCircle else Icons.AutoMirrored.Filled.VolumeUp
+                (if (isTtsSpeaking) "안내 중지" else "다시듣기") to
+                        if (isTtsSpeaking) Icons.Default.StopCircle
+                        else Icons.AutoMirrored.Filled.VolumeUp
             )
             suggestions.forEach { (text, icon) ->
                 val isStopButton = text == "안내 중지"
                 val isTimerActive = text == "타이머" && isTimerRecommended
 
                 Surface(
-                    modifier = Modifier.weight(1f).clickable {
-                        when (text) {
-                            "자동 안내" -> onTtsToggle()
-                            "타이머" -> onTimerClick()
-                            "다시듣기", "안내 중지" -> onSpeechClick()
-                        }
-                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            when (text) {
+                                "자동 안내" -> onTtsToggle()
+                                "타이머" -> onTimerClick()
+                                "다시듣기", "안내 중지" -> onSpeechClick()
+                            }
+                        },
                     shape = RoundedCornerShape(16.dp),
                     color = when {
                         text == "자동 안내" && isTtsEnabled -> TomaMainOrange.copy(alpha = 0.1f)
@@ -527,9 +624,12 @@ private fun AiSuggestionSection(
                         else -> Color(0xFFF1F3F5)
                     },
                     border = when {
-                        text == "자동 안내" && isTtsEnabled -> BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.3f))
-                        isTimerActive -> BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.3f))
-                        isStopButton -> BorderStroke(1.dp, TomaMainRed.copy(alpha = 0.3f))
+                        text == "자동 안내" && isTtsEnabled ->
+                            BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.3f))
+                        isTimerActive ->
+                            BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.3f))
+                        isStopButton ->
+                            BorderStroke(1.dp, TomaMainRed.copy(alpha = 0.3f))
                         else -> null
                     }
                 ) {
@@ -538,9 +638,9 @@ private fun AiSuggestionSection(
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Icon(
-                            imageVector = icon, 
-                            contentDescription = null, 
-                            modifier = Modifier.size(20.dp), 
+                            imageVector = icon,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
                             tint = when {
                                 text == "자동 안내" && isTtsEnabled -> TomaMainOrange
                                 isTimerActive -> TomaMainOrange
@@ -550,9 +650,9 @@ private fun AiSuggestionSection(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = text, 
-                            fontSize = 11.sp, 
-                            fontWeight = FontWeight.Bold, 
+                            text = text,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
                             color = when {
                                 text == "자동 안내" && isTtsEnabled -> TomaMainOrange
                                 isTimerActive -> TomaMainOrange
@@ -574,22 +674,41 @@ private fun BottomControlSection(
     onMicClick: () -> Unit = {},
     isMicActive: Boolean = false
 ) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
         Surface(
-            modifier = Modifier.size(56.dp).clickable { onPrevClick() },
-            shape = CircleShape, color = Color.White, border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+            modifier = Modifier
+                .size(56.dp)
+                .clickable { onPrevClick() },
+            shape = CircleShape,
+            color = Color.White,
+            border = BorderStroke(1.dp, Color(0xFFEEEEEE))
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.padding(16.dp), tint = Color.Black)
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = null,
+                modifier = Modifier.padding(16.dp),
+                tint = Color.Black
+            )
         }
 
         Surface(
-            modifier = Modifier.size(76.dp).clickable { onMicClick() },
+            modifier = Modifier
+                .size(76.dp)
+                .clickable { onMicClick() },
             shape = CircleShape,
             color = if (isMicActive) Color(0xFFE53935) else TomaMainOrange,
             shadowElevation = 8.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
-                Box(modifier = Modifier.size(64.dp).border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape))
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .border(2.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                )
                 Icon(
                     if (isMicActive) Icons.Default.MicOff else Icons.Default.Mic,
                     contentDescription = if (isMicActive) "음성 인식 중지" else "음성 명령",
@@ -600,12 +719,19 @@ private fun BottomControlSection(
         }
 
         Surface(
-            modifier = Modifier.size(56.dp).clickable { onNextClick() },
+            modifier = Modifier
+                .size(56.dp)
+                .clickable { onNextClick() },
             shape = CircleShape,
             color = Color.Black,
             shadowElevation = 4.dp
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.padding(16.dp), tint = Color.White)
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                modifier = Modifier.padding(16.dp),
+                tint = Color.White
+            )
         }
     }
 }
@@ -618,7 +744,7 @@ private fun TimerDisplayCard(
     val minutes = remainingSeconds / 60
     val seconds = remainingSeconds % 60
     val timeText = String.format("%02d:%02d", minutes, seconds)
-    
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -644,9 +770,7 @@ private fun TimerDisplayCard(
                     modifier = Modifier.size(24.dp)
                 )
             }
-            
             Spacer(modifier = Modifier.width(16.dp))
-            
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = "타이머 작동 중",
@@ -661,7 +785,6 @@ private fun TimerDisplayCard(
                     color = Color.Black
                 )
             }
-            
             TextButton(onClick = onCancel) {
                 Text("취소", color = Color.Gray, fontWeight = FontWeight.Bold)
             }
@@ -670,4 +793,3 @@ private fun TimerDisplayCard(
 }
 
 private fun titleCase(str: String) = str.lowercase().replaceFirstChar { it.uppercase() }
-
