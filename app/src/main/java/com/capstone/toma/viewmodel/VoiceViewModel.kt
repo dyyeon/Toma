@@ -9,7 +9,11 @@ import android.media.AudioManager
 import android.media.MediaRecorder
 import android.media.ToneGenerator
 import android.os.Build
+import android.os.Bundle
 import android.os.IBinder
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -69,15 +73,12 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 Log.e("VoiceViewModel", "Realtime error: $error")
                 _uiState.value = VoiceUiState.Error(error)
                 delay(3000)
-                if (_uiState.value is VoiceUiState.Error) {
-                    returnToIdle()
-                }
+                if (_uiState.value is VoiceUiState.Error) returnToIdle()
             }
         },
         onSessionReady = {
             if (_uiState.value == VoiceUiState.Listening && !isManualFlow) {
                 viewModelScope.launch {
-                    Log.d("VoiceViewModel", "Realtime session ready")
                     _uiState.value = VoiceUiState.Result("토마 준비됐어요!")
                     delay(1500)
                     _uiState.value = VoiceUiState.Listening
@@ -86,16 +87,19 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     )
 
-    private var mediaRecorder: MediaRecorder? = null
-    private val manualAudioFile = File(application.cacheDir, "manual_voice_search.m4a")
+    // ─── SpeechRecognizer (로컬 STT) ───────────────
+    private var speechRecognizer: SpeechRecognizer? = null
     private var isManualFlow = false
+
+    // Whisper용 — 레시피 검색 등 긴 문장 전용으로만 남김
+    private val manualAudioFile = File(application.cacheDir, "manual_voice_search.m4a")
+    private var mediaRecorder: MediaRecorder? = null
+    private var recordingJob: Job? = null
+    private var recordingStartMs: Long = 0L
+    private var peakAmplitude: Int = 0
 
     private val _recordingDurationSeconds = MutableStateFlow(0)
     val recordingDurationSeconds = _recordingDurationSeconds.asStateFlow()
-    private var recordingJob: Job? = null
-
-    private var recordingStartMs: Long = 0L
-    private var peakAmplitude: Int = 0
 
     private val hallucinationKeywords = listOf(
         "자막", "구독", "좋아요", "감사합니다", "시청해주셔서",
@@ -122,16 +126,10 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             val srv = binder.getService()
             timerService = srv
             Log.d("VoiceViewModel", "TimerService connected")
-            viewModelScope.launch {
-                srv.remainingSeconds.collect { _timerRemainingSeconds.value = it }
-            }
-            viewModelScope.launch {
-                srv.isTimerRunning.collect { _isTimerRunning.value = it }
-            }
+            viewModelScope.launch { srv.remainingSeconds.collect { _timerRemainingSeconds.value = it } }
+            viewModelScope.launch { srv.isTimerRunning.collect { _isTimerRunning.value = it } }
         }
-
         override fun onServiceDisconnected(name: ComponentName?) {
-            Log.w("VoiceViewModel", "TimerService disconnected")
             timerService = null
             _isTimerRunning.value = false
         }
@@ -144,20 +142,108 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         observeAudioStream()
         val intent = Intent(application, TimerService::class.java)
         application.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+        initSpeechRecognizer(application)
     }
+
+    // ─────────────────────────────────────────────
+    // SpeechRecognizer 초기화
+    // ─────────────────────────────────────────────
+
+    private fun initSpeechRecognizer(context: Context) {
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) {
+            Log.w("VoiceViewModel", "SpeechRecognizer not available on this device")
+            return
+        }
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                Log.d("VoiceViewModel", "SpeechRecognizer: ready")
+                viewModelScope.launch { _uiState.value = VoiceUiState.Listening }
+                toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
+            }
+
+            override fun onBeginningOfSpeech() {
+                Log.d("VoiceViewModel", "SpeechRecognizer: speech started")
+            }
+
+            override fun onRmsChanged(rmsdB: Float) {}
+
+            override fun onBufferReceived(buffer: ByteArray?) {}
+
+            override fun onEndOfSpeech() {
+                Log.d("VoiceViewModel", "SpeechRecognizer: end of speech")
+                viewModelScope.launch { _uiState.value = VoiceUiState.Processing }
+            }
+
+            override fun onError(error: Int) {
+                val msg = when (error) {
+                    SpeechRecognizer.ERROR_NO_MATCH -> "인식 실패"
+                    SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "음성이 감지되지 않았어요."
+                    SpeechRecognizer.ERROR_AUDIO -> "마이크 오류"
+                    SpeechRecognizer.ERROR_NETWORK -> "네트워크 오류"
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "네트워크 타임아웃"
+                    else -> "오류 ($error)"
+                }
+                Log.e("VoiceViewModel", "SpeechRecognizer error: $msg (code=$error)")
+                viewModelScope.launch {
+                    isManualFlow = false
+                    _uiState.value = VoiceUiState.Error(msg)
+                    delay(1500)
+                    returnToIdle()
+                }
+            }
+
+            override fun onResults(results: Bundle?) {
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                val text = matches?.firstOrNull()?.trim().orEmpty()
+                Log.d("VoiceViewModel", "SpeechRecognizer result: '$text'")
+
+                viewModelScope.launch {
+                    isManualFlow = false
+
+                    if (text.length < 2 || isHallucinatedTranscript(text) || hasExcessiveRepetition(text)) {
+                        Log.w("VoiceViewModel", "STT guard fail: '$text'")
+                        _uiState.value = VoiceUiState.Error("다시 말씀해주세요.")
+                        delay(1500)
+                        returnToIdle()
+                        return@launch
+                    }
+
+                    val intent = classifyManualIntent(text)
+                    Log.d("VoiceViewModel", "classifyManualIntent('$text') → $intent")
+
+                    returnToIdle()
+                    _recognizedTextEvent.emit(text)
+                    _intentEvent.emit(intent)
+                    Log.d("VoiceViewModel", "intentEvent emitted: $intent")
+                }
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {
+                val partial = partialResults
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull() ?: return
+                Log.d("VoiceViewModel", "Partial: '$partial'")
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
+    }
+
+    // ─────────────────────────────────────────────
+    // 상태 전환
+    // ─────────────────────────────────────────────
 
     private fun returnToIdle() {
         Log.d("VoiceViewModel", "returnToIdle()")
         _uiState.value = VoiceUiState.Idle
         isManualFlow = false
         wakeWordManager.arm()
-        viewModelScope.launch(Dispatchers.IO) {
-            audioStreamManager.startCapture()
-        }
+        viewModelScope.launch(Dispatchers.IO) { audioStreamManager.startCapture() }
     }
 
     fun startWakeWord() {
-        Log.d("VoiceViewModel", "Starting WakeWord sensing")
+        Log.d("VoiceViewModel", "startWakeWord()")
         _uiState.value = VoiceUiState.Idle
         isManualFlow = false
         wakeWordManager.arm()
@@ -168,7 +254,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopWakeWord() {
-        Log.d("VoiceViewModel", "Stopping WakeWord sensing")
+        Log.d("VoiceViewModel", "stopWakeWord()")
         wakeWordManager.disarm()
         _uiState.value = VoiceUiState.Idle
         isManualFlow = false
@@ -182,13 +268,9 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         Log.d("VoiceViewModel", "onAppBackground()")
         onStopTtsRequest?.invoke()
         wakeWordManager.disarm()
-        viewModelScope.launch(Dispatchers.IO) {
-            audioStreamManager.stopCapture()
-        }
-        if (isManualFlow && mediaRecorder != null) {
-            recordingJob?.cancel()
-            try { mediaRecorder?.apply { stop(); release() } } catch (_: Exception) {}
-            mediaRecorder = null
+        speechRecognizer?.stopListening()
+        viewModelScope.launch(Dispatchers.IO) { audioStreamManager.stopCapture() }
+        if (isManualFlow) {
             isManualFlow = false
             _uiState.value = VoiceUiState.Idle
         }
@@ -196,104 +278,80 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onAppForeground() {
         Log.d("VoiceViewModel", "onAppForeground()")
-        viewModelScope.launch(Dispatchers.IO) {
-            audioStreamManager.startCapture()
-        }
+        viewModelScope.launch(Dispatchers.IO) { audioStreamManager.startCapture() }
     }
+
+    // ─────────────────────────────────────────────
+    // 오디오 스트림 / 웨이크워드
+    // ─────────────────────────────────────────────
 
     private fun observeAudioStream() {
         viewModelScope.launch(Dispatchers.IO) {
-            Log.d("VoiceViewModel", "observeAudioStream started")
             for (pcmData in audioStreamManager.pcmChannel) {
-                if (_uiState.value == VoiceUiState.Idle) {
-                    wakeWordManager.processFrame(pcmData)
-                }
-                if (_uiState.value == VoiceUiState.Listening && !isManualFlow) {
-                    realtimeManager.sendAudio(pcmData)
-                }
+                if (_uiState.value == VoiceUiState.Idle) wakeWordManager.processFrame(pcmData)
+                if (_uiState.value == VoiceUiState.Listening && !isManualFlow) realtimeManager.sendAudio(pcmData)
             }
-            Log.w("VoiceViewModel", "observeAudioStream ended")
         }
     }
 
     private fun onWakeWordDetected() {
         viewModelScope.launch {
-            Log.d("VoiceViewModel", "onWakeWordDetected() uiState=${_uiState.value}")
             if (_uiState.value != VoiceUiState.Idle) return@launch
-
             isManualFlow = false
             wakeWordManager.disarm()
             onStopTtsRequest?.invoke()
             _uiState.value = VoiceUiState.Listening
             toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
-
             delay(8000)
-            if (_uiState.value == VoiceUiState.Listening) {
-                Log.d("VoiceViewModel", "Wake-word session timed out")
-                returnToIdle()
-            }
+            if (_uiState.value == VoiceUiState.Listening) returnToIdle()
         }
     }
+
+    // ─────────────────────────────────────────────
+    // AI 인텐트 처리 (웨이크워드 플로우)
+    // ─────────────────────────────────────────────
 
     private fun handleAiIntent(jsonResponse: String) {
         viewModelScope.launch(Dispatchers.Default) {
             try {
-                Log.d("VoiceViewModel", "handleAiIntent raw = $jsonResponse")
                 val intent = TomaIntentParser.parse(jsonResponse)
                 Log.d("VoiceViewModel", "Parsed TomaIntent = $intent")
 
-                withContext(Dispatchers.Main) {
-                    _uiState.value = VoiceUiState.Processing
-                }
-
+                withContext(Dispatchers.Main) { _uiState.value = VoiceUiState.Processing }
                 _intentEvent.emit(intent)
-                Log.d("VoiceViewModel", "intentEvent emitted: $intent")
 
                 withContext(Dispatchers.Main) {
                     when (intent) {
-                        is TomaIntent.SET_TIMER -> {
-                            Log.d("VoiceViewModel", "SET_TIMER: ${intent.durationMin}min")
-                            triggerTimer(intent.durationMin)
-                        }
-                        TomaIntent.NEXT_STEP ->
-                            _uiState.value = VoiceUiState.Result("다음 단계로 넘어갑니다.")
-                        TomaIntent.PREVIOUS_STEP ->
-                            _uiState.value = VoiceUiState.Result("이전 단계로 돌아갑니다.")
-                        TomaIntent.REPEAT_STEP ->
-                            _uiState.value = VoiceUiState.Result("다시 읽어드릴게요.")
-                        TomaIntent.RECOMMENDED_TIMER ->
-                            _uiState.value = VoiceUiState.Result("이 단계의 추천 타이머를 설정할게요.")
-                        // ✅ CANCEL_TIMER 추가 — 웨이크워드 플로우에서도 타이머 취소 처리
-                        TomaIntent.CANCEL_TIMER -> {
-                            Log.d("VoiceViewModel", "CANCEL_TIMER via wake-word flow")
-                            cancelTimer()
-                        }
-                        is TomaIntent.RECIPE_SEARCH ->
-                            _uiState.value = VoiceUiState.Result("'${intent.keyword}' 레시피를 찾아볼게요.")
+                        is TomaIntent.SET_TIMER -> triggerTimer(intent.durationMin)
+                        TomaIntent.NEXT_STEP -> _uiState.value = VoiceUiState.Result("다음 단계로 넘어갑니다.")
+                        TomaIntent.PREVIOUS_STEP -> _uiState.value = VoiceUiState.Result("이전 단계로 돌아갑니다.")
+                        TomaIntent.REPEAT_STEP -> _uiState.value = VoiceUiState.Result("다시 읽어드릴게요.")
+                        TomaIntent.RECOMMENDED_TIMER -> _uiState.value = VoiceUiState.Result("이 단계의 추천 타이머를 설정할게요.")
+                        TomaIntent.CANCEL_TIMER -> cancelTimer()
+                        is TomaIntent.RECIPE_SEARCH -> _uiState.value = VoiceUiState.Result("'${intent.keyword}' 레시피를 찾아볼게요.")
                         TomaIntent.CANCEL -> returnToIdle()
-                        else -> {
-                            Log.w("VoiceViewModel", "Unknown intent: $intent")
-                            _uiState.value = VoiceUiState.Error("명령을 이해하지 못했어요.")
-                        }
+                        else -> _uiState.value = VoiceUiState.Error("명령을 이해하지 못했어요.")
                     }
                 }
 
                 val currentState = withContext(Dispatchers.Main) { _uiState.value }
                 if (currentState !is VoiceUiState.Error && currentState !is VoiceUiState.Idle) {
                     withContext(Dispatchers.Main) { _uiState.value = VoiceUiState.Speaking }
-                    delay(3000)
+                    delay(2000)
                     withContext(Dispatchers.Main) { returnToIdle() }
                 }
             } catch (e: Exception) {
                 Log.e("VoiceViewModel", "handleAiIntent failed: ${e.message}", e)
-                withContext(Dispatchers.Main) {
-                    _uiState.value = VoiceUiState.Error("오류가 발생했습니다.")
-                }
-                delay(3000)
+                withContext(Dispatchers.Main) { _uiState.value = VoiceUiState.Error("오류가 발생했습니다.") }
+                delay(2000)
                 withContext(Dispatchers.Main) { returnToIdle() }
             }
         }
     }
+
+    // ─────────────────────────────────────────────
+    // 수동 마이크 — SpeechRecognizer 사용 (핵심 변경)
+    // ─────────────────────────────────────────────
 
     fun startListeningManually() {
         if (_uiState.value != VoiceUiState.Idle && _uiState.value !is VoiceUiState.Result) {
@@ -301,7 +359,52 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        Log.d("VoiceViewModel", "Starting manual recording flow")
+        // SpeechRecognizer 없으면 Whisper 폴백
+        if (speechRecognizer == null) {
+            Log.w("VoiceViewModel", "SpeechRecognizer null, falling back to Whisper")
+            startListeningWithWhisper()
+            return
+        }
+
+        Log.d("VoiceViewModel", "startListeningManually via SpeechRecognizer")
+        isManualFlow = true
+        wakeWordManager.disarm()
+        onStopTtsRequest?.invoke()
+        audioStreamManager.stopCapture()
+
+        val recognizerIntent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            // 말 끝나고 500ms 침묵이면 자동 종료
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 200L)
+        }
+
+        try {
+            speechRecognizer?.startListening(recognizerIntent)
+        } catch (e: Exception) {
+            Log.e("VoiceViewModel", "SpeechRecognizer startListening failed: ${e.message}", e)
+            isManualFlow = false
+            startListeningWithWhisper()  // 실패 시 Whisper 폴백
+        }
+    }
+
+    fun stopListeningManually() {
+        if (!isManualFlow) return
+        Log.d("VoiceViewModel", "stopListeningManually()")
+        speechRecognizer?.stopListening()
+        // onEndOfSpeech → onResults 콜백으로 이어짐
+    }
+
+    // ─────────────────────────────────────────────
+    // Whisper 폴백 — 레시피 검색 등 긴 문장용
+    // ─────────────────────────────────────────────
+
+    private fun startListeningWithWhisper() {
+        Log.d("VoiceViewModel", "startListeningWithWhisper()")
         isManualFlow = true
         wakeWordManager.disarm()
         onStopTtsRequest?.invoke()
@@ -334,236 +437,142 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             peakAmplitude = 0
 
             recordingJob?.cancel()
-            recordingJob = viewModelScope.launch {
-                runSilenceDetectionLoop(recorder)
-            }
-
+            recordingJob = viewModelScope.launch { runSilenceDetectionLoop(recorder) }
             toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
         } catch (e: Exception) {
-            Log.e("VoiceViewModel", "Failed to start MediaRecorder: ${e.message}", e)
+            Log.e("VoiceViewModel", "Whisper MediaRecorder failed: ${e.message}", e)
             _uiState.value = VoiceUiState.Error("마이크를 시작할 수 없습니다.")
             returnToIdle()
         }
     }
 
     private suspend fun runSilenceDetectionLoop(recorder: MediaRecorder) {
-        val pollIntervalMs = 100L
+        val pollIntervalMs = 80L
         val ampThreshold = 200
-        val silenceTimeoutMs = 600L   // ✅ 900 → 600ms
+        val silenceTimeoutMs = 500L
         val maxRecordingMs = 8000L
-        val minBeforeSilenceCheck = 400L  // ✅ 600 → 400ms
-
         val startedAt = System.currentTimeMillis()
         var lastSpeechTime = startedAt
-        var speechFrameCount = 0
+        var speechDetectedAt = 0L
         var firstPoll = true
         var lastTickSec = 0
 
         while (true) {
             delay(pollIntervalMs)
-
             val now = System.currentTimeMillis()
             val elapsed = now - startedAt
 
             val tickSec = (elapsed / 1000L).toInt()
-            if (tickSec != lastTickSec) {
-                lastTickSec = tickSec
-                _recordingDurationSeconds.value = tickSec
-            }
+            if (tickSec != lastTickSec) { lastTickSec = tickSec; _recordingDurationSeconds.value = tickSec }
 
-            if (elapsed >= maxRecordingMs) {
-                Log.d("VoiceViewModel", "Auto-stop: max duration (8s)")
-                stopListeningManually()
-                return
-            }
+            if (elapsed >= maxRecordingMs) { stopWhisperRecording(); return }
 
-            val amplitude = try {
-                recorder.maxAmplitude
-            } catch (e: Exception) {
-                Log.e("VoiceViewModel", "maxAmplitude failed: ${e.message}", e)
-                return
-            }
-
+            val amplitude = try { recorder.maxAmplitude } catch (e: Exception) { return }
             if (firstPoll) { firstPoll = false; continue }
-
             if (amplitude > peakAmplitude) peakAmplitude = amplitude
-
             if (amplitude > ampThreshold) {
                 lastSpeechTime = now
-                speechFrameCount++
-                if (speechFrameCount == 3) {
-                    Log.d("VoiceViewModel", "Speech confirmed (3 frames) — watchdog active")
-                }
+                if (speechDetectedAt == 0L) speechDetectedAt = now
             }
 
-            if (elapsed >= minBeforeSilenceCheck) {
-                val silenceDuration = now - lastSpeechTime
-                if (silenceDuration > silenceTimeoutMs) {
-                    Log.d(
-                        "VoiceViewModel",
-                        "Auto-stop: silence=${silenceDuration}ms, speechFrames=$speechFrameCount, peak=$peakAmplitude"
-                    )
-                    stopListeningManually()
-                    return
-                }
+            val silenceCheckStart = if (speechDetectedAt > 0L) speechDetectedAt + 200L
+            else startedAt + 300L
+
+            if (now >= silenceCheckStart && (now - lastSpeechTime) > silenceTimeoutMs) {
+                stopWhisperRecording()
+                return
             }
         }
     }
 
-    fun stopListeningManually() {
-        if (!isManualFlow || mediaRecorder == null) {
-            Log.d("VoiceViewModel", "stopListeningManually ignored, isManualFlow=$isManualFlow")
-            return
-        }
-
-        Log.d("VoiceViewModel", "Stopping manual recording flow")
+    private fun stopWhisperRecording() {
         recordingJob?.cancel()
-
         val durationMs = System.currentTimeMillis() - recordingStartMs
         val capturedPeak = peakAmplitude
 
-        try {
-            mediaRecorder?.apply { stop(); release() }
-        } catch (e: Exception) {
+        try { mediaRecorder?.apply { stop(); release() } } catch (e: Exception) {
             Log.e("VoiceViewModel", "MediaRecorder stop failed: ${e.message}", e)
         }
         mediaRecorder = null
 
-        Log.d(
-            "VoiceViewModel",
-            "file exists=${manualAudioFile.exists()}, size=${if (manualAudioFile.exists()) manualAudioFile.length() else -1}, duration=${durationMs}ms, peak=$capturedPeak"
-        )
-
-        if (durationMs < 700L) {
-            Log.d("VoiceViewModel", "Guard 1 fail: duration ${durationMs}ms < 700ms")
-            rejectRecording("너무 짧아요. 다시 말씀해주세요.")
-            return
-        }
-
-        if (capturedPeak < 200) {
-            Log.d("VoiceViewModel", "Guard 2 fail: peak $capturedPeak < 200")
-            rejectRecording("음성이 감지되지 않았어요.")
+        if (durationMs < 500L || capturedPeak < 200) {
+            viewModelScope.launch {
+                isManualFlow = false
+                _uiState.value = VoiceUiState.Error(
+                    if (durationMs < 500L) "너무 짧아요. 다시 말씀해주세요." else "음성이 감지되지 않았어요."
+                )
+                delay(1500)
+                returnToIdle()
+            }
             return
         }
 
         _uiState.value = VoiceUiState.Processing
-
         viewModelScope.launch(Dispatchers.IO) {
-            if (manualAudioFile.exists()) {
-                transcribeManualAudio(manualAudioFile)
-            } else {
-                withContext(Dispatchers.Main) {
-                    Log.e("VoiceViewModel", "Manual audio file missing after recording")
-                    _uiState.value = VoiceUiState.Error("녹음 파일이 생성되지 않았습니다.")
-                    delay(2000)
-                    returnToIdle()
-                }
+            if (manualAudioFile.exists()) transcribeWhisperAudio(manualAudioFile)
+            else withContext(Dispatchers.Main) {
+                _uiState.value = VoiceUiState.Error("녹음 파일이 없습니다.")
+                delay(1500)
+                returnToIdle()
             }
         }
     }
 
-    private fun rejectRecording(message: String) {
-        viewModelScope.launch {
-            Log.w("VoiceViewModel", "Recording rejected: $message")
-            _uiState.value = VoiceUiState.Error(message)
-            delay(2000)
-            _uiState.value = VoiceUiState.Idle
-            isManualFlow = false
-            returnToIdle()
-        }
-    }
-
-    private fun transcribeManualAudio(audioFile: File) {
-        Log.d("VoiceViewModel", "transcribeManualAudio start: size=${audioFile.length()}")
-
+    private fun transcribeWhisperAudio(audioFile: File) {
         openAiManager.transcribeAudio(audioFile) { recognizedText ->
             viewModelScope.launch {
                 val text = recognizedText.orEmpty().trim()
-                Log.d("VoiceViewModel", "STT result: '$text'")
-
-                if (text.length < 2) {
-                    Log.d("VoiceViewModel", "Guard 4 fail: length ${text.length}")
-                    rejectRecording("음성을 인식하지 못했어요. 다시 시도해주세요.")
+                Log.d("VoiceViewModel", "Whisper STT: '$text'")
+                if (text.length < 2 || isHallucinatedTranscript(text) || hasExcessiveRepetition(text)) {
+                    isManualFlow = false
+                    _uiState.value = VoiceUiState.Error("음성을 인식하지 못했어요.")
+                    delay(1500)
+                    returnToIdle()
                     return@launch
                 }
-
-                if (isHallucinatedTranscript(text)) {
-                    Log.d("VoiceViewModel", "Guard 3 fail: hallucinated '$text'")
-                    rejectRecording("음성을 인식하지 못했어요. 다시 시도해주세요.")
-                    return@launch
-                }
-
-                if (hasExcessiveRepetition(text)) {
-                    Log.d("VoiceViewModel", "Guard 5 fail: repetition '$text'")
-                    rejectRecording("음성을 인식하지 못했어요. 다시 시도해주세요.")
-                    return@launch
-                }
-
                 val intent = classifyManualIntent(text)
-                Log.d("VoiceViewModel", "classifyManualIntent('$text') → $intent")
-
-                _uiState.value = VoiceUiState.Idle
                 isManualFlow = false
                 returnToIdle()
-
                 _recognizedTextEvent.emit(text)
                 _intentEvent.emit(intent)
-                Log.d("VoiceViewModel", "intentEvent emitted: $intent")
             }
         }
     }
+
+    // ─────────────────────────────────────────────
+    // 인텐트 분류
+    // ─────────────────────────────────────────────
 
     private fun classifyManualIntent(text: String): TomaIntent {
         val t = text.trim().lowercase(Locale.ROOT)
 
-        // 1. 다음 단계
-        if (t.contains("다음") || t.contains("넘어가") || t.contains("next")) {
+        if (t.contains("다음") || t.contains("넘어가") || t.contains("next"))
             return TomaIntent.NEXT_STEP
-        }
 
-        // 2. 이전 단계
-        if (t.contains("이전") || t.contains("돌아가") || t.contains("뒤로") || t.contains("back")) {
+        if (t.contains("이전") || t.contains("돌아가") || t.contains("뒤로") || t.contains("back"))
             return TomaIntent.PREVIOUS_STEP
-        }
 
-        // 3. 반복
-        if (t.contains("다시") || t.contains("반복") || t.contains("한번 더") || t.contains("한 번 더")) {
+        if (t.contains("다시") || t.contains("반복") || t.contains("한번 더") || t.contains("한 번 더"))
             return TomaIntent.REPEAT_STEP
-        }
 
-        // 4. ✅ CANCEL_TIMER — 타이머 + 중지 키워드 (숫자 없음), SET_TIMER보다 먼저 체크
         val timerStopKeywords = listOf("취소", "꺼줘", "꺼", "중지", "멈춰", "그만", "stop")
-        if ((t.contains("타이머") || t.contains("알람")) &&
-            timerStopKeywords.any { t.contains(it) }) {
+        if ((t.contains("타이머") || t.contains("알람")) && timerStopKeywords.any { t.contains(it) })
             return TomaIntent.CANCEL_TIMER
-        }
 
-        // 5. ✅ SET_TIMER — 숫자 + 타이머 설정 키워드
         val minuteMatch = "([0-9]+)\\s*분".toRegex().find(t)
         if (minuteMatch != null) {
             val min = minuteMatch.groupValues[1].toIntOrNull() ?: 1
-            val timerTriggers = listOf(
-                "타이머", "알람", "맞춰", "설정", "해줘", "바꿔", "으로", "시작", "켜줘"
-            )
-            if (timerTriggers.any { t.contains(it) }) {
-                return TomaIntent.SET_TIMER(min)
-            }
+            val timerTriggers = listOf("타이머", "알람", "맞춰", "설정", "해줘", "바꿔", "으로", "시작", "켜줘")
+            if (timerTriggers.any { t.contains(it) }) return TomaIntent.SET_TIMER(min)
         }
 
-        // 6. RECOMMENDED_TIMER — 숫자 없이 타이머만
-        if (t.contains("타이머") || t.contains("알람")) {
-            return TomaIntent.RECOMMENDED_TIMER
-        }
+        if (t.contains("타이머") || t.contains("알람")) return TomaIntent.RECOMMENDED_TIMER
 
-        // 7. 일반 CANCEL — 음성 세션만 종료
-        if (t.contains("취소") || t.contains("그만") || t.contains("멈춰") || t.contains("stop")) {
+        if (t.contains("취소") || t.contains("그만") || t.contains("멈춰") || t.contains("stop"))
             return TomaIntent.CANCEL
-        }
 
-        // 8. 레시피 검색
         if (t.contains("레시피") || t.contains("요리")) {
-            val keyword = t
-                .replace("레시피", "").replace("요리", "")
+            val keyword = t.replace("레시피", "").replace("요리", "")
                 .replace("찾아", "").replace("줘", "").trim()
             if (keyword.isNotBlank()) return TomaIntent.RECIPE_SEARCH(keyword)
         }
@@ -579,82 +588,69 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private fun hasExcessiveRepetition(text: String): Boolean {
         val words = text.lowercase(Locale.ROOT).split(Regex("\\s+")).filter { it.isNotBlank() }
         if (words.size < 4) return false
-        val maxCount = words.groupingBy { it }.eachCount().values.maxOrNull() ?: 0
-        return maxCount > 3
+        return (words.groupingBy { it }.eachCount().values.maxOrNull() ?: 0) > 3
     }
 
+    // ─────────────────────────────────────────────
+    // 오디오 캡처 제어
+    // ─────────────────────────────────────────────
+
     fun pauseAudioCapture() {
-        Log.d("VoiceViewModel", "pauseAudioCapture()")
         wakeWordManager.disarm()
-        viewModelScope.launch(Dispatchers.IO) {
-            audioStreamManager.stopCapture()
-        }
+        viewModelScope.launch(Dispatchers.IO) { audioStreamManager.stopCapture() }
     }
 
     fun resumeAudioCapture() {
-        Log.d("VoiceViewModel", "resumeAudioCapture()")
         wakeWordManager.arm()
-        viewModelScope.launch(Dispatchers.IO) {
-            audioStreamManager.startCapture()
-        }
+        viewModelScope.launch(Dispatchers.IO) { audioStreamManager.startCapture() }
     }
 
     fun onMicClick() {
         when (_uiState.value) {
             VoiceUiState.Idle -> startListeningManually()
             VoiceUiState.Listening -> stopListeningManually()
-            else -> Log.d("VoiceViewModel", "onMicClick ignored, uiState=${_uiState.value}")
+            else -> {}
         }
     }
 
+    // ─────────────────────────────────────────────
+    // 타이머
+    // ─────────────────────────────────────────────
+
     fun triggerTimer(minutes: Int) {
         viewModelScope.launch {
-            Log.d("VoiceViewModel", "triggerTimer($minutes), stepIndex=$currentStepIndex")
             val wasRunning = _isTimerRunning.value
-            if (wasRunning) {
-                cancelTimerSilently()
-                delay(300)
-            }
+            if (wasRunning) { cancelTimerSilently(); delay(200) }
 
             timerOriginalSeconds = minutes * 60
             timerStartedAtStep = currentStepIndex
 
             val intent = Intent(getApplication(), TimerService::class.java).apply {
-                action = "START"
-                putExtra("minutes", minutes)
+                action = "START"; putExtra("minutes", minutes)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 getApplication<Application>().startForegroundService(intent)
-            } else {
+            else
                 getApplication<Application>().startService(intent)
-            }
 
-            // ✅ 교체 시 "바꿨어요", 신규 시 "시작합니다"
-            val msg = if (wasRunning) "${minutes}분 타이머로 바꿨어요."
-            else "${minutes}분 타이머를 시작합니다."
-            _uiState.value = VoiceUiState.Result(msg)
-
-            delay(3000)
-            if (_uiState.value is VoiceUiState.Result) {
-                _uiState.value = VoiceUiState.Idle
-            }
+            _uiState.value = VoiceUiState.Result(
+                if (wasRunning) "${minutes}분 타이머로 바꿨어요." else "${minutes}분 타이머를 시작합니다."
+            )
+            delay(2000)
+            if (_uiState.value is VoiceUiState.Result) _uiState.value = VoiceUiState.Idle
         }
     }
 
     fun cancelTimer() {
-        Log.d("VoiceViewModel", "cancelTimer()")
         cancelTimerSilently()
         _uiState.value = VoiceUiState.Result("타이머를 취소했습니다.")
         viewModelScope.launch {
-            delay(2000)
-            if (_uiState.value is VoiceUiState.Result) {
-                _uiState.value = VoiceUiState.Idle
-            }
+            delay(1500)
+            if (_uiState.value is VoiceUiState.Result) _uiState.value = VoiceUiState.Idle
         }
     }
 
     private fun cancelTimerSilently() {
-        Log.d("VoiceViewModel", "cancelTimerSilently()")
         getApplication<Application>().startService(
             Intent(getApplication(), TimerService::class.java).apply { action = "STOP" }
         )
@@ -663,60 +659,51 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onStepChanged(newIndex: Int) {
-        Log.d("VoiceViewModel", "onStepChanged($newIndex)")
         currentStepIndex = newIndex
         if (!_isTimerRunning.value || timerStartedAtStep < 0) return
-
         val remaining = _timerRemainingSeconds.value
         val stepDelta = newIndex - timerStartedAtStep
-        val percentRemaining = if (timerOriginalSeconds > 0) {
-            remaining.toFloat() / timerOriginalSeconds
-        } else 0f
+        val percentRemaining = if (timerOriginalSeconds > 0) remaining.toFloat() / timerOriginalSeconds else 0f
 
-        Log.d("VoiceViewModel", "Timer step sync: delta=$stepDelta, percent=$percentRemaining")
-
-        if (stepDelta >= 2) {
-            cancelTimerSilently()
-            viewModelScope.launch { _voiceAnnouncement.emit("이전 단계 타이머를 종료했어요.") }
-        } else if (stepDelta == 1 && percentRemaining > 0.8f) {
-            cancelTimerSilently()
-        } else if (stepDelta == 1 && percentRemaining > 0.2f) {
-            cancelTimerSilently()
-            viewModelScope.launch { _voiceAnnouncement.emit("이전 단계 타이머를 취소했어요.") }
+        when {
+            stepDelta >= 2 -> {
+                cancelTimerSilently()
+                viewModelScope.launch { _voiceAnnouncement.emit("이전 단계 타이머를 종료했어요.") }
+            }
+            stepDelta == 1 && percentRemaining > 0.8f -> cancelTimerSilently()
+            stepDelta == 1 && percentRemaining > 0.2f -> {
+                cancelTimerSilently()
+                viewModelScope.launch { _voiceAnnouncement.emit("이전 단계 타이머를 취소했어요.") }
+            }
         }
     }
 
     fun showTimerManualGuidance() {
         viewModelScope.launch {
-            _uiState.value = VoiceUiState.Result(
-                "이 단계에는 조리 시간이 없네요. \"3분 타이머 맞춰줘\"와 같이 직접 말씀해주세요!"
-            )
+            _uiState.value = VoiceUiState.Result("이 단계에는 조리 시간이 없네요. \"3분 타이머 맞춰줘\"와 같이 직접 말씀해주세요!")
             delay(4000)
-            if (_uiState.value is VoiceUiState.Result) {
-                _uiState.value = VoiceUiState.Idle
-            }
+            if (_uiState.value is VoiceUiState.Result) _uiState.value = VoiceUiState.Idle
         }
     }
 
+    // ─────────────────────────────────────────────
+    // 생명주기
+    // ─────────────────────────────────────────────
+
     override fun onCleared() {
         super.onCleared()
-        Log.d("VoiceViewModel", "onCleared()")
         onStopTtsRequest?.invoke()
         wakeWordManager.disarm()
         audioStreamManager.stopCapture()
         realtimeManager.disconnect()
         wakeWordManager.release()
-        try {
-            getApplication<Application>().unbindService(serviceConnection)
-        } catch (e: Exception) {
-            Log.w("VoiceViewModel", "unbindService failed: ${e.message}")
-        }
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+        try { getApplication<Application>().unbindService(serviceConnection) } catch (_: Exception) {}
     }
 
     fun startEnrollmentRecording(context: Context) {}
     fun stopEnrollmentRecording() {}
-    fun uploadEnrollmentWavs(context: Context, onComplete: () -> Unit, onError: (String) -> Unit) {
-        onComplete()
-    }
+    fun uploadEnrollmentWavs(context: Context, onComplete: () -> Unit, onError: (String) -> Unit) { onComplete() }
     fun startModelPolling(context: Context) {}
 }
