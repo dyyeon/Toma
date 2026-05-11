@@ -154,18 +154,7 @@ fun RecipeStorageScreen(
 
     Scaffold(
         containerColor = StorageBg,
-        snackbarHost = { SnackbarHost(snackbar) },
-        floatingActionButton = {
-            if (opened == null) {
-                FloatingActionButton(
-                    onClick = { scope.launch { snackbar.showSnackbar("추가 화면은 다음 단계에서 연결하면 됩니다.") } },
-                    containerColor = StorageAccent,
-                    contentColor = Color.White,
-                    shape = CircleShape,
-                    modifier = Modifier.shadow(8.dp, CircleShape, ambientColor = StorageAccent, spotColor = StorageAccent)
-                ) { Icon(Icons.Default.Add, contentDescription = "레시피 추가", modifier = Modifier.size(28.dp)) }
-            }
-        }
+        snackbarHost = { SnackbarHost(snackbar) }
     ) { inner ->
         deleteTarget?.let { recipe ->
             DeleteRecipeDialog(
