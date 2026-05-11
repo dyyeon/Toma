@@ -423,7 +423,7 @@ class SpeakerEnrollmentViewModel(application: Application) : AndroidViewModel(ap
     }
 
     companion object {
-        const val TOTAL_SAMPLES = 10
+        const val TOTAL_SAMPLES = 3
         const val TARGET_SENTENCE = "헤이 토마"
         const val CHUNK_SIZE = 1280
 
