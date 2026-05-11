@@ -137,6 +137,11 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
     var onStopTtsRequest: (() -> Unit)? = null
 
+    // Set to true while any TTS utterance is in-flight.
+    // @Volatile so TTS-thread writes are visible to main-thread reads in
+    // resumeAudioCapture() / returnToIdle() without a lock.
+    @Volatile var isTtsSpeaking: Boolean = false
+
     init {
         wakeWordManager.verboseLogging = true
         observeAudioStream()
@@ -238,6 +243,10 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         Log.d("VoiceViewModel", "returnToIdle()")
         _uiState.value = VoiceUiState.Idle
         isManualFlow = false
+        if (isTtsSpeaking) {
+            Log.d("WakeWord", "⛔ returnToIdle re-arm blocked: TTS still speaking")
+            return
+        }
         wakeWordManager.arm()
         viewModelScope.launch(Dispatchers.IO) { audioStreamManager.startCapture() }
     }
@@ -601,6 +610,10 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun resumeAudioCapture() {
+        if (isTtsSpeaking) {
+            Log.d("WakeWord", "⛔ Re-arm blocked: TTS still speaking")
+            return
+        }
         wakeWordManager.arm()
         viewModelScope.launch(Dispatchers.IO) { audioStreamManager.startCapture() }
     }

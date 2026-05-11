@@ -44,6 +44,7 @@ import com.capstone.toma.viewmodel.RecipeStorageViewModel
 import com.capstone.toma.viewmodel.VoiceViewModel
 import org.json.JSONObject
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicInteger
 
 @Composable
 fun RecipeDetailScreen(
@@ -103,15 +104,24 @@ fun RecipeDetailContent(
     var currentStepIndex by remember { mutableIntStateOf(0) }
     val totalSteps = steps.size
 
+    // One-way visibility latch: once the timer has been opened it stays visible
+    // for the rest of the session.  Subsequent button presses restart the timer
+    // value (via triggerTimer) without ever toggling this flag back to false,
+    // which is what caused the disappear/reappear flicker.
+    var showTimer by remember { mutableStateOf(false) }
+
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val voiceUiState by voiceViewModel.uiState.collectAsState()
 
     var isTtsEnabled by remember { mutableStateOf(true) }
     var isTtsSpeaking by remember { mutableStateOf(false) }
-    // Tracks the pending re-arm coroutine so a rapid onStart→onDone sequence
-    // never stacks two delayed arm() calls on top of each other.
-    // @Volatile gives TTS-thread visibility without a lock.
+    // How many TTS utterances are currently in-flight (started but not yet done/stopped).
+    // AtomicInteger gives TTS-thread-safe increments/decrements.
+    // Disarm fires only on the 0→1 transition; re-arm fires only on the N→0 transition.
+    val activeTtsCount = remember { AtomicInteger(0) }
+    // Holds the single pending re-arm coroutine so rapid onDone→onStart sequences
+    // can cancel a scheduled re-arm before it executes.
     val pendingTtsResume = remember { object { @Volatile var job: kotlinx.coroutines.Job? = null } }
 
     val isTimerRunning by voiceViewModel.isTimerRunning.collectAsState()
@@ -124,24 +134,30 @@ fun RecipeDetailContent(
             if (status == TextToSpeech.SUCCESS) {
                 engine.language = Locale.KOREAN
                 engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    // All callbacks run on the TTS internal thread.
+                    // wakeWordManager / @Volatile flag writes are thread-safe.
+                    // Compose state (isTtsSpeaking) must be written via scope.launch (main thread).
 
-                    // Called on TTS's internal thread.  voiceViewModel calls and
-                    // scope.launch() are both thread-safe from any thread.
-
-                    // Disarm the wake word detector immediately so TTS audio
-                    // cannot feed back into the microphone pipeline.
-                    private fun pauseWakeWordForTts() {
-                        pendingTtsResume.job?.cancel()   // drop any prior pending re-arm
+                    // Called only on the 0→1 transition: first utterance of a TTS session.
+                    // Idempotent — subsequent onStart calls for queued utterances cancel any
+                    // pending re-arm but do NOT log another disarm or call pauseAudioCapture again.
+                    private fun disarmOnFirstStart() {
+                        pendingTtsResume.job?.cancel()
+                        voiceViewModel.isTtsSpeaking = true
                         voiceViewModel.pauseAudioCapture()
-                        Log.d("WakeWord", "🔇 Disarmed during TTS playback")
+                        scope.launch { isTtsSpeaking = true }
+                        Log.d("WakeWord", "🔇 Disarmed during TTS playback | isTtsSpeaking=true")
                     }
 
-                    // Schedule re-arm after a short tail-silence window so the
-                    // last few milliseconds of TTS audio have left the microphone
-                    // before the detector wakes up again.
-                    private fun resumeWakeWordAfterTtsDelay() {
-                        pendingTtsResume.job?.cancel()   // cancel any already-pending re-arm
+                    // Called only on the N→0 transition: last utterance of a TTS session done.
+                    // Clears the TTS flag immediately so returnToIdle() is unblocked, then waits
+                    // 700 ms for audio tail-silence before actually re-arming the detector.
+                    private fun scheduleRearmAfterLastDone() {
+                        pendingTtsResume.job?.cancel()
                         pendingTtsResume.job = scope.launch {
+                            voiceViewModel.isTtsSpeaking = false
+                            isTtsSpeaking = false
+                            Log.d("WakeWord", "✅ TTS finished — isTtsSpeaking=false, re-arming in 700ms")
                             delay(700)
                             voiceViewModel.resumeAudioCapture()
                             Log.d("WakeWord", "🔓 Re-armed after TTS playback")
@@ -149,33 +165,43 @@ fun RecipeDetailContent(
                     }
 
                     override fun onStart(utteranceId: String?) {
-                        pauseWakeWordForTts()
-                        isTtsSpeaking = true
+                        val prev = activeTtsCount.getAndIncrement()
+                        if (prev == 0) {
+                            disarmOnFirstStart()
+                        } else {
+                            // Already disarmed from a previous onStart.
+                            // Cancel any re-arm that snuck in between two queued utterances.
+                            pendingTtsResume.job?.cancel()
+                            Log.d("WakeWord", "🔇 TTS utterance start (active=${activeTtsCount.get()}) — already disarmed")
+                        }
                     }
 
                     override fun onDone(utteranceId: String?) {
-                        isTtsSpeaking = false
-                        resumeWakeWordAfterTtsDelay()
+                        val remaining = activeTtsCount.decrementAndGet().coerceAtLeast(0)
+                        if (remaining == 0) scheduleRearmAfterLastDone()
+                        else Log.d("WakeWord", "TTS utterance done, $remaining still active")
                     }
 
                     override fun onError(utteranceId: String?) {
-                        isTtsSpeaking = false
-                        resumeWakeWordAfterTtsDelay()
+                        val remaining = activeTtsCount.decrementAndGet().coerceAtLeast(0)
+                        if (remaining == 0) scheduleRearmAfterLastDone()
                     }
 
                     override fun onError(utteranceId: String?, errorCode: Int) {
-                        isTtsSpeaking = false
-                        resumeWakeWordAfterTtsDelay()
+                        val remaining = activeTtsCount.decrementAndGet().coerceAtLeast(0)
+                        if (remaining == 0) scheduleRearmAfterLastDone()
                     }
 
-                    // onStop fires when TTS is explicitly cancelled — most often
-                    // because the wake-word detector just triggered and called
-                    // onStopTtsRequest.  In that case the wake-word flow itself
-                    // manages re-arming (via returnToIdle), so we must NOT
-                    // schedule an extra arm() here.
+                    // onStop fires when TTS is explicitly cancelled — e.g., wake word triggered
+                    // onStopTtsRequest, or the user tapped "안내 중지".  The initiating code is
+                    // responsible for re-arming (wake-word flow via returnToIdle, or the button
+                    // handler directly).  We just reset counter state and log.
                     override fun onStop(utteranceId: String?, interrupted: Boolean) {
-                        isTtsSpeaking = false
-                        pendingTtsResume.job?.cancel()  // discard any pending re-arm too
+                        activeTtsCount.set(0)
+                        pendingTtsResume.job?.cancel()
+                        voiceViewModel.isTtsSpeaking = false
+                        scope.launch { isTtsSpeaking = false }
+                        Log.d("WakeWord", "🛑 TTS stopped (interrupted=$interrupted) — re-arm delegated to caller")
                     }
                 })
                 ttsReady = true
@@ -193,6 +219,9 @@ fun RecipeDetailContent(
                 Lifecycle.Event.ON_PAUSE -> {
                     if (ttsReady) tts.stop()
                     isTtsSpeaking = false
+                    activeTtsCount.set(0)
+                    pendingTtsResume.job?.cancel()
+                    voiceViewModel.isTtsSpeaking = false
                     voiceViewModel.onAppBackground()
                 }
                 Lifecycle.Event.ON_RESUME -> {
@@ -213,6 +242,9 @@ fun RecipeDetailContent(
             if (ttsReady) {
                 tts.stop()
                 isTtsSpeaking = false
+                activeTtsCount.set(0)
+                pendingTtsResume.job?.cancel()
+                // voiceViewModel.isTtsSpeaking is cleared by the onStop TTS callback
             }
         }
         voiceViewModel.startWakeWord()
@@ -229,6 +261,9 @@ fun RecipeDetailContent(
         if (voiceUiState == VoiceUiState.Listening && isTtsSpeaking) {
             tts.stop()
             isTtsSpeaking = false
+            activeTtsCount.set(0)
+            pendingTtsResume.job?.cancel()
+            // voiceViewModel.isTtsSpeaking cleared by the onStop TTS callback
         }
     }
 
@@ -317,13 +352,20 @@ fun RecipeDetailContent(
                 onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) }
             )
 
+            // Latch: flip showTimer to true the first time the service starts a timer.
+            // Never flip it back — resets are driven by triggerTimer(), not by visibility.
+            LaunchedEffect(isTimerRunning) {
+                if (isTimerRunning) showTimer = true
+            }
+
             AnimatedVisibility(
-                visible = isTimerRunning,
+                visible = showTimer,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
                 TimerDisplayCard(
                     remainingSeconds = remainingSeconds,
+                    isRunning = isTimerRunning,
                     onCancel = { voiceViewModel.cancelTimer() }
                 )
             }
@@ -370,6 +412,9 @@ fun RecipeDetailContent(
                     if (isTtsSpeaking) {
                         tts.stop()
                         isTtsSpeaking = false
+                        activeTtsCount.set(0)
+                        pendingTtsResume.job?.cancel()
+                        voiceViewModel.isTtsSpeaking = false  // clear before resumeAudioCapture guard checks it
                         voiceViewModel.resumeAudioCapture()
                     } else {
                         val text = if (currentStepIndex == 0)
@@ -778,19 +823,25 @@ private fun BottomControlSection(
 @Composable
 private fun TimerDisplayCard(
     remainingSeconds: Int,
+    isRunning: Boolean,
     onCancel: () -> Unit
 ) {
     val minutes = remainingSeconds / 60
     val seconds = remainingSeconds % 60
     val timeText = String.format("%02d:%02d", minutes, seconds)
 
+    // Colour and label reflect running vs. stopped so the always-visible card
+    // never looks stale after a natural completion or a cancel.
+    val accentColor = if (isRunning) TomaMainOrange else Color(0xFF868E96)
+    val statusLabel = if (isRunning) "타이머 작동 중" else "타이머 종료"
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 16.dp),
         shape = RoundedCornerShape(20.dp),
-        color = TomaMainOrange.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.2f))
+        color = accentColor.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.2f))
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
@@ -799,7 +850,7 @@ private fun TimerDisplayCard(
             Box(
                 modifier = Modifier
                     .size(44.dp)
-                    .background(TomaMainOrange, CircleShape),
+                    .background(accentColor, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -812,10 +863,10 @@ private fun TimerDisplayCard(
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "타이머 작동 중",
+                    text = statusLabel,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TomaMainOrange
+                    color = accentColor
                 )
                 Text(
                     text = timeText,
@@ -824,8 +875,10 @@ private fun TimerDisplayCard(
                     color = Color.Black
                 )
             }
-            TextButton(onClick = onCancel) {
-                Text("취소", color = Color.Gray, fontWeight = FontWeight.Bold)
+            if (isRunning) {
+                TextButton(onClick = onCancel) {
+                    Text("취소", color = Color.Gray, fontWeight = FontWeight.Bold)
+                }
             }
         }
     }
