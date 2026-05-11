@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Locale
 
 /**
  * VoiceViewModel — Handles Wake Word flow (Realtime) and Voice Search flow (Whisper STT).
@@ -93,6 +94,22 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private val _recordingDurationSeconds = MutableStateFlow(0)
     val recordingDurationSeconds = _recordingDurationSeconds.asStateFlow()
     private var recordingJob: kotlinx.coroutines.Job? = null
+
+    // --- Anti-hallucination guards: tracked per-recording ---
+    private var recordingStartMs: Long = 0L
+    private var peakAmplitude: Int = 0
+
+    // Keywords that Whisper hallucinates from silence/background noise.
+    // Match is case-insensitive and applied to the trimmed transcription.
+    private val hallucinationKeywords = listOf(
+        // Korean (YouTube-style auto-caption artifacts)
+        "자막", "구독", "좋아요", "감사합니다", "시청해주셔서",
+        "알림설정", "영상", "채널", "댓글", "좋아요와 구독",
+        // English
+        "subscribe", "like and subscribe", "thank you",
+        "thanks for watching", "please like", "turn on",
+        "notification", "comment below"
+    )
 
     // --- Timer Logic ---
     private var timerService: TimerService? = null
@@ -247,18 +264,11 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             mediaRecorder = recorder
             _uiState.value = VoiceUiState.Listening
             _recordingDurationSeconds.value = 0
+            recordingStartMs = System.currentTimeMillis()
+            peakAmplitude = 0
 
             recordingJob?.cancel()
-            recordingJob = viewModelScope.launch {
-                while (true) {
-                    delay(1000)
-                    _recordingDurationSeconds.value += 1
-                    if (_recordingDurationSeconds.value >= 30) {
-                        stopListeningManually()
-                        break
-                    }
-                }
-            }
+            recordingJob = viewModelScope.launch { runSilenceDetectionLoop(recorder) }
 
             toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
         } catch (e: Exception) {
@@ -268,11 +278,84 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Polls MediaRecorder.maxAmplitude every 100ms and auto-stops the recording when:
+     *   • The user has spoken at least once (amplitude > AMP_THRESHOLD), AND
+     *   • Silence has persisted for SILENCE_TIMEOUT_MS (1500ms)
+     *
+     * A hard cap of MAX_RECORDING_MS (10s) is enforced regardless of speech state.
+     * The silence timer never starts until the first real speech, so users have
+     * unlimited time to begin speaking after tapping the mic.
+     */
+    private suspend fun runSilenceDetectionLoop(recorder: MediaRecorder) {
+        val pollIntervalMs = 100L
+        val ampThreshold = 800
+        val silenceTimeoutMs = 1500L
+        val maxRecordingMs = 10_000L
+
+        val startedAt = System.currentTimeMillis()
+        var lastSpeechTime = startedAt
+        var hasSpokenAtLeastOnce = false
+        var firstPoll = true // discard the first maxAmplitude() reading — it's always 0
+        var lastTickSec = 0
+
+        while (true) {
+            delay(pollIntervalMs)
+
+            val now = System.currentTimeMillis()
+            val elapsed = now - startedAt
+
+            // Update UI timer once per second
+            val tickSec = (elapsed / 1000L).toInt()
+            if (tickSec != lastTickSec) {
+                lastTickSec = tickSec
+                _recordingDurationSeconds.value = tickSec
+            }
+
+            // Hard cap on total recording length
+            if (elapsed >= maxRecordingMs) {
+                Log.d("VoiceViewModel", "Auto-stop: hit max duration (${maxRecordingMs}ms)")
+                stopListeningManually()
+                return
+            }
+
+            val amplitude = try {
+                recorder.maxAmplitude
+            } catch (e: Exception) {
+                Log.e("VoiceViewModel", "maxAmplitude read failed: ${e.message}")
+                return
+            }
+
+            if (firstPoll) {
+                firstPoll = false
+                continue
+            }
+
+            if (amplitude > peakAmplitude) peakAmplitude = amplitude
+
+            if (amplitude > ampThreshold) {
+                lastSpeechTime = now
+                if (!hasSpokenAtLeastOnce) {
+                    hasSpokenAtLeastOnce = true
+                    Log.d("VoiceViewModel", "Speech detected — silence watchdog armed")
+                }
+            } else if (hasSpokenAtLeastOnce && (now - lastSpeechTime) > silenceTimeoutMs) {
+                Log.d("VoiceViewModel", "Auto-stop: silence for ${now - lastSpeechTime}ms")
+                stopListeningManually()
+                return
+            }
+        }
+    }
+
     fun stopListeningManually() {
         if (!isManualFlow || mediaRecorder == null) return
 
         Log.d("VoiceViewModel", "Stopping manual recording flow")
         recordingJob?.cancel()
+
+        // Snapshot pre-stop metrics for Guards 1 & 2 (read before release()).
+        val durationMs = System.currentTimeMillis() - recordingStartMs
+        val capturedPeak = peakAmplitude
 
         try {
             mediaRecorder?.apply {
@@ -283,6 +366,21 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             Log.e("VoiceViewModel", "MediaRecorder stop failed: ${e.message}")
         }
         mediaRecorder = null
+
+        // ── Guard 1: minimum duration (< 2s) — hard block, never reach Whisper.
+        if (durationMs < 2000L) {
+            Log.d("VoiceViewModel", "Guard 1 fail: duration ${durationMs}ms < 2000ms")
+            rejectRecording("너무 짧아요. 다시 말씀해주세요.")
+            return
+        }
+
+        // ── Guard 2: peak amplitude (< 1500) — user never actually spoke.
+        if (capturedPeak < 1500) {
+            Log.d("VoiceViewModel", "Guard 2 fail: peak amplitude $capturedPeak < 1500")
+            rejectRecording("음성이 감지되지 않았어요.")
+            return
+        }
+
         _uiState.value = VoiceUiState.Processing
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -299,25 +397,64 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Shared rejection path for Guards 1 & 2 — skips Whisper entirely. */
+    private fun rejectRecording(message: String) {
+        viewModelScope.launch {
+            _uiState.value = VoiceUiState.Error(message)
+            delay(2000)
+            _uiState.value = VoiceUiState.Idle
+            isManualFlow = false
+            resumeAudioCapture()
+        }
+    }
+
     private fun transcribeManualAudio(audioFile: File) {
         openAiManager.transcribeAudio(audioFile) { recognizedText ->
             viewModelScope.launch {
                 val text = recognizedText.orEmpty().trim()
-                if (text.isBlank()) {
-                    _uiState.value = VoiceUiState.Error("음성을 인식하지 못했어요. 다시 시도해주세요.")
-                    delay(2000)
-                    _uiState.value = VoiceUiState.Idle
-                    resumeAudioCapture()
+
+                // ── Guard 4: minimum text length (< 2 chars after trim).
+                if (text.length < 2) {
+                    Log.d("VoiceViewModel", "Guard 4 fail: text length ${text.length} < 2 ('$text')")
+                    rejectRecording("음성을 인식하지 못했어요. 다시 시도해주세요.")
                     return@launch
                 }
-                _uiState.value = VoiceUiState.Result(text)
-                delay(1200)
-                _recognizedTextEvent.emit(text)
-                isManualFlow = false
+
+                // ── Guard 3: hallucination keyword filter (case-insensitive).
+                if (isHallucinatedTranscript(text)) {
+                    Log.d("VoiceViewModel", "Guard 3 fail: hallucinated text rejected ('$text')")
+                    rejectRecording("음성을 인식하지 못했어요. 다시 시도해주세요.")
+                    return@launch
+                }
+
+                // ── Guard 5: repetition pattern (same word > 3 times).
+                if (hasExcessiveRepetition(text)) {
+                    Log.d("VoiceViewModel", "Guard 5 fail: excessive repetition ('$text')")
+                    rejectRecording("음성을 인식하지 못했어요. 다시 시도해주세요.")
+                    return@launch
+                }
+
+                // All 5 guards passed — navigate directly to chat.
                 _uiState.value = VoiceUiState.Idle
+                isManualFlow = false
                 resumeAudioCapture()
+                _recognizedTextEvent.emit(text)
             }
         }
+    }
+
+    private fun isHallucinatedTranscript(text: String): Boolean {
+        val lower = text.lowercase(Locale.ROOT)
+        return hallucinationKeywords.any { lower.contains(it.lowercase(Locale.ROOT)) }
+    }
+
+    private fun hasExcessiveRepetition(text: String): Boolean {
+        val words = text.lowercase(Locale.ROOT)
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
+        if (words.size < 4) return false
+        val maxCount = words.groupingBy { it }.eachCount().values.maxOrNull() ?: 0
+        return maxCount > 3
     }
 
     fun pauseAudioCapture() {

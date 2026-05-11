@@ -686,9 +686,13 @@ fun TomaNavHost(
 
         composable(TomaDestination.SpeakerEnrollment.route) {
             SpeakerEnrollmentScreen(
-                voiceViewModel = voiceViewModel,
-                onEnrollmentComplete = {
-                    navController.popBackStack()
+                onFinish = {
+                    // Navigate to Home and clear the back stack so the user
+                    // cannot return to the enrollment flow with the back button.
+                    navController.navigate(TomaDestination.Home.route) {
+                        popUpTo(navController.graph.startDestinationId) { inclusive = false }
+                        launchSingleTop = true
+                    }
                 },
                 onBackClick = { navController.popBackStack() }
             )

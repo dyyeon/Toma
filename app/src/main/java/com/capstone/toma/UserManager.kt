@@ -9,6 +9,7 @@ object UserManager {
     private const val KEY_IS_ENROLLED = "is_enrolled"   // true = completed 30 recordings + uploaded
     private const val KEY_HAS_UPLOADED = "has_uploaded"
     private const val KEY_HAS_SKIPPED = "has_skipped"   // true = user tapped skip
+    private const val KEY_SPEAKER_ENROLLED = "speaker_enrolled"  // new enrollment flow flag
 
     private fun getPrefs(context: Context) = 
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
@@ -46,6 +47,15 @@ object UserManager {
 
     fun setHasUploaded(context: Context, uploaded: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_HAS_UPLOADED, uploaded).apply()
+    }
+
+    // New enrollment flow: simple boolean flag with key "speaker_enrolled".
+    fun setSpeakerEnrolled(context: Context, enrolled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_SPEAKER_ENROLLED, enrolled).apply()
+    }
+
+    fun isSpeakerEnrolled(context: Context): Boolean {
+        return getPrefs(context).getBoolean(KEY_SPEAKER_ENROLLED, false)
     }
 
     // Reset for testing

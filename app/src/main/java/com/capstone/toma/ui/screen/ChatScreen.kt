@@ -100,6 +100,8 @@ fun AiChatScreen(
     }
 
     fun stopAndTranscribe() {
+        // Guard against double-invocation (auto-stop VAD + manual tap arriving together).
+        if (recorder.value == null) return
         vadJob[0]?.cancel(); vadJob[0] = null
         runCatching { recorder.value?.stop(); recorder.value?.release() }
         recorder.value = null
@@ -142,25 +144,43 @@ fun AiChatScreen(
             isRecording = true
 
             vadJob[0] = scope.launch {
-                val silenceThreshold = 500
-                val silenceDurationMs = 1500L
-                val maxDurationMs = 30_000L
-                val recordingStart = System.currentTimeMillis()
-                var silenceStart = 0L
+                // Identical silence-detection rules to VoiceViewModel.runSilenceDetectionLoop:
+                // poll 100ms, threshold 800, 1.5s silence timeout, 10s hard cap,
+                // and only arm the silence watchdog after the user has spoken at least once.
+                val pollIntervalMs = 100L
+                val ampThreshold = 800
+                val silenceTimeoutMs = 1500L
+                val maxRecordingMs = 10_000L
+
+                val startedAt = System.currentTimeMillis()
+                var lastSpeechTime = startedAt
+                var hasSpokenAtLeastOnce = false
+                var firstPoll = true // discard first maxAmplitude() reading — it's always 0
 
                 while (isActive) {
-                    delay(100)
-                    val elapsed = System.currentTimeMillis() - recordingStart
-                    if (elapsed > maxDurationMs) { stopAndTranscribe(); break }
+                    delay(pollIntervalMs)
+
+                    val now = System.currentTimeMillis()
+                    val elapsed = now - startedAt
+
+                    if (elapsed >= maxRecordingMs) {
+                        stopAndTranscribe()
+                        break
+                    }
 
                     val amplitude = recorder.value?.maxAmplitude ?: 0
-                    if (amplitude < silenceThreshold) {
-                        if (silenceStart == 0L) silenceStart = System.currentTimeMillis()
-                        else if (System.currentTimeMillis() - silenceStart >= silenceDurationMs) {
-                            stopAndTranscribe(); break
-                        }
-                    } else {
-                        silenceStart = 0L
+
+                    if (firstPoll) {
+                        firstPoll = false
+                        continue
+                    }
+
+                    if (amplitude > ampThreshold) {
+                        lastSpeechTime = now
+                        hasSpokenAtLeastOnce = true
+                    } else if (hasSpokenAtLeastOnce && (now - lastSpeechTime) > silenceTimeoutMs) {
+                        stopAndTranscribe()
+                        break
                     }
                 }
             }
