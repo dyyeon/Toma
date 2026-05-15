@@ -253,12 +253,28 @@ fun TomaNavHost(
                                     """.trimIndent()
                                 } else {
                                     """
-                                    다음 웹페이지 내용을 분석해서 레시피 정보를 추출해주세요.
+                                    다음 웹페이지 내용을 분析해서 레시피 정보를 추출해주세요.
                                     이 페이지가 요리/레시피와 관련 없다면 type을 'not_recipe'로 설정하세요.
                                     URL: $query
                                     제목: ${t ?: "제목 없음"}
                                     내용:
                                     $d
+
+                                    [내용 충분성 판단]
+                                    아래 경우에만 type을 'insufficient_content'로 설정하세요:
+                                    - 페이지 본문이 거의 비어 있거나 로그인/구독 화면인 경우
+                                    - 제목만 있고 음식 관련 내용이 전혀 없는 경우
+                                    재료 목록, 조리 순서, 음식 이름 + 식재료 관련 문장 중 하나라도 있으면 recipe_search로 추출하세요.
+                                    단계가 비격식체이거나 분량이 없거나 구조가 불완전해도 추출하세요.
+                                    추출할 것이 아무것도 없을 때만 insufficient_content를 사용하세요.
+
+                                    [이미지 선택 규칙]
+                                    recipe_data의 image_url에는 아래 기준에 맞는 이미지 URL을 하나만 선택하세요:
+                                    - 완성된 요리가 그릇이나 접시에 담긴 사진을 최우선으로 선택하세요.
+                                    - 요리가 화면의 대부분을 차지하는 대표 썸네일 이미지를 선호하세요.
+                                    - 인물 얼굴, 프로필 사진, 셀카, 작가 사진, 배너, 로고, 광고 이미지는 제외하세요.
+                                    - 재료 손질 사진이나 조리 중간 과정 사진보다 완성 요리 사진을 선택하세요.
+                                    - 적합한 이미지가 없으면 빈 문자열을 반환하세요.
                                     """.trimIndent()
                                 }
 
@@ -374,6 +390,22 @@ fun TomaNavHost(
                                     제목: ${t ?: "제목 없음"}
                                     내용:
                                     $d
+
+                                    [내용 충분성 판단]
+                                    아래 경우에만 type을 'insufficient_content'로 설정하세요:
+                                    - 페이지 본문이 거의 비어 있거나 로그인/구독 화면인 경우
+                                    - 제목만 있고 음식 관련 내용이 전혀 없는 경우
+                                    재료 목록, 조리 순서, 음식 이름 + 식재료 관련 문장 중 하나라도 있으면 recipe_search로 추출하세요.
+                                    단계가 비격식체이거나 분량이 없거나 구조가 불완전해도 추출하세요.
+                                    추출할 것이 아무것도 없을 때만 insufficient_content를 사용하세요.
+
+                                    [이미지 선택 규칙]
+                                    recipe_data의 image_url에는 아래 기준에 맞는 이미지 URL을 하나만 선택하세요:
+                                    - 완성된 요리가 그릇이나 접시에 담긴 사진을 최우선으로 선택하세요.
+                                    - 요리가 화면의 대부분을 차지하는 대표 썸네일 이미지를 선호하세요.
+                                    - 인물 얼굴, 프로필 사진, 셀카, 작가 사진, 배너, 로고, 광고 이미지는 제외하세요.
+                                    - 재료 손질 사진이나 조리 중간 과정 사진보다 완성 요리 사진을 선택하세요.
+                                    - 적합한 이미지가 없으면 빈 문자열을 반환하세요.
                                     """.trimIndent()
                                 }
 
@@ -521,6 +553,7 @@ fun TomaNavHost(
             }
             val navEvent by chatViewModel.navigationEvent.collectAsState()
             val errorEvent by chatViewModel.errorEvent.collectAsState()
+            val recipeContextsByMessageId by chatViewModel.recipeContextsByMessageId.collectAsState()
 
             LaunchedEffect(navEvent) {
                 when (val event = navEvent) {
@@ -564,6 +597,12 @@ fun TomaNavHost(
                 onBackClick = { navController.popBackStack() },
                 onInputTextChange = chatViewModel::onInputTextChange,
                 onAddImageClick = { showImageSourceSheet = true },
+                recipeMessageIds = recipeContextsByMessageId.keys,
+                onReopenRecipe = { messageId -> chatViewModel.reopenRecipe(messageId) },
+                onQuickAction = { label, prompt ->
+                    if (prompt != null) chatViewModel.sendCustomMessage(label, prompt)
+                    else chatViewModel.dismissQuickActions()
+                },
                 onSendMessage = {
                     val inputText = chatUiState.inputText.trim()
                     val isUrl = inputText.startsWith("http://") || inputText.startsWith("https://")
@@ -630,6 +669,22 @@ fun TomaNavHost(
                                 제목: ${t ?: "제목 없음"}
                                 내용:
                                 $d
+
+                                [내용 충분성 판단]
+                                아래 경우에만 type을 'insufficient_content'로 설정하세요:
+                                - 페이지 본문이 거의 비어 있거나 로그인/구독 화면인 경우
+                                - 제목만 있고 음식 관련 내용이 전혀 없는 경우
+                                재료 목록, 조리 순서, 음식 이름 + 식재료 관련 문장 중 하나라도 있으면 recipe_search로 추출하세요.
+                                단계가 비격식체이거나 분량이 없거나 구조가 불완전해도 추출하세요.
+                                추출할 것이 아무것도 없을 때만 insufficient_content를 사용하세요.
+
+                                [이미지 선택 규칙]
+                                recipe_data의 image_url에는 아래 기준에 맞는 이미지 URL을 하나만 선택하세요:
+                                - 완성된 요리가 그릇이나 접시에 담긴 사진을 최우선으로 선택하세요.
+                                - 요리가 화면의 대부분을 차지하는 대표 썸네일 이미지를 선호하세요.
+                                - 인물 얼굴, 프로필 사진, 셀카, 작가 사진, 배너, 로고, 광고 이미지는 제외하세요.
+                                - 재료 손질 사진이나 조리 중간 과정 사진보다 완성 요리 사진을 선택하세요.
+                                - 적합한 이미지가 없으면 빈 문자열을 반환하세요.
                                 """.trimIndent()
                             }
 

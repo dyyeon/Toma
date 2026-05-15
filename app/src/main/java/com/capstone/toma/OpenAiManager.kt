@@ -91,7 +91,8 @@ class OpenAiManager {
                 "ingredients": ["재료1 분량", "재료2 분량", ...],
                 "steps": ["1단계 상세 설명", "2단계 상세 설명", ...],
                 "difficulty": "쉬움/보통/어려움",
-                "time": "00분"
+                "time": "00분",
+                "image_url": "완성된 요리가 잘 담긴 대표 이미지 URL 1개. 없으면 빈 문자열."
               }
             }
             - For General Chat (on-topic food questions) AND for refusals:
@@ -99,6 +100,19 @@ class OpenAiManager {
               "type": "chat",
               "response": "한국어 답변"
             }
+            - For web pages where there is truly no readable recipe content at all:
+            {
+              "type": "insufficient_content",
+              "keyword": "추정 요리명. 페이지 제목에서 유추. 알 수 없으면 빈 문자열.",
+              "response": "이 페이지에서 레시피 내용을 충분히 읽어오지 못했어요.\n제목을 기반으로 일반 레시피를 만들어 드릴까요?"
+            }
+            Use 'insufficient_content' ONLY when the page body is essentially empty:
+            e.g. blank page, JS-rendered with no text, login-walled, or just a title with no food content.
+            If the page contains a dish name plus ANY ingredients or cooking steps — even informal,
+            incomplete, or unstructured — extract what is available and return 'recipe_search'.
+            Missing quantities, casual tone, and imperfect formatting are NOT reasons to reject.
+            Be permissive about extracting. Only use 'insufficient_content' when there is
+            truly nothing to work with.
         """.trimIndent()
     }
 

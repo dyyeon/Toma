@@ -67,7 +67,9 @@ data class AiChatUiState(
     val isTyping: Boolean = false,
     val isSpecificAnalysis: Boolean = false,
     val errorDialogMessage: String? = null,
-    val pendingImageUri: String? = null // Image currently being analyzed
+    val pendingImageUri: String? = null,
+    // label → prompt to send (null prompt = just dismiss, no message sent)
+    val quickActions: List<Pair<String, String?>>? = null
 )
 
 @Composable
@@ -78,7 +80,10 @@ fun AiChatScreen(
     onSendMessage: () -> Unit,
     onMicClick: () -> Unit = {},
     onAddImageClick: () -> Unit = {},
-    onErrorDismiss: () -> Unit = {}
+    onErrorDismiss: () -> Unit = {},
+    recipeMessageIds: Set<String> = emptySet(),
+    onReopenRecipe: (messageId: String) -> Unit = {},
+    onQuickAction: (label: String, prompt: String?) -> Unit = { _, _ -> }
 ) {
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -238,10 +243,15 @@ fun AiChatScreen(
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp),
                 contentPadding = PaddingValues(top = 16.dp, bottom = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp) // 말풍선 간격 넓힘
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 items(uiState.messages, key = { it.id }) { message ->
-                    ChatBubble(message = message)
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ChatBubble(message = message)
+                        if (message.id in recipeMessageIds) {
+                            ReopenRecipeActionCard(onReopenRecipe = { onReopenRecipe(message.id) })
+                        }
+                    }
                 }
 
                 // Three-dots indicator is suppressed during link/image analysis because
@@ -250,6 +260,15 @@ fun AiChatScreen(
                     item {
                         TypingIndicatorBubble()
                     }
+                }
+
+
+            }
+
+            // Quick-action chips: shown when AI returned insufficient_content.
+            uiState.quickActions?.let { actions ->
+                if (actions.isNotEmpty()) {
+                    QuickActionsRow(actions = actions, onAction = onQuickAction)
                 }
             }
         }
@@ -483,6 +502,64 @@ private fun TypingIndicatorBubble() {
                             .background(TomaMainOrange.copy(alpha = alpha.value))
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReopenRecipeActionCard(onReopenRecipe: () -> Unit) {
+    // Left-indent to align card content with AI chat bubbles (avatar 32dp + spacer 8dp)
+    Row(modifier = Modifier.fillMaxWidth().padding(start = 40.dp)) {
+        Surface(
+            onClick = onReopenRecipe,
+            shape = RoundedCornerShape(12.dp),
+            color = TomaMainOrange.copy(alpha = 0.08f),
+            border = BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.3f)),
+            modifier = Modifier.widthIn(max = 220.dp)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "분석된 레시피 다시 보기",
+                    color = TomaMainOrange,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(text = "→", color = TomaMainOrange, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuickActionsRow(
+    actions: List<Pair<String, String?>>,
+    onAction: (label: String, prompt: String?) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        actions.forEach { (label, prompt) ->
+            Surface(
+                onClick = { onAction(label, prompt) },
+                shape = RoundedCornerShape(20.dp),
+                color = TomaMainOrange.copy(alpha = 0.1f),
+                border = BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.35f))
+            ) {
+                Text(
+                    text = label,
+                    color = TomaMainOrange,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
+                )
             }
         }
     }

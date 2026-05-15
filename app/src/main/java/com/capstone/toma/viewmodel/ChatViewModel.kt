@@ -21,6 +21,12 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
+data class LastRecipeContext(
+    val keyword: String,
+    val sourceType: com.capstone.toma.model.RecipeSourceType,
+    val recipeData: String
+)
+
 sealed class ChatNavigationEvent {
     data class ToConfirm(
         val keyword: String,
@@ -47,6 +53,9 @@ class ChatViewModel : ViewModel() {
     private val _errorEvent = MutableStateFlow<String?>(null)
     val errorEvent: StateFlow<String?> = _errorEvent.asStateFlow()
 
+    private val _recipeContexts = MutableStateFlow<Map<String, LastRecipeContext>>(emptyMap())
+    val recipeContextsByMessageId: StateFlow<Map<String, LastRecipeContext>> = _recipeContexts.asStateFlow()
+
     private val timeFormat = SimpleDateFormat("a h:mm", Locale.KOREAN)
     private var lastAnalyzedRecipeData: String? = null
     private var sessionSourceType: com.capstone.toma.model.RecipeSourceType? = null
@@ -55,6 +64,7 @@ class ChatViewModel : ViewModel() {
         _uiState.value = AiChatUiState()
         lastAnalyzedRecipeData = null
         sessionSourceType = null
+        _recipeContexts.value = emptyMap()
         clearNavigationEvent()
         clearErrorEvent()
     }
@@ -90,7 +100,8 @@ class ChatViewModel : ViewModel() {
             it.copy(
                 messages = it.messages + userMessage,
                 inputText = "",
-                isTyping = true
+                isTyping = true,
+                quickActions = null
             )
         }
 
@@ -117,7 +128,8 @@ class ChatViewModel : ViewModel() {
             it.copy(
                 messages = it.messages + userMessage,
                 inputText = if (hiddenPrompt == null) "" else it.inputText,
-                isTyping = true
+                isTyping = true,
+                quickActions = null
             )
         }
 
@@ -155,7 +167,8 @@ class ChatViewModel : ViewModel() {
             it.copy(
                 messages = it.messages + userMessage + aiMessage,
                 isTyping = true,
-                isSpecificAnalysis = true
+                isSpecificAnalysis = true,
+                quickActions = null
             )
         }
 
@@ -176,20 +189,37 @@ class ChatViewModel : ViewModel() {
 
             when (result) {
                 is VoiceRequestResult.Success -> {
+                    val isInsufficient = result.requestType == "insufficient_content"
+                    val chips = if (isInsufficient) {
+                        listOfNotNull(
+                            if (result.keyword.isNotBlank())
+                                ("네, 만들어주세요" to "${result.keyword} 레시피를 만들어주세요")
+                            else null
+                        ).takeIf { it.isNotEmpty() }
+                    } else null
+
+                    // Fix 1: confirmed generalized recipe must not inherit the original WEB sourceType.
+                    if (isInsufficient) sessionSourceType = null
+
+                    // Fix 2: no keyword means no chips — guide the user to type the food name.
+                    val displayMessage = if (isInsufficient && result.keyword.isBlank()) {
+                        "이 페이지 본문을 충분히 읽지 못했어요. 음식 이름을 직접 알려주시면 일반적인 레시피로 정리해드릴게요."
+                    } else {
+                        result.responseMessage
+                    }
+
                     _uiState.update { state ->
                         state.copy(
                             messages = state.messages.map { message ->
-                                if (message.id == aiMessageId) {
-                                    message.copy(text = result.responseMessage)
-                                } else {
-                                    message
-                                }
+                                if (message.id == aiMessageId) message.copy(text = displayMessage)
+                                else message
                             },
                             isTyping = false,
-                            isSpecificAnalysis = false
+                            isSpecificAnalysis = false,
+                            quickActions = chips
                         )
                     }
-                    handleNavigation(result, fixedSourceType)
+                    handleNavigation(result, aiMessageId, fixedSourceType)
                 }
                 is VoiceRequestResult.Error -> {
                     _uiState.update { state ->
@@ -260,8 +290,9 @@ class ChatViewModel : ViewModel() {
                                 } else result
                             } else result
 
+                            val aiMessageId = UUID.randomUUID().toString()
                             val aiMessage = ChatMessage(
-                                id = UUID.randomUUID().toString(),
+                                id = aiMessageId,
                                 text = enrichedResult.responseMessage,
                                 isUser = false,
                                 timestamp = getCurrentTime()
@@ -273,7 +304,7 @@ class ChatViewModel : ViewModel() {
                                     isTyping = false
                                 )
                             }
-                            handleNavigation(enrichedResult)
+                            handleNavigation(enrichedResult, aiMessageId)
                         }
                         is VoiceRequestResult.Error -> {
                             _uiState.update {
@@ -292,6 +323,7 @@ class ChatViewModel : ViewModel() {
 
     private fun handleNavigation(
         result: VoiceRequestResult.Success,
+        aiMessageId: String,
         fixedSourceType: com.capstone.toma.model.RecipeSourceType? = null
     ) {
         val latestRecipeData = result.recipeData?.takeIf { it.isNotBlank() }
@@ -323,12 +355,30 @@ class ChatViewModel : ViewModel() {
                     com.capstone.toma.model.RecipeSourceType.TEXT
                 }
 
+            _recipeContexts.update { it + (aiMessageId to LastRecipeContext(
+                keyword = keyword,
+                sourceType = sourceType,
+                recipeData = effectiveRecipeData ?: ""
+            )) }
             _navigationEvent.value = ChatNavigationEvent.ToConfirm(
                 keyword = keyword,
                 sourceType = sourceType,
                 recipeData = effectiveRecipeData
             )
         }
+    }
+
+    fun reopenRecipe(messageId: String) {
+        val ctx = _recipeContexts.value[messageId] ?: return
+        _navigationEvent.value = ChatNavigationEvent.ToConfirm(
+            keyword = ctx.keyword,
+            sourceType = ctx.sourceType,
+            recipeData = ctx.recipeData
+        )
+    }
+
+    fun dismissQuickActions() {
+        _uiState.update { it.copy(quickActions = null) }
     }
 
     private fun getCurrentTime(): String = timeFormat.format(Date())
