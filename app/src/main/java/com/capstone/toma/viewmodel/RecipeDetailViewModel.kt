@@ -25,10 +25,7 @@ class RecipeDetailViewModel : ViewModel() {
 
     private var timerJob: Job? = null
 
-    /**
-     * Called when step changes — resets timer for new step.
-     * @param seconds Initial duration in seconds.
-     */
+    /** Called when step changes — resets timer for the new step. */
     fun initStep(seconds: Int) {
         timerJob?.cancel()
         fullDuration = seconds
@@ -37,60 +34,67 @@ class RecipeDetailViewModel : ViewModel() {
         _showTimer.value = seconds > 0
     }
 
-    fun startTimer() {
-        if (_timerState.value == StepTimerState.RUNNING) return
-        
-        timerJob?.cancel()
-        _timerState.value = StepTimerState.RUNNING
-        
-        timerJob = viewModelScope.launch {
-            while (_timerRemainingSeconds.value > 0) {
-                delay(1000)
-                _timerRemainingSeconds.value -= 1
-            }
-            _timerState.value = StepTimerState.FINISHED
+    /** Reopens the timer card after user dismissed it via ×. Resets to IDLE with full duration. */
+    fun showTimerCard() {
+        if (fullDuration > 0) {
+            timerJob?.cancel()
+            _timerState.value = StepTimerState.IDLE
+            _timerRemainingSeconds.value = fullDuration
+            _showTimer.value = true
         }
     }
 
+    fun startTimer() {
+        if (_timerState.value == StepTimerState.RUNNING) return
+        timerJob?.cancel()
+        _timerState.value = StepTimerState.RUNNING
+        runCountdown()
+    }
+
     fun pauseTimer() {
+        if (_timerState.value != StepTimerState.RUNNING) return
         timerJob?.cancel()
         _timerState.value = StepTimerState.PAUSED
     }
 
     fun resumeTimer() {
         if (_timerState.value != StepTimerState.PAUSED) return
-        
         timerJob?.cancel()
         _timerState.value = StepTimerState.RUNNING
-        
-        timerJob = viewModelScope.launch {
-            while (_timerRemainingSeconds.value > 0) {
-                delay(1000)
-                _timerRemainingSeconds.value -= 1
-            }
-            _timerState.value = StepTimerState.FINISHED
-        }
+        runCountdown()
     }
 
     fun restartTimer() {
         timerJob?.cancel()
         _timerRemainingSeconds.value = fullDuration
-        startTimer()
+        _timerState.value = StepTimerState.RUNNING
+        runCountdown()
     }
 
+    /** × button: cancel current run and hide the card. State returns to IDLE. */
     fun cancelTimer() {
         timerJob?.cancel()
         _timerState.value = StepTimerState.IDLE
+        _timerRemainingSeconds.value = fullDuration
         _showTimer.value = false
     }
 
+    /** Adjusts remaining time (and base duration when IDLE) by [deltaSeconds]. Clamped to [30, 3600]. */
     fun adjustDuration(deltaSeconds: Int) {
-        val current = _timerRemainingSeconds.value
-        val newVal = (current + deltaSeconds).coerceIn(30, 3600)
+        val newVal = (_timerRemainingSeconds.value + deltaSeconds).coerceIn(30, 3600)
         _timerRemainingSeconds.value = newVal
-        // If the timer hasn't started yet, we also update the full duration so "Restart" uses this adjusted time.
         if (_timerState.value == StepTimerState.IDLE) {
             fullDuration = newVal
+        }
+    }
+
+    private fun runCountdown() {
+        timerJob = viewModelScope.launch {
+            while (_timerRemainingSeconds.value > 0) {
+                delay(1000L)
+                _timerRemainingSeconds.value -= 1
+            }
+            _timerState.value = StepTimerState.FINISHED
         }
     }
 

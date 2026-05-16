@@ -134,7 +134,19 @@ fun RecipeDetailContent(
     }
 
     val difficulty = recipeData?.optString("difficulty") ?: "보통"
-    val timeStr = recipeData?.optString("time")?.toIntOrNull()?.takeIf { it > 0 }?.let { m -> if (m < 60) "${m}분" else if (m % 60 == 0) "${m/60}시간" else "${m/60}시간 ${m%60}분" } ?: "-"
+    val timeStr = remember(recipeData) {
+        val stepTimesArray = recipeData?.optJSONArray("stepTimes")
+        if (stepTimesArray != null && stepTimesArray.length() > 0) {
+            var totalSeconds = 0
+            for (i in 0 until stepTimesArray.length()) {
+                totalSeconds += stepTimesArray.optInt(i, 0)
+            }
+            val totalMinutes = kotlin.math.ceil(totalSeconds / 60.0).toInt()
+            parseTimeDisplay(totalMinutes.toString())
+        } else {
+            parseTimeDisplay(recipeData?.optString("time"))
+        }
+    }
 
     var currentStepIndex by remember { mutableIntStateOf(0) }
     val totalSteps = steps.size
@@ -365,7 +377,9 @@ fun RecipeDetailContent(
 
                 TomaIntent.RECOMMENDED_TIMER -> {
                     if (isTimerRecommended) {
-                        when (stepTimerState) {
+                        if (!showStepTimer) {
+                            recipeDetailViewModel.showTimerCard()
+                        } else when (stepTimerState) {
                             StepTimerState.IDLE     -> recipeDetailViewModel.startTimer()
                             StepTimerState.RUNNING  -> recipeDetailViewModel.pauseTimer()
                             StepTimerState.PAUSED   -> recipeDetailViewModel.resumeTimer()
@@ -493,7 +507,14 @@ fun RecipeDetailContent(
                 onTtsToggle = { isTtsEnabled = !isTtsEnabled },
                 onTimerClick = {
                     if (isTimerRecommended) {
-                        voiceViewModel.toggleRecommendedTimer()
+                        if (!showStepTimer) {
+                            recipeDetailViewModel.showTimerCard()
+                        } else when (stepTimerState) {
+                            StepTimerState.IDLE     -> recipeDetailViewModel.startTimer()
+                            StepTimerState.RUNNING  -> recipeDetailViewModel.pauseTimer()
+                            StepTimerState.PAUSED   -> recipeDetailViewModel.resumeTimer()
+                            StepTimerState.FINISHED -> recipeDetailViewModel.restartTimer()
+                        }
                     } else {
                         voiceViewModel.showTimerManualGuidance()
                     }
@@ -969,77 +990,26 @@ private fun BottomControlSection(
     }
 }
 
-@Composable
-private fun TimerDisplayCard(
-    remainingSeconds: Int,
-    isRunning: Boolean,
-    onCancel: () -> Unit
-) {
-    val minutes = remainingSeconds / 60
-    val seconds = remainingSeconds % 60
-    val timeText = String.format("%02d:%02d", minutes, seconds)
-
-    val accentColor = if (isRunning) TomaMainOrange else Color(0xFF868E96)
-    val statusLabel = if (isRunning) "타이머 작동 중" else "타이머 종료"
-
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 16.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = accentColor.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.2f))
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(accentColor, CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Timer,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = statusLabel,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = accentColor
-                )
-                Text(
-                    text = timeText,
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color.Black
-                )
-            }
-
-            if (isRunning) {
-                TextButton(onClick = onCancel) {
-                    Text(
-                        text = "취소",
-                        color = Color.Gray,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-    }
-}
-
 private fun titleCase(str: String): String =
     str.lowercase().replaceFirstChar { it.uppercase() }
+
+private fun parseTimeDisplay(raw: String?): String {
+    if (raw.isNullOrBlank()) return "-"
+    raw.toIntOrNull()?.takeIf { it > 0 }?.let { m ->
+        return if (m < 60) "${m}분" else if (m % 60 == 0) "${m / 60}시간" else "${m / 60}시간 ${m % 60}분"
+    }
+    Regex("""(\d+)\s*시간(?:\s*(\d+)\s*분)?""").find(raw)?.let { match ->
+        val h = match.groupValues[1].toIntOrNull() ?: 0
+        val min = match.groupValues[2].toIntOrNull() ?: 0
+        val total = h * 60 + min
+        return if (total > 0) if (total < 60) "${total}분" else if (total % 60 == 0) "${total / 60}시간" else "${total / 60}시간 ${total % 60}분" else "-"
+    }
+    Regex("""(\d+)\s*분""").find(raw)?.groupValues?.get(1)?.toIntOrNull()?.takeIf { it > 0 }?.let { m ->
+        return if (m < 60) "${m}분" else if (m % 60 == 0) "${m / 60}시간" else "${m / 60}시간 ${m % 60}분"
+    }
+    Regex("""\d+""").find(raw)?.value?.toIntOrNull()?.takeIf { it > 0 }?.let { return "${it}분" }
+    return raw
+}
 
 private fun resolveStepTimerSeconds(
     stepIndex: Int,
@@ -1092,82 +1062,114 @@ fun StepTimerCard(
     val secs = remainingSeconds % 60
     val timeText = "%02d:%02d".format(mins, secs)
     val orangeAccent = Color(0xFFFF6B2C)
+    val greenAccent = Color(0xFF2F9E44)
+    val isFinished = timerState == StepTimerState.FINISHED
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
         Box(modifier = Modifier.padding(16.dp)) {
-            // Cancel button in top-right
-            if (timerState != StepTimerState.FINISHED) {
-                IconButton(
-                    onClick = onCancel,
-                    modifier = Modifier.align(Alignment.TopEnd).size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close, 
-                        contentDescription = "Cancel", 
-                        tint = Color.Gray, 
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+            // Close (×) button — always visible including FINISHED state
+            IconButton(
+                onClick = onCancel,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Close",
+                    tint = Color.Gray,
+                    modifier = Modifier.size(18.dp)
+                )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // -1분 Button
-                TextButton(onClick = { onAdjust(-60) }) {
-                    Text("-1분", color = orangeAccent, fontWeight = FontWeight.Bold)
-                }
-
-                // Center Content
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.weight(1f)
+            if (isFinished) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp, end = 24.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    if (timerState == StepTimerState.FINISHED) {
-                        Text("완료! 🎉", fontSize = 20.sp, fontWeight = FontWeight.Black, color = orangeAccent)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Button(
-                            onClick = onRestart,
-                            colors = ButtonDefaults.buttonColors(containerColor = orangeAccent),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("다시 시작", fontWeight = FontWeight.Bold)
-                        }
-                    } else {
-                        Text(timeText, fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.Black)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        
-                        val (btnText, btnAction) = when (timerState) {
-                            StepTimerState.IDLE -> "시작" to onStart
-                            StepTimerState.RUNNING -> "일시정지" to onPause
-                            StepTimerState.PAUSED -> "재개" to onResume
-                            else -> "" to {}
-                        }
-                        
-                        Button(
-                            onClick = btnAction,
-                            colors = ButtonDefaults.buttonColors(containerColor = orangeAccent),
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
-                        ) {
-                            Text(btnText, fontWeight = FontWeight.Bold)
-                        }
+                    Button(
+                        onClick = onRestart,
+                        colors = ButtonDefaults.buttonColors(containerColor = greenAccent),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
+                    ) {
+                        Text(
+                            text = "✅ 완료! 다시 시작",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 16.sp
+                        )
                     }
                 }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    TextButton(onClick = { onAdjust(-60) }) {
+                        Text("-1분", color = orangeAccent, fontWeight = FontWeight.Bold)
+                    }
 
-                // +1분 Button
-                TextButton(onClick = { onAdjust(60) }) {
-                    Text("+1분", color = orangeAccent, fontWeight = FontWeight.Bold)
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = timeText,
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = orangeAccent
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        when (timerState) {
+                            StepTimerState.IDLE -> {
+                                Button(
+                                    onClick = onStart,
+                                    colors = ButtonDefaults.buttonColors(containerColor = orangeAccent),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+                                ) {
+                                    Text("시작", fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                            StepTimerState.RUNNING -> {
+                                OutlinedButton(
+                                    onClick = onPause,
+                                    border = BorderStroke(2.dp, orangeAccent),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+                                ) {
+                                    Text("일시정지", fontWeight = FontWeight.Bold, color = orangeAccent)
+                                }
+                            }
+                            StepTimerState.PAUSED -> {
+                                Button(
+                                    onClick = onResume,
+                                    colors = ButtonDefaults.buttonColors(containerColor = orangeAccent),
+                                    shape = RoundedCornerShape(10.dp),
+                                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+                                ) {
+                                    Text("재개", fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                            }
+                            else -> Unit
+                        }
+                    }
+
+                    TextButton(onClick = { onAdjust(60) }) {
+                        Text("+1분", color = orangeAccent, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }

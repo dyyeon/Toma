@@ -104,6 +104,16 @@ class OpenAiManager {
             - For SIMMERING (졸이기): include the transition from boil to simmer as a step.
             - For FRYING (튀기기): include oil temperature check method (젓가락 넣었을 때 거품 올라오면).
 
+            STEPTIME & TOTAL TIME RULES:
+            - "stepTimes": array of integers in SECONDS, one per step (same length as "steps").
+              - 0 for prep/non-timed steps (chopping, mixing, plating).
+              - Timed step examples: oil preheat 2min → 120, boiling 10min → 600, simmering 15min → 900.
+            - "time": total cooking time as a plain INTEGER in MINUTES. NO units, no text, just a number.
+              - If the user's request explicitly states a duration → use that number.
+              - If not, sum all non-zero stepTimes and convert to minutes (round up to nearest minute).
+              - If neither, estimate from step count: simple 2~3min/step, cooking 5~10min/step.
+              - Minimum value: 1. Never 0 or null. Never a string like "30분".
+
             WHEN TO RETURN recipe_search:
             - User asks for a recipe by name, by ingredient, or by occasion.
             - User asks to modify the current recipe (더 맵게, 2인분으로, 간장 빼고 등).
@@ -125,8 +135,9 @@ class OpenAiManager {
                 "category": "한식/양식/중식/일식/동남아식/디저트/기타 중 하나",
                 "ingredients": ["재료1 분량", "재료2 분량", ...],
                 "steps": ["1단계 상세 설명", "2단계 상세 설명", ...],
+                "stepTimes": [120, 300, 0, 180],
                 "difficulty": "쉬움/보통/어려움",
-                "time": "00분",
+                "time": 35,
                 "image_url": ""
               }
             }
@@ -347,8 +358,9 @@ class OpenAiManager {
                                             "category": "한식/양식/중식/일식/동남아식/디저트/기타 중 하나",
                                             "ingredients": ["ingredient"],
                                             "steps": ["step"],
+                                            "stepTimes": [120, 300, 0],
                                             "difficulty": "쉬움/보통/어려움",
-                                            "time": "20분",
+                                            "time": 20,
                                             "image_url": "$imageUri"
                                           }
                                         }
