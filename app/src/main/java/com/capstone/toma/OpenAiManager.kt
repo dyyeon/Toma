@@ -305,6 +305,119 @@ class OpenAiManager {
         processChatRequest(text, emptyList(), onResult)
     }
 
+    suspend fun processChatRequestStreaming(
+        userText: String,
+        history: List<Pair<String, Boolean>>,
+        onToken: (String) -> Unit,
+        onComplete: (VoiceRequestResult) -> Unit,
+        onError: (String) -> Unit
+    ) = withContext(Dispatchers.IO) {
+        if (!hasApiKey()) {
+            onError("OPENAI_API_KEY가 설정되어 있지 않습니다.")
+            return@withContext
+        }
+
+        val messages = JSONArray().apply {
+            put(JSONObject().apply {
+                put("role", "system")
+                put("content", buildChatSystemPrompt())
+            })
+            history.takeLast(10).forEach { (text, isUser) ->
+                put(JSONObject().apply {
+                    put("role", if (isUser) "user" else "assistant")
+                    put("content", text)
+                })
+            }
+            put(JSONObject().apply {
+                put("role", "user")
+                put("content", userText)
+            })
+        }
+
+        val chosenModel = when {
+            isComplexRequest(userText) -> OpenAiConfig.ADVANCED_MODEL
+            isIntentRequest(userText) -> OpenAiConfig.INTENT_MODEL
+            else -> OpenAiConfig.DEFAULT_TEXT_MODEL
+        }
+
+        val requestJson = JSONObject().apply {
+            put("model", chosenModel)
+            put("messages", messages)
+            put("stream", true)
+        }
+
+        val request = Request.Builder()
+            .url("https://api.openai.com/v1/chat/completions")
+            .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
+            .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        try {
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                val body = response.body?.string()
+                onError(parseApiError(response, body))
+                return@withContext
+            }
+
+            val accumulator = StringBuilder()
+            var completed = false
+
+            response.body?.charStream()?.buffered()?.useLines { lines ->
+                for (rawLine in lines) {
+                    val line = rawLine.trim()
+                    if (line.isBlank()) continue
+                    if (line == "data: [DONE]") {
+                        val finalText = accumulator.toString()
+                        try {
+                            val resultJson = JSONObject(finalText)
+                            val type = resultJson.optString("type", "chat")
+                            val responseMsg = resultJson.optString("response", "")
+                            val normalizedRecipeData =
+                                normalizeRecipeData(resultJson.optJSONObject("recipe_data"))
+                            onComplete(
+                                VoiceRequestResult.Success(
+                                    requestType = type,
+                                    keyword = resultJson.optString("keyword", ""),
+                                    responseMessage = responseMsg,
+                                    recipeData = normalizedRecipeData?.toString()
+                                )
+                            )
+                            completed = true
+                        } catch (e: Exception) {
+                            onError("응답 파싱 실패: ${e.message ?: "unknown"}")
+                            completed = true
+                        }
+                        break
+                    }
+                    if (line.startsWith("data: ")) {
+                        val payload = line.removePrefix("data: ")
+                        try {
+                            val chunk = JSONObject(payload)
+                            val choices = chunk.optJSONArray("choices") ?: continue
+                            if (choices.length() == 0) continue
+                            val delta = choices.getJSONObject(0).optJSONObject("delta") ?: continue
+                            val content = delta.optString("content", "")
+                            if (content.isNotEmpty()) {
+                                accumulator.append(content)
+                                onToken(content)
+                            }
+                        } catch (_: Exception) {
+                            // Skip malformed chunks; keep streaming.
+                        }
+                    }
+                }
+            }
+
+            if (!completed) {
+                onError("스트리밍이 완료되지 않았습니다.")
+            }
+        } catch (e: Exception) {
+            onError(e.message ?: "스트리밍 오류")
+        }
+    }
+
 
     suspend fun analyzeRecipeImageSuspend(
         context: Context,

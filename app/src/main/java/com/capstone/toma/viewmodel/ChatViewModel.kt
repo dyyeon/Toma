@@ -56,6 +56,9 @@ class ChatViewModel : ViewModel() {
     private val _recipeContexts = MutableStateFlow<Map<String, LastRecipeContext>>(emptyMap())
     val recipeContextsByMessageId: StateFlow<Map<String, LastRecipeContext>> = _recipeContexts.asStateFlow()
 
+    private val _isStreaming = MutableStateFlow(false)
+    val isStreaming: StateFlow<Boolean> = _isStreaming.asStateFlow()
+
     private val timeFormat = SimpleDateFormat("a h:mm", Locale.KOREAN)
     private var lastAnalyzedRecipeData: String? = null
     private var sessionSourceType: com.capstone.toma.model.RecipeSourceType? = null
@@ -133,7 +136,8 @@ class ChatViewModel : ViewModel() {
             )
         }
 
-        processAiResponse(hiddenPrompt ?: displayText)
+        val target = hiddenPrompt ?: displayText
+        processAiResponse(target)
     }
 
     fun startLinkAnalysis(
@@ -325,6 +329,98 @@ class ChatViewModel : ViewModel() {
                     }
                 }
             }
+        }
+    }
+
+    private fun shouldUseStreaming(userText: String): Boolean {
+        val lower = userText.lowercase()
+        val recipeTriggers = listOf(
+            "레시피", "요리법", "만드는 법", "재료", "추천", "검색", "알려줘",
+            "해줘", "몇 인분", "대체", "링크", "유튜브", "블로그", "사진", "이미지",
+            "분석", "레시피로", "조리법", "단계", "타이머", "http", "www"
+        )
+        return recipeTriggers.none { lower.contains(it) } && userText.length <= 80
+    }
+
+    private fun processAiResponseStreaming(userText: String) {
+        val history = _uiState.value.messages.map { it.text to it.isUser }
+        val aiMessageId = UUID.randomUUID().toString()
+
+        val placeholder = ChatMessage(
+            id = aiMessageId,
+            text = "",
+            isUser = false,
+            timestamp = getCurrentTime()
+        )
+        _uiState.update { it.copy(messages = it.messages + placeholder) }
+        _isStreaming.value = true
+
+        viewModelScope.launch {
+            openAiManager.processChatRequestStreaming(
+                userText = userText,
+                history = history,
+                onToken = { token ->
+                    _uiState.update { state ->
+                        state.copy(messages = state.messages.map { msg ->
+                            if (msg.id == aiMessageId) msg.copy(text = msg.text + token) else msg
+                        })
+                    }
+                },
+                onComplete = { result ->
+                    viewModelScope.launch {
+                        if (result is VoiceRequestResult.Success) {
+                            val enrichedResult = if (
+                                result.requestType == "recipe_search" &&
+                                result.keyword.isNotBlank() &&
+                                result.recipeData != null
+                            ) {
+                                val recipeJson = JSONObject(result.recipeData)
+                                val currentImageUrl = recipeJson.optString("image_url")
+                                if (currentImageUrl.isBlank() || currentImageUrl == "없음") {
+                                    val imageUrl = withContext(Dispatchers.IO) {
+                                        PublicRecipeManager().searchRecipe(result.keyword)?.mainImageUrl?.takeIf { it.isNotBlank() }
+                                            ?: WebPageManager().searchFoodImage(result.keyword)
+                                    }
+                                    if (imageUrl != null) {
+                                        recipeJson.put("image_url", imageUrl)
+                                        result.copy(recipeData = recipeJson.toString())
+                                    } else result
+                                } else result
+                            } else result
+
+                            val recipeImageUrl = enrichedResult.recipeData?.let {
+                                try { JSONObject(it).optString("image_url") } catch (_: Exception) { null }
+                            }?.takeIf { it.isNotBlank() && it != "없음" }
+
+                            _uiState.update { state ->
+                                state.copy(
+                                    messages = state.messages.map { msg ->
+                                        if (msg.id == aiMessageId)
+                                            msg.copy(text = enrichedResult.responseMessage, imageUri = recipeImageUrl)
+                                        else msg
+                                    },
+                                    isTyping = false
+                                )
+                            }
+                            _isStreaming.value = false
+                            handleNavigation(enrichedResult, aiMessageId)
+                        } else if (result is VoiceRequestResult.Error) {
+                            _isStreaming.value = false
+                            _uiState.update {
+                                it.copy(isTyping = false, errorDialogMessage = result.message)
+                            }
+                            _errorEvent.value = result.message
+                        }
+                    }
+                },
+                onError = { msg ->
+                    _isStreaming.value = false
+                    _uiState.update {
+                        it.copy(isTyping = false, errorDialogMessage = msg)
+                    }
+                    _errorEvent.value = msg
+                }
+            )
         }
     }
 
