@@ -120,7 +120,7 @@ private suspend fun analyzePageContent(
 
     updateStatus(
         if (isLikelyRecipe) "전문가 AI가 실전 정보를 추출 중이에요... ✨"
-        else "전문가 AI가 내용을 분析하고 있어요... ✨"
+        else "전문가 AI가 내용을 분석하고 있어요... ✨"
     )
 
     val openAi = com.capstone.toma.OpenAiManager()
@@ -201,10 +201,11 @@ private fun ChatViewModel.launchLinkAnalysis(
         resetChat()
         navController.navigate(TomaDestination.Chat.route)
     }
-    val display = userDisplay ?: if (isYoutube) "유튜브 분析 중: $url" else "웹 레시피 분析 중: $url"
+    val userBubbleText = userDisplay ?: url
+    val aiStatusText = getAnalysisMessage(url)
     startLinkAnalysis(
-        userDisplay = display,
-        initialAiText = getAnalysisMessage(url),
+        userDisplay = userBubbleText,
+        initialAiText = aiStatusText,
         fixedSourceType = if (isYoutube) com.capstone.toma.model.RecipeSourceType.YOUTUBE else com.capstone.toma.model.RecipeSourceType.WEB
     ) { updateStatus ->
         val webPageManager = WebPageManager()

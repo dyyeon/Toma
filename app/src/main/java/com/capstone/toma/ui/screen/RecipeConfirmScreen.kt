@@ -397,7 +397,7 @@ private fun parseConfirmRecipe(keyword: String, recipeDataJson: String?): Confir
         .ifBlank { keyword }
     val category = json?.optString("category").orEmpty()
     val difficulty = json?.optString("difficulty").orEmpty()
-    val timeText = json?.optString("time").orEmpty()
+    val timeText = json?.optString("time")?.toIntOrNull()?.takeIf { it > 0 }?.let { m -> if (m < 60) "${m}분" else if (m % 60 == 0) "${m/60}시간" else "${m/60}시간 ${m%60}분" } ?: "-"
     val imageUrl = json?.optString("image_url").orEmpty()
         .takeIf { it.isNotBlank() && it != "없음" }
 

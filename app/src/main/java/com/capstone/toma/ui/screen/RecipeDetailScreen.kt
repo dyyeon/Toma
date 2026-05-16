@@ -126,7 +126,7 @@ fun RecipeDetailContent(
     }
 
     val difficulty = recipeData?.optString("difficulty") ?: "보통"
-    val timeStr = recipeData?.optString("time") ?: "20분"
+    val timeStr = recipeData?.optString("time")?.toIntOrNull()?.takeIf { it > 0 }?.let { m -> if (m < 60) "${m}분" else if (m % 60 == 0) "${m/60}시간" else "${m/60}시간 ${m%60}분" } ?: "-"
 
     var currentStepIndex by remember { mutableIntStateOf(0) }
     val totalSteps = steps.size

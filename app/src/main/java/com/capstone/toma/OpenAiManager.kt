@@ -90,8 +90,24 @@ class OpenAiManager {
                 "category": "한식/중식/일식/양식/디저트 등",
                 "ingredients": ["재료1 분량", "재료2 분량", ...],
                 "steps": ["1단계 상세 설명", "2단계 상세 설명", ...],
-                "difficulty": "쉬움/보통/어려움",
-                "time": "00분",
+                "stepTimes": [seconds per step as integer, same order as steps — e.g. [120, 300, 600]].
+                  One integer per step. Derive from the step text:
+                  - If the step mentions a specific time, convert to seconds (e.g. "3분" → 180).
+                  - If no time is stated, estimate from the action verb:
+                    무치기/섞기/담기/썰기 → 120; 볶기/굽기/전 부치기 → 300; 끓이기/조리기 → 600;
+                    재우기/숙성/발효/푹 끓이기 → 1800.
+                  Never emit 0 or null for any element — always provide an estimate.
+                "difficulty": one of exactly: "초급", "중급", "고급"
+                  - 초급: minimal knife work, simple heat control, no special techniques (e.g. 계란후라이, 라면, 간단한 무침)
+                  - 중급: basic techniques required, timing matters, some multitasking (e.g. 볶음요리, 조림, 파스타, 찌개)
+                  - 고급: complex techniques, multi-step, experience required (e.g. 전, 갈비찜, 베이킹, 튀김)
+                  Never use: 쉬움, 보통, 어려움, 하, 중, 상, 초보자, or any other value.
+                "time": total cooking time as a plain integer (minutes only, e.g. 35).
+                  Priority order: (1) use explicit total stated in source (e.g. "총 10분" → 10);
+                  (2) if not stated, sum all per-step durations from stepTimes (convert to minutes);
+                  (3) if no times anywhere, estimate from steps using: simple steps → 2~3 min each,
+                  medium steps (볶기/끓이기/굽기) → 5~10 min each, long steps (재우기/발효) → 20~60 min each.
+                  Output: integer only (e.g. 35), never "약 35분" or "30-40분".
                 "image_url": "완성된 요리가 잘 담긴 대표 이미지 URL 1개. 없으면 빈 문자열."
               }
             }
@@ -294,7 +310,7 @@ class OpenAiManager {
                                             "category": "한식/중식/일식/양식/디저트/기타",
                                             "ingredients": ["재료1", "재료2"],
                                             "steps": ["1단계", "2단계"],
-                                            "difficulty": "쉬움/보통/어려움/불확실",
+                                            "difficulty": "초급/중급/고급/불확실",
                                             "time": "00분/불확실"
                                           }
                                         }
