@@ -43,7 +43,9 @@ import com.capstone.toma.TomaIntent
 import com.capstone.toma.VoiceUiState
 import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.ui.theme.*
+import com.capstone.toma.viewmodel.RecipeDetailViewModel
 import com.capstone.toma.viewmodel.RecipeStorageViewModel
+import com.capstone.toma.viewmodel.StepTimerState
 import com.capstone.toma.viewmodel.VoiceViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -125,6 +127,12 @@ fun RecipeDetailContent(
         } ?: emptyList()
     }
 
+    val stepTimes = remember(recipeData) {
+        recipeData?.optJSONArray("stepTimes")?.let { arr ->
+            List(arr.length()) { arr.optInt(it, 0) }
+        } ?: emptyList()
+    }
+
     val difficulty = recipeData?.optString("difficulty") ?: "보통"
     val timeStr = recipeData?.optString("time")?.toIntOrNull()?.takeIf { it > 0 }?.let { m -> if (m < 60) "${m}분" else if (m % 60 == 0) "${m/60}시간" else "${m/60}시간 ${m%60}분" } ?: "-"
 
@@ -144,22 +152,21 @@ fun RecipeDetailContent(
     var suppressAutoTtsOnce by remember { mutableStateOf(false) }
     var pendingTtsResumeJob by remember { mutableStateOf<Job?>(null) }
 
-    val isTimerRunning by voiceViewModel.isTimerRunning.collectAsState()
-    val remainingSeconds by voiceViewModel.timerRemainingSeconds.collectAsState()
-    val isTimerVisible by voiceViewModel.isTimerVisible.collectAsState()
+    val recipeDetailViewModel: RecipeDetailViewModel = viewModel()
+    val stepTimerState by recipeDetailViewModel.timerState.collectAsState()
+    val stepTimerRemaining by recipeDetailViewModel.timerRemainingSeconds.collectAsState()
+    val showStepTimer by recipeDetailViewModel.showTimer.collectAsState()
 
     val currentStepText =
         if (currentStepIndex == 0) "" else steps.getOrNull(currentStepIndex - 1).orEmpty()
 
-    val recommendedMinutesForStep = remember(currentStepText) {
-        "([0-9]+)\\s*분".toRegex()
-            .find(currentStepText)
-            ?.groupValues
-            ?.getOrNull(1)
-            ?.toIntOrNull()
+    val isTimerRecommended = remember(currentStepIndex, stepTimes) {
+        resolveStepTimerSeconds(
+            currentStepIndex,
+            if (currentStepIndex == 0) "" else steps.getOrNull(currentStepIndex - 1).orEmpty(),
+            stepTimes
+        ) > 0
     }
-
-    val isTimerRecommended = recommendedMinutesForStep != null && recommendedMinutesForStep > 0
 
     fun hardStopTtsAndPrepareListening() {
         pendingTtsResumeJob?.cancel()
@@ -358,14 +365,21 @@ fun RecipeDetailContent(
 
                 TomaIntent.RECOMMENDED_TIMER -> {
                     if (isTimerRecommended) {
-                        voiceViewModel.toggleRecommendedTimer()
+                        when (stepTimerState) {
+                            StepTimerState.IDLE     -> recipeDetailViewModel.startTimer()
+                            StepTimerState.RUNNING  -> recipeDetailViewModel.pauseTimer()
+                            StepTimerState.PAUSED   -> recipeDetailViewModel.resumeTimer()
+                            StepTimerState.FINISHED -> recipeDetailViewModel.restartTimer()
+                        }
                     } else {
                         voiceViewModel.showTimerManualGuidance()
                     }
                 }
 
                 TomaIntent.CANCEL_TIMER -> {
-                    if (isTimerRunning) voiceViewModel.cancelTimer()
+                    if (stepTimerState == StepTimerState.RUNNING || stepTimerState == StepTimerState.PAUSED) {
+                        recipeDetailViewModel.cancelTimer()
+                    }
                 }
 
                 else -> Unit
@@ -373,9 +387,15 @@ fun RecipeDetailContent(
         }
     }
 
-    LaunchedEffect(currentStepIndex, recommendedMinutesForStep) {
+    LaunchedEffect(currentStepIndex) {
+        val secs = resolveStepTimerSeconds(
+            currentStepIndex,
+            if (currentStepIndex == 0) "" else steps.getOrNull(currentStepIndex - 1).orEmpty(),
+            stepTimes
+        )
+        recipeDetailViewModel.initStep(secs)
         voiceViewModel.onStepChanged(currentStepIndex)
-        voiceViewModel.setRecommendedTimerForCurrentStep(recommendedMinutesForStep)
+        voiceViewModel.setRecommendedTimerForCurrentStep(if (secs > 0) (secs / 60).coerceAtLeast(1) else null)
     }
 
     LaunchedEffect(voiceViewModel, ttsReady) {
@@ -413,14 +433,19 @@ fun RecipeDetailContent(
             )
 
             AnimatedVisibility(
-                visible = isTimerVisible && remainingSeconds > 0,
+                visible = showStepTimer,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
-                TimerDisplayCard(
-                    remainingSeconds = remainingSeconds,
-                    isRunning = isTimerRunning,
-                    onCancel = { voiceViewModel.cancelTimer() }
+                StepTimerCard(
+                    timerState = stepTimerState,
+                    remainingSeconds = stepTimerRemaining,
+                    onStart = { recipeDetailViewModel.startTimer() },
+                    onPause = { recipeDetailViewModel.pauseTimer() },
+                    onResume = { recipeDetailViewModel.resumeTimer() },
+                    onRestart = { recipeDetailViewModel.restartTimer() },
+                    onCancel = { recipeDetailViewModel.cancelTimer() },
+                    onAdjust = { recipeDetailViewModel.adjustDuration(it) }
                 )
             }
 
@@ -1015,3 +1040,136 @@ private fun TimerDisplayCard(
 
 private fun titleCase(str: String): String =
     str.lowercase().replaceFirstChar { it.uppercase() }
+
+private fun resolveStepTimerSeconds(
+    stepIndex: Int,
+    stepText: String,
+    stepTimes: List<Int>
+): Int {
+    // 1. If stepTimes[stepIndex - 1] exists and > 0, return that value (already in seconds)
+    if (stepIndex > 0 && stepTimes.size >= stepIndex) {
+        val preset = stepTimes[stepIndex - 1]
+        if (preset > 0) return preset
+    }
+
+    // 2. Else parse stepText for "N분" → N*60, "N초" → N (use regex)
+    val minutesRegex = "(\\d+)\\s*분".toRegex()
+    val secondsRegex = "(\\d+)\\s*초".toRegex()
+    
+    val minsMatch = minutesRegex.find(stepText)
+    val secsMatch = secondsRegex.find(stepText)
+    
+    if (minsMatch != null || secsMatch != null) {
+        var totalSecs = 0
+        minsMatch?.groupValues?.get(1)?.toIntOrNull()?.let { totalSecs += it * 60 }
+        secsMatch?.groupValues?.get(1)?.toIntOrNull()?.let { totalSecs += it }
+        if (totalSecs > 0) return totalSecs
+    }
+
+    // 3. Else if stepText contains any of: 끓, 볶, 굽, 찌, 튀, 재우, 삶, 분, 초, 시간
+    //    → return 180 (default 3분)
+    val keywords = listOf("끓", "볶", "굽", "찌", "튀", "재우", "삶", "분", "초", "시간")
+    if (keywords.any { stepText.contains(it) }) {
+        return 180
+    }
+
+    // 4. Else return 0 (no timer for this step)
+    return 0
+}
+
+@Composable
+fun StepTimerCard(
+    timerState: StepTimerState,
+    remainingSeconds: Int,
+    onStart: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onRestart: () -> Unit,
+    onCancel: () -> Unit,
+    onAdjust: (Int) -> Unit
+) {
+    val mins = remainingSeconds / 60
+    val secs = remainingSeconds % 60
+    val timeText = "%02d:%02d".format(mins, secs)
+    val orangeAccent = Color(0xFFFF6B2C)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Box(modifier = Modifier.padding(16.dp)) {
+            // Cancel button in top-right
+            if (timerState != StepTimerState.FINISHED) {
+                IconButton(
+                    onClick = onCancel,
+                    modifier = Modifier.align(Alignment.TopEnd).size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close, 
+                        contentDescription = "Cancel", 
+                        tint = Color.Gray, 
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // -1분 Button
+                TextButton(onClick = { onAdjust(-60) }) {
+                    Text("-1분", color = orangeAccent, fontWeight = FontWeight.Bold)
+                }
+
+                // Center Content
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    if (timerState == StepTimerState.FINISHED) {
+                        Text("완료! 🎉", fontSize = 20.sp, fontWeight = FontWeight.Black, color = orangeAccent)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = onRestart,
+                            colors = ButtonDefaults.buttonColors(containerColor = orangeAccent),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("다시 시작", fontWeight = FontWeight.Bold)
+                        }
+                    } else {
+                        Text(timeText, fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.Black)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        
+                        val (btnText, btnAction) = when (timerState) {
+                            StepTimerState.IDLE -> "시작" to onStart
+                            StepTimerState.RUNNING -> "일시정지" to onPause
+                            StepTimerState.PAUSED -> "재개" to onResume
+                            else -> "" to {}
+                        }
+                        
+                        Button(
+                            onClick = btnAction,
+                            colors = ButtonDefaults.buttonColors(containerColor = orangeAccent),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+                        ) {
+                            Text(btnText, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // +1분 Button
+                TextButton(onClick = { onAdjust(60) }) {
+                    Text("+1분", color = orangeAccent, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}

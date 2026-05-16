@@ -56,7 +56,9 @@ object TomaIntentParser {
 
         // 1. RECOMMENDED_TIMER
         if (lower.contains("추천으로") ||
-            (lower.contains("추천") && (lower.contains("타이머") || lower.contains("시간")))) {
+            (lower.contains("추천") && (lower.contains("타이머") || lower.contains("시간"))) ||
+            (lower.contains("타이머") && !lower.contains(Regex("\\d"))) // ADDED: "Timer" without digits
+        ) {
             return TomaIntent.RECOMMENDED_TIMER
         }
 

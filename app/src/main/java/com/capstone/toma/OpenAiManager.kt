@@ -11,11 +11,15 @@ import com.capstone.toma.model.normalizeRecipeCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import okhttp3.*
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
@@ -28,8 +32,8 @@ class OpenAiManager {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
     private val apiKey = BuildConfig.OPENAI_API_KEY
@@ -48,87 +52,96 @@ class OpenAiManager {
 
     private fun buildChatSystemPrompt(): String {
         return """
-            You are 'Toma', a warm and knowledgeable AI cooking assistant.
-            You are STRICTLY LIMITED to food, cooking, recipes, ingredients, kitchen tools,
-            meal planning, nutrition, and grocery topics. Nothing else.
+            You are 'Toma', a warm and knowledgeable AI cooking assistant built into a Korean cooking app.
+            You specialize EXCLUSIVELY in cooking, recipes, food, and kitchen-related topics.
 
-            ══ SCOPE ENFORCEMENT (HIGHEST PRIORITY) ══
-            If the user asks about ANY non-food topic — including but not limited to:
-            영화, 드라마, 음악, 게임, 스포츠, 연예인, 날씨, 뉴스, 정치, 주식, 코딩,
-            여행, 운동, 의료, 법률, 학업, 연애, 일반 상식, 챗봇 자체에 대한 질문
-            (movies, dramas, music, games, sports, celebrities, weather, news, politics,
-            stocks, coding, travel, fitness, medical, legal, study, relationships,
-            general trivia, meta questions about yourself) —
-            you MUST REFUSE.
+            CRITICAL LANGUAGE RULE:
+            - **ANY AND ALL OUTPUT FIELDS MUST BE IN KOREAN.** 
+            - This includes 'title', 'keyword', 'response', 'ingredients', 'steps', 'difficulty', and 'time'.
+            - Even if the source material (image, text, or link) is in English, you MUST translate everything into natural Korean. 
+            - **ZERO ENGLISH TOLERANCE** in the JSON values. Use transliteration (e.g., '팬케이크') if there's no direct translation.
 
-            Refusal response format (mandatory JSON):
-            {
-              "type": "chat",
-              "response": "저는 요리 전문 어시스턴트라서 그 주제는 도와드릴 수 없어요. 요리, 레시피, 재료, 식단 관련해서 무엇이든 물어봐 주세요!"
-            }
+            SCOPE:
+            - ONLY discuss cooking, recipes, food, ingredients, and kitchen techniques.
+            - If asked about unrelated topics (weather, news, sports, etc.), respond with type "not_recipe".
+            - Handle recipe follow-ups: modifications, substitutions, portion changes, storage tips, pairing suggestions.
 
-            Do NOT suggest categories, do NOT recommend alternatives in the off-topic domain,
-            do NOT engage with the off-topic request even partially. Simply refuse and redirect to cooking.
+            CATEGORY RULES:
+            - Determine the category based on the CULTURAL ORIGIN of the dish.
+            - "한식" (Korean): Kimchi, Doenjang, Gochujang dishes. "김치볶음밥" is always Korean.
+            - "중식" (Chinese): 짜장면, 짬뽕, 탕수육, 마라탕, 마라샹궈, 훠궈, etc.
+              ※ CRITICAL: "마라탕" is Chinese, NEVER Korean.
+            - "일식" (Japanese): 초밥, 라멘, 우동, 돈카츠, etc.
+            - "양식" (Western): 파스타, 피자, 스테이크, 햄버거, etc.
+            - "동남아식" (Southeast Asian): 팟타이, 쌀국수, etc.
+            - "디저트" (Dessert): 케이크, 쿠키, etc.
 
-            Borderline cases ALLOWED (treat as on-topic): "오늘 뭐 먹을까", "다이어트 식단",
-            "재료 보관법", "주방 도구 추천", "식당 메뉴 따라 만들기" — these are food-related.
-            Borderline cases REFUSED: "영화 보고 싶다", "음악 추천", "스트레스 받아" without food context.
+            CRITICAL RULES:
+            - ALL output fields MUST be in Korean. No English in title, ingredients, or steps.
+            - ingredients: exact quantities required (e.g. "계란 2개", "간장 1큰술", "소금 약간").
 
-            ══ FORMAT RULES ══
-            1. Response must be in valid JSON format.
-            2. ALL output fields MUST be in Korean.
-            3. If the user asks for a recipe (on-topic only), you MUST return "type": "recipe_search" with full "recipe_data".
+            TONE & FLOW RULES:
+            - Write like a kind, helpful, and professional chef who is right next to the user.
+            - Use natural, connective phrasing to make the transition between steps feel seamless.
+            - Avoid robotic, list-like commands. Use sentences that imply a logical flow.
+            - Use polite and warm sentence endings (e.g., "-해주세요", "-할게요", "-하면 좋아요").
 
-            [JSON STRUCTURE]
-            - For Recipes:
+            STEP WRITING RULES (most important):
+            - MINIMUM 8 steps. Each step = ONE single physical action only.
+            - Never combine two actions. "썰어서 볶는다" → must be two separate steps.
+            - Every step must follow this structure:
+              [따뜻한 연결 문구] + [현재 상태/조건] + [구체적인 행동] + [기대 결과/팁]
+            - "연결 문구": Phrases like "자, 이제", "그 다음으로는", "재료 준비가 끝났으니", "맛있게 익어가고 있네요, 이제"
+            - "현재 상태": Visual/sensory cues (e.g., "물이 팔팔 끓어오르기 시작하면", "고소한 향이 올라오기 시작하면")
+            - "기대 결과/팁": What to look for or a small secret (e.g., "노릇한 색이 돌 때까지 볶아주면 풍미가 훨씬 좋아져요")
+            - ALWAYS specify heat level when using fire: 강불 / 중불 / 약불 / 불 끔
+            - ALWAYS specify a precise time in minutes (e.g. "약 3분간", "15~20분간") for any step that requires heat, marinating, or waiting.
+              * This time is used for the app's auto-timer feature, so it must be clear (e.g., "3분간 끓여주세요").
+            - For STEAMING (찌기): always include a step for "물 붓기", then "강불로 물을 끓이기",
+              then "김이 올라오면 재료 넣기" as separate steps.
+            - For BOILING (끓이기): include water state changes (찬물부터 → 끓어오르면 → 중불로 줄이기).
+            - For STIR-FRYING (볶기): include oil preheating cue, then ingredient addition order as separate steps.
+            - For SIMMERING (졸이기): include the transition from boil to simmer as a step.
+            - For FRYING (튀기기): include oil temperature check method (젓가락 넣었을 때 거품 올라오면).
+
+            WHEN TO RETURN recipe_search:
+            - User asks for a recipe by name, by ingredient, or by occasion.
+            - User asks to modify the current recipe (더 맵게, 2인분으로, 간장 빼고 등).
+            - User asks for an alternative that changes the recipe.
+
+            WHEN TO RETURN chat:
+            - Simple cooking Q&A that doesn't need a full recipe (보관법, 팁, 설명 등).
+            - Friendly cooking-related conversation.
+
+            RESPONSE FORMAT (always return valid JSON):
+
+            Recipe (new or modified):
             {
               "type": "recipe_search",
               "keyword": "요리명",
-              "response": "친절한 안내 문구",
+              "response": "1~2문장의 친근한 한국어 안내",
               "recipe_data": {
                 "title": "요리명",
-                "category": "한식/중식/일식/양식/디저트 등",
+                "category": "한식/양식/중식/일식/동남아식/디저트/기타 중 하나",
                 "ingredients": ["재료1 분량", "재료2 분량", ...],
                 "steps": ["1단계 상세 설명", "2단계 상세 설명", ...],
-                "stepTimes": [seconds per step as integer, same order as steps — e.g. [120, 300, 600]].
-                  One integer per step. Derive from the step text:
-                  - If the step mentions a specific time, convert to seconds (e.g. "3분" → 180).
-                  - If no time is stated, estimate from the action verb:
-                    무치기/섞기/담기/썰기 → 120; 볶기/굽기/전 부치기 → 300; 끓이기/조리기 → 600;
-                    재우기/숙성/발효/푹 끓이기 → 1800.
-                  Never emit 0 or null for any element — always provide an estimate.
-                "difficulty": one of exactly: "초급", "중급", "고급"
-                  - 초급: minimal knife work, simple heat control, no special techniques (e.g. 계란후라이, 라면, 간단한 무침)
-                  - 중급: basic techniques required, timing matters, some multitasking (e.g. 볶음요리, 조림, 파스타, 찌개)
-                  - 고급: complex techniques, multi-step, experience required (e.g. 전, 갈비찜, 베이킹, 튀김)
-                  Never use: 쉬움, 보통, 어려움, 하, 중, 상, 초보자, or any other value.
-                "time": total cooking time as a plain integer (minutes only, e.g. 35).
-                  Priority order: (1) use explicit total stated in source (e.g. "총 10분" → 10);
-                  (2) if not stated, sum all per-step durations from stepTimes (convert to minutes);
-                  (3) if no times anywhere, estimate from steps using: simple steps → 2~3 min each,
-                  medium steps (볶기/끓이기/굽기) → 5~10 min each, long steps (재우기/발효) → 20~60 min each.
-                  Output: integer only (e.g. 35), never "약 35분" or "30-40분".
-                "image_url": "완성된 요리가 잘 담긴 대표 이미지 URL 1개. 없으면 빈 문자열."
+                "difficulty": "쉬움/보통/어려움",
+                "time": "00분",
+                "image_url": ""
               }
             }
-            - For General Chat (on-topic food questions) AND for refusals:
+
+            Non-cooking topic or non-recipe content:
+            {
+              "type": "not_recipe",
+              "response": "저는 요리 전문 AI예요! 음식이나 요리 관련해서는 뭐든 도와드릴게요 😊"
+            }
+
+            Cooking Q&A / tips / conversation (no full recipe needed):
             {
               "type": "chat",
-              "response": "한국어 답변"
+              "response": "친근하고 유용한 한국어 요리 조언"
             }
-            - For web pages where there is truly no readable recipe content at all:
-            {
-              "type": "insufficient_content",
-              "keyword": "추정 요리명. 페이지 제목에서 유추. 알 수 없으면 빈 문자열.",
-              "response": "이 페이지에서 레시피 내용을 충분히 읽어오지 못했어요.\n제목을 기반으로 일반 레시피를 만들어 드릴까요?"
-            }
-            Use 'insufficient_content' ONLY when the page body is essentially empty:
-            e.g. blank page, JS-rendered with no text, login-walled, or just a title with no food content.
-            If the page contains a dish name plus ANY ingredients or cooking steps — even informal,
-            incomplete, or unstructured — extract what is available and return 'recipe_search'.
-            Missing quantities, casual tone, and imperfect formatting are NOT reasons to reject.
-            Be permissive about extracting. Only use 'insufficient_content' when there is
-            truly nothing to work with.
         """.trimIndent()
     }
 
@@ -141,7 +154,7 @@ class OpenAiManager {
         val requestBody = MultipartBody.Builder()
             .setType(MultipartBody.FORM)
             .addFormDataPart("file", audioFile.name, audioFile.asRequestBody("audio/m4a".toMediaType()))
-            .addFormDataPart("model", "whisper-1")
+            .addFormDataPart("model", OpenAiConfig.STT_MODEL)
             .addFormDataPart("language", "ko")
             .addFormDataPart(
                 "prompt",
@@ -163,7 +176,8 @@ class OpenAiManager {
             override fun onResponse(call: Call, response: Response) {
                 val body = response.body?.string()
                 if (response.isSuccessful && body != null) {
-                    onResult(JSONObject(body).optString("text"))
+                    val json = JSONObject(body)
+                    onResult(json.optString("text"))
                 } else {
                     onResult(null)
                 }
@@ -177,7 +191,7 @@ class OpenAiManager {
     ): VoiceRequestResult = withContext(Dispatchers.IO) {
         suspendCancellableCoroutine { continuation ->
             processChatRequest(userText, history) { result ->
-                if (continuation.isActive) continuation.resume(result)
+                continuation.resume(result)
             }
         }
     }
@@ -188,7 +202,7 @@ class OpenAiManager {
         onResult: (VoiceRequestResult) -> Unit
     ) {
         if (!hasApiKey()) {
-            onResult(VoiceRequestResult.Error("API 키 없음"))
+            onResult(VoiceRequestResult.Error("OPENAI_API_KEY가 설정되어 있지 않습니다."))
             return
         }
 
@@ -197,39 +211,44 @@ class OpenAiManager {
                 put("role", "system")
                 put("content", buildChatSystemPrompt())
             })
-
             history.takeLast(10).forEach { (text, isUser) ->
                 put(JSONObject().apply {
                     put("role", if (isUser) "user" else "assistant")
                     put("content", text)
                 })
             }
-
             put(JSONObject().apply {
                 put("role", "user")
                 put("content", userText)
             })
         }
 
-        val chosenModel =
-            if (isComplexRequest(userText)) OpenAiConfig.ADVANCED_MODEL
-            else OpenAiConfig.DEFAULT_TEXT_MODEL
+        // CHANGED: Use isIntentRequest() to choose a lightweight model for short commands
+        val chosenModel = when {
+            isComplexRequest(userText) -> OpenAiConfig.ADVANCED_MODEL
+            isIntentRequest(userText) -> OpenAiConfig.INTENT_MODEL
+            else -> OpenAiConfig.DEFAULT_TEXT_MODEL
+        }
 
         val requestJson = JSONObject().apply {
             put("model", chosenModel)
             put("messages", messages)
-            put("response_format", JSONObject().apply { put("type", "json_object") })
+            put("response_format", JSONObject().apply {
+                put("type", "json_object")
+            })
         }
 
         val request = Request.Builder()
             .url("https://api.openai.com/v1/chat/completions")
             .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
             .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
         client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) =
-                onResult(VoiceRequestResult.Error(e.message ?: "Network Error"))
+            override fun onFailure(call: Call, e: IOException) {
+                onResult(VoiceRequestResult.Error("네트워크 오류: ${e.message ?: "unknown"}"))
+            }
 
             override fun onResponse(call: Call, response: Response) {
                 val responseBody = response.body?.string()
@@ -244,32 +263,48 @@ class OpenAiManager {
                         .getJSONObject(0)
                         .getJSONObject("message")
                         .getString("content")
-
                     val resultJson = JSONObject(content)
-
+                    val type = resultJson.optString("type", "chat")
+                    val responseMsg = resultJson.optString("response", "")
+                    
+                    val normalizedRecipeData = normalizeRecipeData(resultJson.optJSONObject("recipe_data"))
+                    
                     onResult(
                         VoiceRequestResult.Success(
-                            requestType = resultJson.optString("type", "chat"),
+                            requestType = type,
                             keyword = resultJson.optString("keyword", ""),
-                            responseMessage = resultJson.optString("response", ""),
-                            recipeData = normalizeRecipeData(resultJson.optJSONObject("recipe_data"))?.toString()
+                            responseMessage = responseMsg,
+                            recipeData = normalizedRecipeData?.toString()
                         )
                     )
                 } catch (e: Exception) {
-                    onResult(VoiceRequestResult.Error("응답 파싱 오류"))
+                    onResult(VoiceRequestResult.Error("응답 파싱 실패: ${e.message ?: "unknown"}"))
                 }
             }
         })
     }
+
+    fun processVoiceRequest(text: String, onResult: (VoiceRequestResult) -> Unit) {
+        processChatRequest(text, emptyList(), onResult)
+    }
+
 
     suspend fun analyzeRecipeImageSuspend(
         context: Context,
         imageUri: String
     ): VoiceRequestResult = withContext(Dispatchers.IO) {
         suspendCancellableCoroutine { continuation ->
+            if (!hasApiKey()) {
+                if (continuation.isActive) {
+                    continuation.resume(VoiceRequestResult.Error("OPENAI_API_KEY가 설정되어 있지 않습니다."))
+                }
+                return@suspendCancellableCoroutine
+            }
+
             try {
                 val uri = Uri.parse(imageUri)
-                val bitmap = decodeImageForAnalysis(context, uri) ?: throw Exception("이미지 로드 실패")
+                val bitmap = decodeImageForAnalysis(context, uri)
+                    ?: throw IllegalStateException("이미지를 불러올 수 없습니다.")
 
                 val outputStream = ByteArrayOutputStream()
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
@@ -283,103 +318,126 @@ class OpenAiManager {
                             put("content", JSONArray().apply {
                                 put(JSONObject().apply {
                                     put("type", "text")
-                                    put("text", """
-                                        너는 한국어 요리 레시피 이미지 OCR 분석기다.
+                                    put(
+                                        "text",
+                                        """
+                                        Analyze this cooking image and return JSON only.
+                                        
+                                        CRITICAL: 
+                                        - **RESPOND IN KOREAN ONLY.** 
+                                        - Translate all ingredients, titles, and steps from English to Korean.
+                                        - NO English characters allowed in any value field.
 
-                                        이 작업은 음식 사진 분류가 아니라, 이미지 속 한글 레시피 문서를 읽는 작업이다.
-                                        반드시 이미지에 실제로 보이는 텍스트를 최우선으로 읽어라.
-                                        절대 추측하지 마라.
-                                        이미지에 없는 재료를 추가하지 마라.
-                                        요리 상식으로 보정하지 마라.
-                                        잘 안 보이면 "불확실"로 표시하라.
+                                        RULES:
+                                        1. If the image contains clear food, ingredients, or a cooking menu, extract/infer the recipe.
+                                        2. If the image is NOT food-related (e.g. keyboard, shoe, scenery) or too blurry to identify anything, return:
+                                           {
+                                             "type": "not_recipe",
+                                             "response": "식재료를 찾을 수 없어요. 요리 재료가 잘 보이게 다시 찍어주시겠어요? 😊"
+                                           }
+                                        3. Do NOT hallucinate a recipe if food is not present.
 
-                                        규칙:
-                                        1. 제목은 이미지에 실제로 보이는 텍스트 기반으로만 추출한다.
-                                        2. 재료는 이미지에 명시된 것만 적는다.
-                                        3. 양념/재료가 불분명하면 추론하지 말고 제외하거나 "불확실"에 넣는다.
-                                        4. 조리 순서는 이미지에 보이는 텍스트 기준으로만 정리한다.
-                                        5. JSON 외의 텍스트는 출력하지 마라.
-
-                                        아래 형식으로만 반환:
+                                        Return exactly this shape for recipes:
                                         {
                                           "type": "recipe_search",
-                                          "keyword": "대표 요리명 또는 불확실",
-                                          "response": "레시피 문서를 분석했어요.",
+                                          "keyword": "dish name",
+                                          "response": "short Korean message",
                                           "recipe_data": {
-                                            "title": "요리명 또는 불확실",
-                                            "category": "한식/중식/일식/양식/디저트/기타",
-                                            "ingredients": ["재료1", "재료2"],
-                                            "steps": ["1단계", "2단계"],
-                                            "difficulty": "초급/중급/고급/불확실",
-                                            "time": "00분/불확실"
+                                            "title": "dish name",
+                                            "category": "한식/양식/중식/일식/동남아식/디저트/기타 중 하나",
+                                            "ingredients": ["ingredient"],
+                                            "steps": ["step"],
+                                            "difficulty": "쉬움/보통/어려움",
+                                            "time": "20분",
+                                            "image_url": "$imageUri"
                                           }
                                         }
-                                    """.trimIndent())
+                                        CATEGORY RULES:
+                                        - Maratang (마라탕) is CHINESE (중식).
+                                        - Tteokbokki (떡복이) is KOREAN (한식).
+                                        - Pizza/Pasta is WESTERN (양식).
+                                        - Sushi is JAPANESE (일식).
+                                        If the image is a recipe text image, extract the recipe.
+                                        If the image is food without text, infer a likely recipe.
+                                        """.trimIndent()
+                                    )
                                 })
                                 put(JSONObject().apply {
                                     put("type", "image_url")
-                                    put("image_url", JSONObject().apply {
-                                        put("url", "data:image/jpeg;base64,$base64Image")
-                                        put("detail", "high")
-                                    })
+                                    put(
+                                        "image_url",
+                                        JSONObject().apply {
+                                            put("url", "data:image/jpeg;base64,$base64Image")
+                                            put("detail", "high")
+                                        }
+                                    )
                                 })
                             })
                         })
                     })
-                    put("response_format", JSONObject().apply { put("type", "json_object") })
+                    put("response_format", JSONObject().apply {
+                        put("type", "json_object")
+                    })
                 }
 
                 val request = Request.Builder()
                     .url("https://api.openai.com/v1/chat/completions")
                     .header("Authorization", "Bearer $apiKey")
+                    .header("Content-Type", "application/json")
                     .post(requestJson.toString().toRequestBody("application/json".toMediaType()))
                     .build()
 
                 client.newCall(request).enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
                         if (continuation.isActive) {
-                            continuation.resume(VoiceRequestResult.Error(e.message ?: "Error"))
+                            continuation.resume(VoiceRequestResult.Error("네트워크 오류: ${e.message ?: "unknown"}"))
                         }
                     }
 
                     override fun onResponse(call: Call, response: Response) {
-                        val body = response.body?.string()
-                        if (response.isSuccessful && body != null) {
-                            try {
-                                val content = JSONObject(body)
-                                    .getJSONArray("choices")
-                                    .getJSONObject(0)
-                                    .getJSONObject("message")
-                                    .getString("content")
-
-                                val resultJson = JSONObject(content)
-                                val recipeJson = normalizeRecipeImageResult(resultJson, imageUri)
-
-                                if (continuation.isActive) {
-                                    continuation.resume(
-                                        VoiceRequestResult.Success(
-                                            "recipe_search",
-                                            recipeJson.optString("title", resultJson.optString("keyword", "이미지 레시피")),
-                                            resultJson.optString("response", "분석 완료"),
-                                            recipeJson.toString()
-                                        )
-                                    )
-                                }
-                            } catch (e: Exception) {
-                                if (continuation.isActive) {
-                                    continuation.resume(VoiceRequestResult.Error("이미지 분석 응답 파싱 실패"))
-                                }
-                            }
-                        } else {
+                        val responseBody = response.body?.string()
+                        if (!response.isSuccessful || responseBody == null) {
                             if (continuation.isActive) {
-                                continuation.resume(VoiceRequestResult.Error(parseApiError(response, body)))
+                                continuation.resume(VoiceRequestResult.Error(parseApiError(response, responseBody)))
+                            }
+                            return
+                        }
+
+                        try {
+                            val content = JSONObject(responseBody)
+                                .getJSONArray("choices")
+                                .getJSONObject(0)
+                                .getJSONObject("message")
+                                .getString("content")
+                            val resultJson = JSONObject(content)
+                            val recipeJson = normalizeRecipeImageResult(resultJson, imageUri)
+                            val keyword = resultJson.optString("keyword")
+                                .ifBlank { recipeJson.optString("title") }
+                                .ifBlank { "이미지 레시피" }
+
+                            if (continuation.isActive) {
+                                continuation.resume(
+                                    VoiceRequestResult.Success(
+                                        requestType = resultJson.optString("type", "recipe_search"),
+                                        keyword = keyword,
+                                        responseMessage = resultJson.optString(
+                                            "response",
+                                            "이미지에서 레시피를 분석했어요."
+                                        ),
+                                        recipeData = recipeJson.toString()
+                                    )
+                                )
+                            }
+                        } catch (e: Exception) {
+                            if (continuation.isActive) {
+                                continuation.resume(VoiceRequestResult.Error("응답 파싱 실패: ${e.message ?: "unknown"}"))
                             }
                         }
                     }
                 })
             } catch (e: Exception) {
                 if (continuation.isActive) {
-                    continuation.resume(VoiceRequestResult.Error(e.message ?: "Exception"))
+                    continuation.resume(VoiceRequestResult.Error("이미지 처리 실패: ${e.message ?: "unknown"}"))
                 }
             }
         }
@@ -387,222 +445,114 @@ class OpenAiManager {
 
     private fun decodeImageForAnalysis(context: Context, uri: Uri): Bitmap? {
         val resolver = context.contentResolver
+
+        // Pass 1: read dimensions only to calculate the down-sample factor
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
 
+        val maxDimension = 1024
         var sampleSize = 1
-        val maxDim = maxOf(bounds.outWidth, bounds.outHeight)
-        while (maxDim / sampleSize > 2200) {
+        while (bounds.outWidth / sampleSize > maxDimension || bounds.outHeight / sampleSize > maxDimension) {
             sampleSize *= 2
         }
 
-        return resolver.openInputStream(uri)?.use { input ->
-            BitmapFactory.decodeStream(
-                input,
-                null,
-                BitmapFactory.Options().apply {
-                    inSampleSize = sampleSize
-                    inPreferredConfig = Bitmap.Config.ARGB_8888
+        // ADDED: TASK 2 - Fixed decodeImageForAnalysis with EXIF rotation correction
+        val rotationDegrees = resolver.openInputStream(uri)?.use { input ->
+            try {
+                when (ExifInterface(input).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )) {
+                    ExifInterface.ORIENTATION_ROTATE_90  -> 90f
+                    ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                    ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                    else -> 0f
                 }
-            )
+            } catch (_: Exception) { 0f }
+        } ?: 0f
+
+        // Pass 3: decode and scale
+        val decoded = resolver.openInputStream(uri)?.use { input ->
+            BitmapFactory.decodeStream(input, null, BitmapFactory.Options().apply { inSampleSize = sampleSize })
+        } ?: return null
+
+        val scaled = Bitmap.createScaledBitmap(
+            decoded,
+            if (decoded.width > decoded.height) maxDimension else (decoded.width * maxDimension / decoded.height),
+            if (decoded.height > decoded.width) maxDimension else (decoded.height * maxDimension / decoded.width),
+            true
+        ).also { if (it != decoded) decoded.recycle() }
+
+        // ADDED: Apply rotation correction if needed
+        return if (rotationDegrees != 0f) {
+            val matrix = Matrix().apply { postRotate(rotationDegrees) }
+            Bitmap.createBitmap(scaled, 0, 0, scaled.width, scaled.height, matrix, true)
+                .also { scaled.recycle() }
+        } else {
+            scaled
         }
     }
 
     private fun normalizeRecipeImageResult(resultJson: JSONObject, imageUri: String): JSONObject {
-        val recipeJson = resultJson.optJSONObject("recipe_data") ?: JSONObject()
-
-        val ingredientsArray = recipeJson.optJSONArray("ingredients")
-        if (ingredientsArray != null && ingredientsArray.length() > 0) {
-            recipeJson.put("ingredients", normalizeIngredientArray(ingredientsArray))
+        val recipeJson = resultJson.optJSONObject("recipe_data") ?: JSONObject().apply {
+            put("title", resultJson.optString("title"))
+            put("category", resultJson.optString("category"))
+            put("ingredients", resultJson.optJSONArray("ingredients") ?: JSONArray())
+            put("steps", resultJson.optJSONArray("steps") ?: JSONArray())
+            put("difficulty", resultJson.optString("difficulty"))
+            put("time", resultJson.optString("time"))
         }
 
-        val stepsArrayRaw = recipeJson.optJSONArray("steps")
-        if (stepsArrayRaw != null && stepsArrayRaw.length() > 0) {
-            recipeJson.put("steps", normalizeStepArray(stepsArrayRaw))
+        if (recipeJson.optString("title").isBlank()) {
+            recipeJson.put("title", resultJson.optString("keyword", "이미지 레시피"))
         }
-
-        val stepsArray = recipeJson.optJSONArray("steps")
-        val stepsText = buildString {
-            if (stepsArray != null) {
-                for (i in 0 until stepsArray.length()) {
-                    append(stepsArray.optString(i))
-                    append(" ")
-                }
-            }
-        }
-
-        val normalizedIngredientsArray = recipeJson.optJSONArray("ingredients")
-        val ingredientsText = buildString {
-            if (normalizedIngredientsArray != null) {
-                for (i in 0 until normalizedIngredientsArray.length()) {
-                    append(normalizedIngredientsArray.optString(i))
-                    append(" ")
-                }
-            }
-        }
-
-        val combinedText = (
-                recipeJson.optString("title") + " " +
-                        resultJson.optString("keyword") + " " +
-                        stepsText + " " +
-                        ingredientsText
-                ).lowercase()
-
-        if (
-            combinedText.contains("간장") &&
-            combinedText.contains("계란") &&
-            (combinedText.contains("밥") || combinedText.contains("밥위에") || combinedText.contains("한공기"))
-        ) {
-            if (recipeJson.optString("title").isBlank() || recipeJson.optString("title") == "불확실") {
-                recipeJson.put("title", "간장계란밥")
-            }
-            if (recipeJson.optString("category").isBlank()) {
-                recipeJson.put("category", "한식")
-            }
-            if (recipeJson.optString("difficulty").isBlank()) {
-                recipeJson.put("difficulty", "쉬움")
-            }
-        }
-
-        if (recipeJson.optString("image_url").isBlank()) {
+        val currentImageUrl = recipeJson.optString("image_url")
+        if (currentImageUrl.isBlank() || currentImageUrl == "없음") {
             recipeJson.put("image_url", imageUri)
         }
 
         return normalizeRecipeData(recipeJson) ?: recipeJson
     }
 
-    private fun normalizeIngredientArray(ingredientsArray: JSONArray): JSONArray {
-        val normalized = JSONArray()
-        val seen = linkedSetOf<String>()
-
-        for (i in 0 until ingredientsArray.length()) {
-            val raw = ingredientsArray.optString(i).trim()
-            if (raw.isBlank()) continue
-
-            val fixed = fixCommonOcrErrors(raw)
-            if (fixed.isBlank()) continue
-            if (seen.add(fixed)) {
-                normalized.put(fixed)
-            }
-        }
-        return normalized
-    }
-
-    private fun normalizeStepArray(stepsArray: JSONArray): JSONArray {
-        val normalized = JSONArray()
-
-        for (i in 0 until stepsArray.length()) {
-            val raw = stepsArray.optString(i).trim()
-            if (raw.isBlank()) continue
-
-            val fixed = fixCommonStepOcrErrors(raw)
-            if (fixed.isBlank()) continue
-            normalized.put(fixed)
-        }
-        return normalized
-    }
-
-    private fun fixCommonOcrErrors(text: String): String {
-        var fixed = text
-
-        fixed = fixed.replace(Regex("\\s+"), " ").trim()
-        fixed = fixed.replace("：", ":")
-        fixed = fixed.replace("，", ",")
-        fixed = fixed.replace("．", ".")
-        fixed = fixed.replace("／", "/")
-
-        fixed = fixed.replace(Regex("(\\d)\\s*공\\s*기"), "$1공기")
-        fixed = fixed.replace(Regex("(\\d)\\s*개"), "$1개")
-        fixed = fixed.replace(Regex("(\\d)\\s*T"), "$1T")
-        fixed = fixed.replace(Regex("(\\d)\\s*t"), "$1T")
-        fixed = fixed.replace(Regex("(\\d)\\s*큰\\s*술"), "$1T")
-        fixed = fixed.replace(Regex("(\\d)\\s*작은\\s*술"), "$1t")
-        fixed = fixed.replace(Regex("(\\d)\\s*컵"), "$1컵")
-
-        fixed = fixed.replace(Regex("([가-힣A-Za-z]+)(\\d+공기)"), "$1 $2")
-        fixed = fixed.replace(Regex("([가-힣A-Za-z]+)(\\d+개)"), "$1 $2")
-        fixed = fixed.replace(Regex("([가-힣A-Za-z]+)(\\d+T)"), "$1 $2")
-        fixed = fixed.replace(Regex("([가-힣A-Za-z]+)(\\d+t)"), "$1 $2")
-        fixed = fixed.replace(Regex("([가-힣A-Za-z]+)(\\d+컵)"), "$1 $2")
-
-        fixed = fixed.replace("공기공기", "공기")
-        fixed = fixed.replace("개개", "개")
-        fixed = fixed.replace("TT", "T")
-        fixed = fixed.replace("tt", "t")
-        fixed = fixed.replace("컵컵", "컵")
-
-        fixed = fixed.replace(Regex("(\\d+공기)\\s+\\1"), "$1")
-        fixed = fixed.replace(Regex("(\\d+개)\\s+\\1"), "$1")
-        fixed = fixed.replace(Regex("(\\d+T)\\s+\\1"), "$1")
-        fixed = fixed.replace(Regex("(\\d+t)\\s+\\1"), "$1")
-        fixed = fixed.replace(Regex("(\\d+컵)\\s+\\1"), "$1")
-
-        val safeCorrections = mapOf(
-            "참기론" to "참기름",
-            "참기룸" to "참기름",
-            "잠기름" to "참기름",
-            "짐간장" to "진간장",
-            "긴간장" to "진간장",
-            "게란" to "계란",
-            "통게" to "통깨"
-        )
-
-        safeCorrections.forEach { (wrong, correct) ->
-            fixed = fixed.replace(wrong, correct)
-        }
-
-        fixed = fixed.replace(Regex("\\s+"), " ").trim()
-        return fixed
-    }
-
-    private fun fixCommonStepOcrErrors(text: String): String {
-        var fixed = text
-
-        fixed = fixed.replace(Regex("\\s+"), " ").trim()
-        fixed = fixed.replace("：", ":")
-        fixed = fixed.replace("，", ",")
-        fixed = fixed.replace("．", ".")
-        fixed = fixed.replace("／", "/")
-
-        fixed = fixed.replace("전자렌지", "전자레인지")
-        fixed = fixed.replace("레인지에에", "레인지에")
-        fixed = fixed.replace("노른자룰", "노른자를")
-        fixed = fixed.replace("살찍", "살짝")
-        fixed = fixed.replace("살작", "살짝")
-        fixed = fixed.replace("찔러 주세오", "찔러주세요")
-        fixed = fixed.replace("찔러주세오", "찔러주세요")
-        fixed = fixed.replace("질러주세요", "찔러주세요")
-
-        val weirdPrefixToRemove = listOf("코코나", "코로나", "코코아")
-        weirdPrefixToRemove.forEach { prefix ->
-            fixed = fixed.replace("$prefix 젓가락으로", "젓가락으로")
-        }
-
-        fixed = fixed.replace("저가락으로", "젓가락으로")
-        fixed = fixed.replace("젖가락으로", "젓가락으로")
-        fixed = fixed.replace("젓가락으르", "젓가락으로")
-        fixed = fixed.replace("젓가락으토", "젓가락으로")
-        fixed = fixed.replace("젓가락으로로", "젓가락으로")
-
-        fixed = fixed.replace("때문에 때문에", "때문에")
-        fixed = fixed.replace("살짝 살짝", "살짝")
-
-        fixed = fixed.replace(Regex("\\s+"), " ").trim()
-        return fixed
-    }
-
     private fun normalizeRecipeData(recipeJson: JSONObject?): JSONObject? {
         if (recipeJson == null) return null
+
         recipeJson.put(
             "category",
-            normalizeRecipeCategory(recipeJson.optString("category"), recipeJson.optString("title"))
+            normalizeRecipeCategory(
+                rawCategory = recipeJson.optString("category"),
+                title = recipeJson.optString("title")
+            )
         )
         return recipeJson
     }
 
+    /**
+     * Routes to ADVANCED_MODEL when the request is genuinely complex.
+     */
     private fun isComplexRequest(text: String): Boolean {
         val lower = text.lowercase()
-        return lower.contains("알레르기") || lower.contains("빼고") || lower.contains("왜") || text.length > 200
+        val constraintScore = listOf(
+            "알레르기", "못 먹", "안 먹", "빼고", "없이", "채식", "비건",
+            "글루텐", "유제품", "분 안에", "분 이내", "재료만", "장비",
+            "오븐 없이", "냉장고에 있는"
+        ).count { lower.contains(it) }
+
+        val reasoningScore = listOf(
+            "왜", "실패", "분석", "원인", "이유", "계획", "영양", "칼로리",
+            "건강", "다이어트", "대체", "substitut", "improve"
+        ).count { lower.contains(it) }
+
+        return constraintScore >= 2 || reasoningScore >= 2 || text.length > 200
+    }
+
+    // ADDED: TASK 1 - lightweight model for short intent commands
+    private fun isIntentRequest(text: String): Boolean {
+        val lower = text.lowercase()
+        val keywords = listOf("다음","이전","시작","정지","멈춰",
+            "타이머","재개","처음","끝","완료","보여줘","알려줘")
+        return text.length < 30 && keywords.any { lower.contains(it) }
     }
 }
 

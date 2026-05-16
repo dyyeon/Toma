@@ -291,11 +291,18 @@ class ChatViewModel : ViewModel() {
                             } else result
 
                             val aiMessageId = UUID.randomUUID().toString()
+                            
+                            // Extract image URL from enriched result to show in chat bubble
+                            val recipeImageUrl = enrichedResult.recipeData?.let {
+                                try { JSONObject(it).optString("image_url") } catch (_: Exception) { null }
+                            }?.takeIf { it.isNotBlank() && it != "없음" }
+
                             val aiMessage = ChatMessage(
                                 id = aiMessageId,
                                 text = enrichedResult.responseMessage,
                                 isUser = false,
-                                timestamp = getCurrentTime()
+                                timestamp = getCurrentTime(),
+                                imageUri = recipeImageUrl // ADDED: Show thumbnail in chat bubble
                             )
 
                             _uiState.update {
