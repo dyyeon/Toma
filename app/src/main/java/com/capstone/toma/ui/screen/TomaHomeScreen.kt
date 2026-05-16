@@ -613,10 +613,7 @@ fun RecentAnalysisCard(
         RecipeSourceType.SAVED -> listOf(Icons.Default.Bookmark, Color(0xFFEBFBEE), Color(0xFF2F9E44), "SAVED")
     }
 
-    val thumbnailUrl = when (item.sourceType) {
-        RecipeSourceType.WEB, RecipeSourceType.YOUTUBE, RecipeSourceType.IMAGE -> extractImageUrl(item.recipeDataJson)
-        else -> null
-    }
+    val thumbnailUrl = extractImageUrl(item.recipeDataJson)
 
     Surface(
         modifier = Modifier
