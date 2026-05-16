@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PrivacyTip
@@ -609,6 +610,7 @@ fun RecentAnalysisCard(
         RecipeSourceType.YOUTUBE -> listOf(Icons.Filled.SmartDisplay, Color(0xFFFFF1E8), TomaMainOrange, "YOUTUBE")
         RecipeSourceType.IMAGE -> listOf(Icons.Default.CameraAlt, Color(0xFFFFECEC), TomaMainRed, "IMAGE")
         RecipeSourceType.WEB -> listOf(Icons.Default.Public, Color(0xFFE7F5FF), Color(0xFF228BE6), "WEB")
+        RecipeSourceType.SAVED -> listOf(Icons.Default.Bookmark, Color(0xFFEBFBEE), Color(0xFF2F9E44), "SAVED")
     }
 
     val thumbnailUrl = when (item.sourceType) {

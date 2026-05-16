@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.capstone.toma.TomaIntent
 import com.capstone.toma.VoiceUiState
+import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.ui.theme.*
 import com.capstone.toma.viewmodel.RecipeStorageViewModel
 import com.capstone.toma.viewmodel.VoiceViewModel
@@ -54,6 +55,8 @@ import java.util.Locale
 fun RecipeDetailScreen(
     keyword: String = "",
     recipeDataJson: String? = null,
+    sourceType: RecipeSourceType = RecipeSourceType.TEXT,
+    fromStorage: Boolean = false,
     onBackClick: () -> Unit = {},
     onFinish: (String, String?) -> Unit = { _, _ -> },
     voiceViewModel: VoiceViewModel
@@ -75,11 +78,13 @@ fun RecipeDetailScreen(
         keyword = keyword,
         recipeDataJson = recipeDataJson,
         isFavorite = isFavorite,
+        fromStorage = fromStorage,
         onBackClick = onBackClick,
-        onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) },
+        onFavoriteClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite, sourceType) },
         onFinish = onFinish,
         voiceViewModel = voiceViewModel,
-        storageViewModel = storageViewModel
+        storageViewModel = storageViewModel,
+        sourceType = sourceType
     )
 }
 
@@ -88,11 +93,13 @@ fun RecipeDetailContent(
     keyword: String,
     recipeDataJson: String?,
     isFavorite: Boolean,
+    fromStorage: Boolean = false,
     onBackClick: () -> Unit,
     onFavoriteClick: () -> Unit,
     onFinish: (String, String?) -> Unit,
     voiceViewModel: VoiceViewModel,
-    storageViewModel: RecipeStorageViewModel
+    storageViewModel: RecipeStorageViewModel,
+    sourceType: RecipeSourceType = RecipeSourceType.TEXT
 ) {
     val recipeData = remember(recipeDataJson) {
         recipeDataJson?.let {
@@ -399,8 +406,10 @@ fun RecipeDetailContent(
                 keyword = title,
                 isFavorite = isFavorite,
                 onFavoriteClick = {
-                    storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite)
-                }
+                    storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite, sourceType)
+                },
+                sourceType = sourceType,
+                fromStorage = fromStorage
             )
 
             AnimatedVisibility(
@@ -507,8 +516,25 @@ private fun RecipeTopBar(
     onBackClick: () -> Unit,
     keyword: String,
     isFavorite: Boolean,
-    onFavoriteClick: () -> Unit
+    onFavoriteClick: () -> Unit,
+    sourceType: RecipeSourceType = RecipeSourceType.TEXT,
+    fromStorage: Boolean = false
 ) {
+    val badgeColor = when {
+        fromStorage -> Color(0xFF2F9E44)
+        sourceType == RecipeSourceType.YOUTUBE -> TomaMainOrange
+        sourceType == RecipeSourceType.WEB -> Color(0xFF228BE6)
+        sourceType == RecipeSourceType.IMAGE -> TomaMainRed
+        else -> Color(0xFF4DABF7)
+    }
+    val badgeLabel = when {
+        fromStorage -> "SAVED"
+        sourceType == RecipeSourceType.YOUTUBE -> "YOUTUBE"
+        sourceType == RecipeSourceType.WEB -> "WEB"
+        sourceType == RecipeSourceType.IMAGE -> "IMAGE"
+        else -> "TEXT"
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -540,6 +566,19 @@ private fun RecipeTopBar(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
+
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = badgeColor.copy(alpha = 0.12f)
+        ) {
+            Text(
+                text = badgeLabel,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = badgeColor
+            )
+        }
     }
 }
 

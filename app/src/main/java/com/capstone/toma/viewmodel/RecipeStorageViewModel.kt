@@ -38,7 +38,7 @@ class RecipeStorageViewModel(
         return repository.isRecipeSaved(recipeId)
     }
 
-    fun saveRecentRecipe(title: String, recipeJson: String?) {
+    fun saveRecentRecipe(title: String, recipeJson: String?, sourceType: RecipeSourceType = RecipeSourceType.TEXT) {
         if (recipeJson.isNullOrBlank()) return
 
         viewModelScope.launch {
@@ -65,7 +65,7 @@ class RecipeStorageViewModel(
                     favorite = existing?.favorite ?: false,
                     ingredients = parseJsonArray(json, "ingredients").ifEmpty { existing?.ingredients ?: emptyList() },
                     steps = parseJsonArray(json, "steps").ifEmpty { existing?.steps ?: emptyList() },
-                    sourceType = existing?.sourceType ?: inferSourceType(json),
+                    sourceType = existing?.sourceType ?: sourceType,
                     timeText = "\uBC29\uAE08 \uC800\uC7A5",
                     imageUri = json.optString("image_url").takeIf { it.isNotBlank() } ?: existing?.imageUri
                 )
@@ -84,7 +84,7 @@ class RecipeStorageViewModel(
         }
     }
 
-    fun toggleFavorite(title: String, recipeJson: String?, isCurrentFavorite: Boolean) {
+    fun toggleFavorite(title: String, recipeJson: String?, isCurrentFavorite: Boolean, sourceType: RecipeSourceType = RecipeSourceType.TEXT) {
         viewModelScope.launch {
             val recipeId = generateStableId(title)
             if (isCurrentFavorite) {
@@ -110,7 +110,7 @@ class RecipeStorageViewModel(
                             favorite = true,
                             ingredients = parseJsonArray(json, "ingredients"),
                             steps = parseJsonArray(json, "steps"),
-                            sourceType = inferSourceType(json),
+                            sourceType = sourceType,
                             timeText = "\uBC29\uAE08 \uBD84\uC11D",
                             imageUri = json.optString("image_url").takeIf { it.isNotBlank() }
                         )
@@ -159,10 +159,10 @@ class RecipeStorageViewModel(
     }
 
     private fun inferSourceType(json: JSONObject): RecipeSourceType {
-        return if (json.optString("image_url").isNotBlank()) {
-            RecipeSourceType.IMAGE
-        } else {
-            RecipeSourceType.TEXT
+        val imageUrl = json.optString("image_url")
+        return when {
+            imageUrl.contains("youtube.com") || imageUrl.contains("youtu.be") -> RecipeSourceType.YOUTUBE
+            else -> RecipeSourceType.TEXT
         }
     }
 

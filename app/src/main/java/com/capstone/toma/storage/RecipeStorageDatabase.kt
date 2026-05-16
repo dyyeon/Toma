@@ -72,7 +72,7 @@ class RecipeStorageConverters {
 
 @Database(
     entities = [StoredRecipeEntity::class, RecentRecipeHistoryEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 @TypeConverters(RecipeStorageConverters::class)
@@ -135,6 +135,40 @@ abstract class RecipeStorageDatabase : RoomDatabase() {
             }
         }
 
+        // Corrects stored_recipes rows that were wrongly saved as IMAGE due to inferSourceType
+        // treating any non-blank image_url as IMAGE. Camera-scanned recipes have content:// imageUri
+        // and are left alone; web/YouTube recipes have http imageUri and are re-labelled.
+        private val Migration5To6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    UPDATE stored_recipes
+                    SET sourceType = CASE
+                        WHEN instr(lower(imageUri), 'youtube.com') > 0
+                          OR instr(lower(imageUri), 'youtu.be') > 0 THEN 'YOUTUBE'
+                        WHEN imageUri LIKE 'http%' THEN 'WEB'
+                        ELSE sourceType
+                    END
+                    WHERE sourceType = 'IMAGE'
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    UPDATE recent_recipe_history
+                    SET sourceType = (
+                        SELECT sourceType FROM stored_recipes
+                        WHERE stored_recipes.id = recent_recipe_history.id
+                    )
+                    WHERE sourceType = 'IMAGE'
+                    AND EXISTS (
+                        SELECT 1 FROM stored_recipes
+                        WHERE stored_recipes.id = recent_recipe_history.id
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): RecipeStorageDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -145,6 +179,7 @@ abstract class RecipeStorageDatabase : RoomDatabase() {
                     .addMigrations(Migration2To3)
                     .addMigrations(Migration3To4)
                     .addMigrations(Migration4To5)
+                    .addMigrations(Migration5To6)
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { instance = it }

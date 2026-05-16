@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 enum class RecipeSourceType {
-    TEXT, YOUTUBE, WEB, IMAGE
+    TEXT, YOUTUBE, WEB, IMAGE, SAVED
 }
 
 data class RecentRecipeRecord(

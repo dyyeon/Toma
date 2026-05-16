@@ -13,14 +13,15 @@ sealed class TomaDestination(val route: String) {
     object Chat : TomaDestination("ai_chat")
     object RecentHistory : TomaDestination("recent_history")
     object SpeakerEnrollment : TomaDestination("speaker_enrollment")
-    object RecipeComplete : TomaDestination("recipe_complete/{keyword}?recipeData={recipeData}") {
-        fun createRoute(keyword: String, recipeData: String? = null): String {
+    object RecipeComplete : TomaDestination("recipe_complete/{keyword}/{sourceType}?recipeData={recipeData}") {
+        fun createRoute(keyword: String, sourceType: com.capstone.toma.model.RecipeSourceType, recipeData: String? = null): String {
             val encodedKeyword = android.net.Uri.encode(keyword)
+            val sourceTypeStr = sourceType.name
             return if (recipeData != null) {
                 val encodedData = android.net.Uri.encode(recipeData)
-                "recipe_complete/$encodedKeyword?recipeData=$encodedData"
+                "recipe_complete/$encodedKeyword/$sourceTypeStr?recipeData=$encodedData"
             } else {
-                "recipe_complete/$encodedKeyword"
+                "recipe_complete/$encodedKeyword/$sourceTypeStr"
             }
         }
     }
@@ -33,6 +34,18 @@ sealed class TomaDestination(val route: String) {
                 "recipe_confirm/$encodedKeyword/$sourceTypeStr?recipeData=$encodedData"
             } else {
                 "recipe_confirm/$encodedKeyword/$sourceTypeStr"
+            }
+        }
+    }
+    object RecipeDetailFromStorage : TomaDestination("recipe_detail_storage/{keyword}/{sourceType}?recipeData={recipeData}") {
+        fun createRoute(keyword: String, sourceType: com.capstone.toma.model.RecipeSourceType, recipeData: String? = null): String {
+            val encodedKeyword = android.net.Uri.encode(keyword)
+            val sourceTypeStr = sourceType.name
+            return if (recipeData != null) {
+                val encodedData = android.net.Uri.encode(recipeData)
+                "recipe_detail_storage/$encodedKeyword/$sourceTypeStr?recipeData=$encodedData"
+            } else {
+                "recipe_detail_storage/$encodedKeyword/$sourceTypeStr"
             }
         }
     }

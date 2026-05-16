@@ -18,6 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.ui.theme.TomaMainOrange
 import com.capstone.toma.ui.theme.TomaPrimaryText
 import com.capstone.toma.ui.theme.TomaSecondaryText
@@ -28,6 +29,7 @@ import org.json.JSONObject
 fun RecipeCompleteScreen(
     keyword: String,
     recipeDataJson: String?,
+    sourceType: RecipeSourceType = RecipeSourceType.TEXT,
     onDoneClick: () -> Unit
 ) {
     val storageViewModel: RecipeStorageViewModel = viewModel()
@@ -102,7 +104,7 @@ fun RecipeCompleteScreen(
                 Spacer(modifier = Modifier.height(16.dp))
                 
                 IconButton(
-                    onClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite) },
+                    onClick = { storageViewModel.toggleFavorite(title, recipeDataJson, isFavorite, sourceType) },
                     modifier = Modifier
                         .size(80.dp)
                         .background(

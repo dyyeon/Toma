@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayCircle
@@ -157,6 +158,7 @@ private fun HistoryItemCard(
         RecipeSourceType.YOUTUBE -> Triple(Icons.Default.PlayCircle, Color(0xFFFFF1E8), TomaMainOrange)
         RecipeSourceType.IMAGE -> Triple(Icons.Default.CameraAlt, Color(0xFFFFECEC), TomaMainRed)
         RecipeSourceType.WEB -> Triple(Icons.Default.Public, Color(0xFFE7F5FF), Color(0xFF228BE6))
+        RecipeSourceType.SAVED -> Triple(Icons.Default.Bookmark, Color(0xFFEBFBEE), Color(0xFF2F9E44))
     }
 
     Surface(

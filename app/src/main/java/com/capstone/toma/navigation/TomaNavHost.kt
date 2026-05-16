@@ -1,4 +1,4 @@
-package com.capstone.toma.navigation
+﻿package com.capstone.toma.navigation
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -40,9 +40,10 @@ import com.capstone.toma.model.toRecipeDataJson
 import com.capstone.toma.ui.screen.*
 import com.capstone.toma.viewmodel.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
 
@@ -61,6 +62,179 @@ private val voiceSuggestions = listOf(
     "10분 안에 만드는 요리",
     "자취생 요리 알려줘"
 )
+
+private fun buildYoutubePrompt(title: String?): String {
+    val cleanTitle = title?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim() ?: ""
+    return """
+    다음 유튜브 영상 제목을 보고 요리/레시피 영상인지 먼저 판단하세요.
+    영상 제목: ${title ?: ""}
+
+    요리/레시피 영상이 맞다면 레시피를 작성해주세요:
+    - 요리명: $cleanTitle
+    - 재료명, 단계, 모든 내용을 반드시 한국어로만 작성하세요. 영어 사용 금지.
+    - 조리 단계는 각 단계를 하나의 동작으로 나눠서 7단계 이상 상세하게 작성하세요.
+    - 불 세기, 시간, 조리 방법, 완성 기준을 구체적으로 포함하세요.
+
+    음악, 게임, 드라마, 뉴스 등 요리와 관련 없는 영상이라면 type을 'not_recipe'로 설정하세요.
+    """.trimIndent()
+}
+
+private fun buildWebPrompt(url: String, title: String?, description: String?): String = """
+    다음 웹페이지 내용을 분석해서 레시피 정보를 추출해주세요.
+    이 페이지가 요리/레시피와 관련 없다면 type을 'not_recipe'로 설정하세요.
+    URL: $url
+    제목: ${title ?: "제목 없음"}
+    내용:
+    $description
+
+    [내용 충분성 판단]
+    아래 경우에만 type을 'insufficient_content'로 설정하세요:
+    - 페이지 본문이 거의 비어 있거나 로그인/구독 화면인 경우
+    - 제목만 있고 음식 관련 내용이 전혀 없는 경우
+    재료 목록, 조리 순서, 음식 이름 + 식재료 관련 문장 중 하나라도 있으면 recipe_search로 추출하세요.
+    단계가 비격식체이거나 분량이 없거나 구조가 불완전해도 추출하세요.
+    추출할 것이 아무것도 없을 때만 insufficient_content를 사용하세요.
+
+    [이미지 선택 규칙]
+    recipe_data의 image_url에는 아래 기준에 맞는 이미지 URL을 하나만 선택하세요:
+    - 완성된 요리가 그릇이나 접시에 담긴 사진을 최우선으로 선택하세요.
+    - 요리가 화면의 대부분을 차지하는 대표 썸네일 이미지를 선호하세요.
+    - 인물 얼굴, 프로필 사진, 셀카, 작가 사진, 배너, 로고, 광고 이미지는 제외하세요.
+    - 재료 손질 사진이나 조리 중간 과정 사진보다 완성 요리 사진을 선택하세요.
+    - 적합한 이미지가 없으면 빈 문자열을 반환하세요.
+    """.trimIndent()
+
+// Opt 1+2: AI call and image prefetch run in parallel; minimum status delay is absorbed
+// into AI latency rather than blocking the coroutine sequentially.
+private suspend fun analyzePageContent(
+    url: String,
+    isYoutube: Boolean,
+    title: String?,
+    description: String?,
+    prefetchedImage: String?,
+    history: List<Pair<String, Boolean>>,
+    updateStatus: (String) -> Unit
+): VoiceRequestResult {
+    val isLikelyRecipe = title?.contains(Regex("요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주")) == true
+        || description?.contains(Regex("요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주")) == true
+
+    updateStatus(
+        if (isLikelyRecipe) "전문가 AI가 실전 정보를 추출 중이에요... ✨"
+        else "전문가 AI가 내용을 분析하고 있어요... ✨"
+    )
+
+    val openAi = com.capstone.toma.OpenAiManager()
+    val prompt = if (isYoutube) buildYoutubePrompt(title) else buildWebPrompt(url, title, description)
+    val keywordCandidate = title?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim().orEmpty()
+
+    return coroutineScope {
+        val aiDeferred = async(Dispatchers.IO) { openAi.processChatRequestSuspend(prompt, history) }
+        // Prefetch image in parallel using page title as keyword candidate.
+        // Only launched when the page scraper returned no image.
+        val imgDeferred = if (prefetchedImage == null && keywordCandidate.isNotBlank()) {
+            async(Dispatchers.IO) {
+                PublicRecipeManager().searchRecipe(keywordCandidate)?.mainImageUrl?.takeIf { it.isNotBlank() }
+                    ?: WebPageManager().searchFoodImage(keywordCandidate)
+            }
+        } else null
+
+        delay(if (isLikelyRecipe) 400L else 100L) // minimum status display; runs concurrently
+
+        val aiResult = aiDeferred.await()
+        val fallbackImage = prefetchedImage ?: imgDeferred?.await()
+
+        if (aiResult is VoiceRequestResult.Success && aiResult.requestType == "not_recipe") {
+            return@coroutineScope VoiceRequestResult.Success(
+                requestType = "not_recipe",
+                keyword = "",
+                responseMessage = "이 링크는 요리 레시피가 아닌 것 같아요 \n\n요리 관련 페이지 링크를 다시 입력해주시거나, 음식 이름을 채팅으로 직접 알려주세요!",
+                recipeData = null
+            )
+        }
+
+        if (aiResult is VoiceRequestResult.Success && aiResult.recipeData != null) {
+            val recipeJson = JSONObject(aiResult.recipeData)
+            val currentImageUrl = recipeJson.optString("image_url")
+            if (currentImageUrl.isBlank() || currentImageUrl == "없음") {
+                if (fallbackImage != null) {
+                    recipeJson.put("image_url", fallbackImage)
+                    aiResult.copy(recipeData = recipeJson.toString())
+                } else aiResult
+            } else aiResult
+        } else aiResult
+    }
+}
+
+private fun getAnalysisMessage(url: String): String {
+    val host = try { android.net.Uri.parse(url).host?.lowercase().orEmpty() } catch (e: Exception) { "" }
+    return when {
+        host == "blog.naver.com" || host == "m.blog.naver.com" ->
+            "네이버 블로그 레시피 분석 중입니다..."
+        host.contains("10000recipe.com") ->
+            "만개의레시피에서 레시피를 가져오는 중입니다..."
+        host.endsWith(".tistory.com") || host == "tistory.com" ->
+            "티스토리 블로그 레시피 분석 중입니다..."
+        url.contains("youtube.com/shorts/", ignoreCase = true) ->
+            "유튜브 쇼츠에서 레시피를 찾고 있습니다..."
+        host.contains("youtube.com") || host.contains("youtu.be") ->
+            "유튜브 영상에서 레시피를 찾고 있습니다..."
+        host.contains("instagram.com") ->
+            "인스타그램 게시물 분석 중입니다..."
+        host.contains("cooking.nytimes.com") ->
+            "레시피 페이지 분석 중입니다..."
+        else ->
+            "웹페이지에서 레시피를 찾고 있습니다..."
+    }
+}
+
+// Opt 3: single entry point for all three URL-analysis call sites.
+// homeViewModel = null signals chat context: fetch errors return not_recipe instead of a dialog.
+private fun ChatViewModel.launchLinkAnalysis(
+    url: String,
+    navController: NavHostController,
+    homeViewModel: HomeViewModel? = null,
+    resetAndNavigate: Boolean = true,
+    userDisplay: String? = null
+) {
+    val isYoutube = url.isYoutubeUrl()
+    if (resetAndNavigate) {
+        resetChat()
+        navController.navigate(TomaDestination.Chat.route)
+    }
+    val display = userDisplay ?: if (isYoutube) "유튜브 분析 중: $url" else "웹 레시피 분析 중: $url"
+    startLinkAnalysis(
+        userDisplay = display,
+        initialAiText = getAnalysisMessage(url),
+        fixedSourceType = if (isYoutube) com.capstone.toma.model.RecipeSourceType.YOUTUBE else com.capstone.toma.model.RecipeSourceType.WEB
+    ) { updateStatus ->
+        val webPageManager = WebPageManager()
+        val youtubeManager = YoutubeManager()
+        val (t, d, img) = if (isYoutube) youtubeManager.fetchVideoInfoSuspend(url) else webPageManager.fetchPageInfoSuspend(url)
+
+        val fetchFailed = t == null && (d == null
+            || d.startsWith("본문을 읽어오는데 실패")
+            || d.startsWith("페이지 로드 실패")
+            || d.startsWith("유튜브 정보를 가져오는데 실패")
+            || d.startsWith("유튜브 정보를 로드할 수 없습니다"))
+
+        if (fetchFailed) {
+            return@startLinkAnalysis if (homeViewModel != null) {
+                homeViewModel.showError("링크를 읽어올 수 없어요. 다시 시도해주세요.", isDialog = true)
+                VoiceRequestResult.Error("스크래핑 실패")
+            } else {
+                VoiceRequestResult.Success(
+                    requestType = "not_recipe",
+                    keyword = "",
+                    responseMessage = "링크를 읽어올 수 없어요 \n다시 시도하거나 음식 이름을 직접 알려주세요!",
+                    recipeData = null
+                )
+            }
+        }
+
+        val history = uiState.value.messages.map { it.text to it.isUser }
+        analyzePageContent(url, isYoutube, t, d, img, history, updateStatus)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -194,115 +368,11 @@ fun TomaNavHost(
                     if (query.isNotBlank()) {
                         val isValidUrl = query.startsWith("http://") || query.startsWith("https://")
                         if (isValidUrl) {
-                            val isYoutube = query.isYoutubeUrl()
-                            val webPageManager = WebPageManager()
-                            val youtubeManager = YoutubeManager()
-                            chatViewModel.resetChat()
-                            navController.navigate(TomaDestination.Chat.route)
-
-                            val displayMsg = if (isYoutube) "유튜브 분석 중: $query" else "웹 레시피 분석 중: $query"
-
-                            chatViewModel.startLinkAnalysis(
-                                userDisplay = displayMsg,
-                                initialAiText = "페이지 본문을 읽어오고 있어요... 📄",
-                                fixedSourceType = if (isYoutube) com.capstone.toma.model.RecipeSourceType.YOUTUBE else com.capstone.toma.model.RecipeSourceType.WEB
-                            ) { updateStatus ->
-                                val (t, d, img) = if (isYoutube) {
-                                    youtubeManager.fetchVideoInfoSuspend(query)
-                                } else {
-                                    webPageManager.fetchPageInfoSuspend(query)
-                                }
-
-                                val fetchFailed = t == null && (d == null
-                                        || d.startsWith("본문을 읽어오는데 실패")
-                                        || d.startsWith("페이지 로드 실패")
-                                        || d.startsWith("유튜브 정보를 가져오는데 실패")
-                                        || d.startsWith("유튜브 정보를 로드할 수 없습니다"))
-                                if (fetchFailed) {
-                                    homeViewModel.showError("링크를 읽어올 수 없어요. 다시 시도해주세요.", isDialog = true)
-                                    return@startLinkAnalysis VoiceRequestResult.Error("스크래핑 실패")
-                                }
-
-                                val isLikelyRecipe = t?.contains(Regex("요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주")) == true
-                                        || d?.contains(Regex("요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주")) == true
-
-                                if (isLikelyRecipe) {
-                                    updateStatus("전문가 AI가 실전 정보를 추출 중이에요... ✨")
-                                    delay(400)
-                                } else {
-                                    updateStatus("전문가 AI가 내용을 분석하고 있어요... ✨")
-                                    delay(100)
-                                }
-
-                                val openAi = com.capstone.toma.OpenAiManager()
-                                val history = chatViewModel.uiState.value.messages.map { it.text to it.isUser }
-
-                                val prompt = if (isYoutube) {
-                                    val cleanTitle = t?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim() ?: ""
-                                    """
-                                    다음 유튜브 영상 제목을 보고 요리/레시피 영상인지 먼저 판단하세요.
-                                    영상 제목: ${t ?: ""}
-
-                                    요리/레시피 영상이 맞다면 레시피를 작성해주세요:
-                                    - 요리명: $cleanTitle
-                                    - 재료명, 단계, 모든 내용을 반드시 한국어로만 작성하세요. 영어 사용 금지.
-                                    - 조리 단계는 각 단계를 하나의 동작으로 나눠서 7단계 이상 상세하게 작성하세요.
-                                    - 불 세기, 시간, 조리 방법, 완성 기준을 구체적으로 포함하세요.
-
-                                    음악, 게임, 드라마, 뉴스 등 요리와 관련 없는 영상이라면 type을 'not_recipe'로 설정하세요.
-                                    """.trimIndent()
-                                } else {
-                                    """
-                                    다음 웹페이지 내용을 분析해서 레시피 정보를 추출해주세요.
-                                    이 페이지가 요리/레시피와 관련 없다면 type을 'not_recipe'로 설정하세요.
-                                    URL: $query
-                                    제목: ${t ?: "제목 없음"}
-                                    내용:
-                                    $d
-
-                                    [내용 충분성 판단]
-                                    아래 경우에만 type을 'insufficient_content'로 설정하세요:
-                                    - 페이지 본문이 거의 비어 있거나 로그인/구독 화면인 경우
-                                    - 제목만 있고 음식 관련 내용이 전혀 없는 경우
-                                    재료 목록, 조리 순서, 음식 이름 + 식재료 관련 문장 중 하나라도 있으면 recipe_search로 추출하세요.
-                                    단계가 비격식체이거나 분량이 없거나 구조가 불완전해도 추출하세요.
-                                    추출할 것이 아무것도 없을 때만 insufficient_content를 사용하세요.
-
-                                    [이미지 선택 규칙]
-                                    recipe_data의 image_url에는 아래 기준에 맞는 이미지 URL을 하나만 선택하세요:
-                                    - 완성된 요리가 그릇이나 접시에 담긴 사진을 최우선으로 선택하세요.
-                                    - 요리가 화면의 대부분을 차지하는 대표 썸네일 이미지를 선호하세요.
-                                    - 인물 얼굴, 프로필 사진, 셀카, 작가 사진, 배너, 로고, 광고 이미지는 제외하세요.
-                                    - 재료 손질 사진이나 조리 중간 과정 사진보다 완성 요리 사진을 선택하세요.
-                                    - 적합한 이미지가 없으면 빈 문자열을 반환하세요.
-                                    """.trimIndent()
-                                }
-
-                                val aiResult = openAi.processChatRequestSuspend(prompt, history)
-                                if (aiResult is VoiceRequestResult.Success && aiResult.requestType == "not_recipe") {
-                                    return@startLinkAnalysis VoiceRequestResult.Success(
-                                        requestType = "not_recipe",
-                                        keyword = "",
-                                        responseMessage = "이 링크는 요리 레시피가 아닌 것 같아요 \n\n요리 관련 페이지 링크를 다시 입력해주시거나, 음식 이름을 채팅으로 직접 알려주세요!",
-                                        recipeData = null
-                                    )
-                                }
-                                if (aiResult is VoiceRequestResult.Success && aiResult.recipeData != null) {
-                                    val recipeJson = JSONObject(aiResult.recipeData)
-                                    val currentImageUrl = recipeJson.optString("image_url")
-                                    if (currentImageUrl.isBlank() || currentImageUrl == "없음") {
-                                        val imageUrl = img ?: withContext(Dispatchers.IO) {
-                                            PublicRecipeManager().searchRecipe(aiResult.keyword)?.mainImageUrl?.takeIf { it.isNotBlank() }
-                                                ?: WebPageManager().searchFoodImage(aiResult.keyword)
-                                        }
-                                        if (imageUrl != null) {
-                                            recipeJson.put("image_url", imageUrl)
-                                            aiResult.copy(recipeData = recipeJson.toString())
-                                        } else aiResult
-                                    } else aiResult
-                                } else aiResult
-                            }
-
+                            chatViewModel.launchLinkAnalysis(
+                                url = query,
+                                navController = navController,
+                                homeViewModel = homeViewModel
+                            )
                             homeViewModel.updateSearchQuery("")
                         } else {
                             chatViewModel.resetChat()
@@ -320,120 +390,14 @@ fun TomaNavHost(
                     val link = homeUiState.youtubeLink
 
                     if (link.isNotBlank()) {
-                        val isYoutube = link.isYoutubeUrl()
                         val isValidUrl = link.startsWith("http://") || link.startsWith("https://")
 
                         if (isValidUrl) {
-                            val webPageManager = WebPageManager()
-                            val youtubeManager = YoutubeManager()
-                            chatViewModel.resetChat()
-                            navController.navigate(TomaDestination.Chat.route)
-
-                            val displayMsg =
-                                if (isYoutube) "유튜브 분석 중: $link"
-                                else "웹 레시피 분석 중: $link"
-
-                            chatViewModel.startLinkAnalysis(
-                                userDisplay = displayMsg,
-                                initialAiText = "페이지 본문을 읽어오고 있어요... 📄",
-                                fixedSourceType = if (isYoutube) com.capstone.toma.model.RecipeSourceType.YOUTUBE else com.capstone.toma.model.RecipeSourceType.WEB
-                            ) { updateStatus ->
-                                val (t, d, img) = if (isYoutube) {
-                                    youtubeManager.fetchVideoInfoSuspend(link)
-                                } else {
-                                    webPageManager.fetchPageInfoSuspend(link)
-                                }
-
-                                val fetchFailed = t == null && (d == null
-                                        || d.startsWith("본문을 읽어오는데 실패")
-                                        || d.startsWith("페이지 로드 실패")
-                                        || d.startsWith("유튜브 정보를 가져오는데 실패")
-                                        || d.startsWith("유튜브 정보를 로드할 수 없습니다"))
-                                if (fetchFailed) {
-                                    homeViewModel.showError("링크를 읽어올 수 없어요. 다시 시도해주세요.", isDialog = true)
-                                    return@startLinkAnalysis VoiceRequestResult.Error("스크래핑 실패")
-                                }
-
-                                val isLikelyRecipe = t?.contains(Regex("요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주")) == true
-                                        || d?.contains(Regex("요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주")) == true
-
-                                if (isLikelyRecipe) {
-                                    updateStatus("전문가 AI가 실전 정보를 추출 중이에요... ✨")
-                                    delay(400)
-                                } else {
-                                    updateStatus("전문가 AI가 내용을 분석하고 있어요... ✨")
-                                    delay(100)
-                                }
-
-                                val openAi = com.capstone.toma.OpenAiManager()
-                                val history = chatViewModel.uiState.value.messages.map { it.text to it.isUser }
-
-                                val prompt = if (isYoutube) {
-                                    val cleanTitle = t?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim() ?: ""
-                                    """
-                                    다음 유튜브 영상 제목을 보고 요리/레시피 영상인지 먼저 판단하세요.
-                                    영상 제목: ${t ?: ""}
-
-                                    요리/레시피 영상이 맞다면 레시피를 작성해주세요:
-                                    - 요리명: $cleanTitle
-                                    - 재료명, 단계, 모든 내용을 반드시 한국어로만 작성하세요. 영어 사용 금지.
-                                    - 조리 단계는 각 단계를 하나의 동작으로 나눠서 7단계 이상 상세하게 작성하세요.
-                                    - 불 세기, 시간, 조리 방법, 완성 기준을 구체적으로 포함하세요.
-
-                                    음악, 게임, 드라마, 뉴스 등 요리와 관련 없는 영상이라면 type을 'not_recipe'로 설정하세요.
-                                    """.trimIndent()
-                                } else {
-                                    """
-                                    다음 웹페이지 내용을 분석해서 레시피 정보를 추출해주세요.
-                                    이 페이지가 요리/레시피와 관련 없다면 type을 'not_recipe'로 설정하세요.
-                                    URL: $link
-                                    제목: ${t ?: "제목 없음"}
-                                    내용:
-                                    $d
-
-                                    [내용 충분성 판단]
-                                    아래 경우에만 type을 'insufficient_content'로 설정하세요:
-                                    - 페이지 본문이 거의 비어 있거나 로그인/구독 화면인 경우
-                                    - 제목만 있고 음식 관련 내용이 전혀 없는 경우
-                                    재료 목록, 조리 순서, 음식 이름 + 식재료 관련 문장 중 하나라도 있으면 recipe_search로 추출하세요.
-                                    단계가 비격식체이거나 분량이 없거나 구조가 불완전해도 추출하세요.
-                                    추출할 것이 아무것도 없을 때만 insufficient_content를 사용하세요.
-
-                                    [이미지 선택 규칙]
-                                    recipe_data의 image_url에는 아래 기준에 맞는 이미지 URL을 하나만 선택하세요:
-                                    - 완성된 요리가 그릇이나 접시에 담긴 사진을 최우선으로 선택하세요.
-                                    - 요리가 화면의 대부분을 차지하는 대표 썸네일 이미지를 선호하세요.
-                                    - 인물 얼굴, 프로필 사진, 셀카, 작가 사진, 배너, 로고, 광고 이미지는 제외하세요.
-                                    - 재료 손질 사진이나 조리 중간 과정 사진보다 완성 요리 사진을 선택하세요.
-                                    - 적합한 이미지가 없으면 빈 문자열을 반환하세요.
-                                    """.trimIndent()
-                                }
-
-                                val aiResult = openAi.processChatRequestSuspend(prompt, history)
-                                if (aiResult is VoiceRequestResult.Success && aiResult.requestType == "not_recipe") {
-                                    return@startLinkAnalysis VoiceRequestResult.Success(
-                                        requestType = "not_recipe",
-                                        keyword = "",
-                                        responseMessage = "이 링크는 요리 레시피가 아닌 것 같아요 \n\n요리 관련 페이지 링크를 다시 입력해주시거나, 음식 이름을 채팅으로 직접 알려주세요!",
-                                        recipeData = null
-                                    )
-                                }
-                                if (aiResult is VoiceRequestResult.Success && aiResult.recipeData != null) {
-                                    val recipeJson = JSONObject(aiResult.recipeData)
-                                    val currentImageUrl = recipeJson.optString("image_url")
-                                    if (currentImageUrl.isBlank() || currentImageUrl == "없음") {
-                                        val imageUrl = img ?: withContext(Dispatchers.IO) {
-                                            PublicRecipeManager().searchRecipe(aiResult.keyword)?.mainImageUrl?.takeIf { it.isNotBlank() }
-                                                ?: WebPageManager().searchFoodImage(aiResult.keyword)
-                                        }
-                                        if (imageUrl != null) {
-                                            recipeJson.put("image_url", imageUrl)
-                                            aiResult.copy(recipeData = recipeJson.toString())
-                                        } else aiResult
-                                    } else aiResult
-                                } else aiResult
-                            }
-
+                            chatViewModel.launchLinkAnalysis(
+                                url = link,
+                                navController = navController,
+                                homeViewModel = homeViewModel
+                            )
                             homeViewModel.updateYoutubeLink("")
                         } else {
                             homeViewModel.showError("올바른 링크를 입력해주세요.")
@@ -476,16 +440,47 @@ fun TomaNavHost(
                     homeViewModel.saveRecentRecipe(
                         keyword = recipe.title,
                         recipeDataJson = recipeData,
-                        sourceType = recipe.sourceType
+                        sourceType = com.capstone.toma.model.RecipeSourceType.SAVED
                     )
                     navController.navigate(
-                        TomaDestination.RecipeDetail.createRoute(
+                        TomaDestination.RecipeDetailFromStorage.createRoute(
                             recipe.title,
                             recipe.sourceType,
                             recipeData
                         )
                     )
                 }
+            )
+        }
+
+        composable(
+            route = TomaDestination.RecipeDetailFromStorage.route,
+            arguments = listOf(
+                navArgument("keyword") { type = NavType.StringType },
+                navArgument("sourceType") { type = NavType.StringType },
+                navArgument("recipeData") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
+            val sourceTypeStr = backStackEntry.arguments?.getString("sourceType") ?: "TEXT"
+            val sourceType = com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr)
+            val recipeData = backStackEntry.arguments?.getString("recipeData")
+            RecipeDetailScreen(
+                keyword = keyword,
+                recipeDataJson = recipeData,
+                sourceType = sourceType,
+                fromStorage = true,
+                onBackClick = { navController.popBackStack() },
+                onFinish = { kw, data ->
+                    navController.navigate(TomaDestination.RecipeComplete.createRoute(kw, sourceType, data)) {
+                        popUpTo(TomaDestination.RecipeDetailFromStorage.route) { inclusive = true }
+                    }
+                },
+                voiceViewModel = voiceViewModel
             )
         }
 
@@ -607,111 +602,14 @@ fun TomaNavHost(
                     val inputText = chatUiState.inputText.trim()
                     val isUrl = inputText.startsWith("http://") || inputText.startsWith("https://")
                     if (isUrl) {
-                        val isYoutube = inputText.isYoutubeUrl()
-                        val webPageManager = WebPageManager()
-                        val youtubeManager = YoutubeManager()
                         chatViewModel.onInputTextChange("")
-
-                        chatViewModel.startLinkAnalysis(
-                            userDisplay = inputText,
-                            initialAiText = "페이지 본문을 읽어오고 있어요... 📄",
-                            fixedSourceType = if (isYoutube) com.capstone.toma.model.RecipeSourceType.YOUTUBE else com.capstone.toma.model.RecipeSourceType.WEB
-                        ) { updateStatus ->
-                            val (t, d, img) = if (isYoutube) youtubeManager.fetchVideoInfoSuspend(inputText) else webPageManager.fetchPageInfoSuspend(inputText)
-
-                            val fetchFailed = t == null && (d == null
-                                    || d.startsWith("본문을 읽어오는데 실패")
-                                    || d.startsWith("페이지 로드 실패")
-                                    || d.startsWith("유튜브 정보를 가져오는데 실패")
-                                    || d.startsWith("유튜브 정보를 로드할 수 없습니다"))
-                            if (fetchFailed) {
-                                return@startLinkAnalysis VoiceRequestResult.Success(
-                                    requestType = "not_recipe",
-                                    keyword = "",
-                                    responseMessage = "링크를 읽어올 수 없어요 \n다시 시도하거나 음식 이름을 직접 알려주세요!",
-                                    recipeData = null
-                                )
-                            }
-
-                            val isLikelyRecipe = t?.contains(Regex("요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주")) == true
-                                    || d?.contains(Regex("요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주")) == true
-
-                            if (isLikelyRecipe) {
-                                updateStatus("전문가 AI가 실전 정보를 추출 중이에요... ✨")
-                                delay(400)
-                            } else {
-                                updateStatus("전문가 AI가 내용을 분석하고 있어요... ✨")
-                                delay(100)
-                            }
-
-                            val openAi = com.capstone.toma.OpenAiManager()
-                            val history = chatViewModel.uiState.value.messages.map { it.text to it.isUser }
-
-                            val prompt = if (isYoutube) {
-                                val cleanTitle = t?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim() ?: ""
-                                """
-                                다음 유튜브 영상 제목을 보고 요리/레시피 영상인지 먼저 판단하세요.
-                                영상 제목: ${t ?: ""}
-
-                                요리/레시피 영상이 맞다면 레시피를 작성해주세요:
-                                - 요리명: $cleanTitle
-                                - 재료명, 단계, 모든 내용을 반드시 한국어로만 작성하세요. 영어 사용 금지.
-                                - 조리 단계는 각 단계를 하나의 동작으로 나눠서 7단계 이상 상세하게 작성하세요.
-                                - 불 세기, 시간, 조리 방법, 완성 기준을 구체적으로 포함하세요.
-
-                                음악, 게임, 드라마, 뉴스 등 요리와 관련 없는 영상이라면 type을 'not_recipe'로 설정하세요.
-                                """.trimIndent()
-                            } else {
-                                """
-                                다음 웹페이지 내용을 분석해서 레시피 정보를 추출해주세요.
-                                이 페이지가 요리/레시피와 관련 없다면 type을 'not_recipe'로 설정하세요.
-                                URL: $inputText
-                                제목: ${t ?: "제목 없음"}
-                                내용:
-                                $d
-
-                                [내용 충분성 판단]
-                                아래 경우에만 type을 'insufficient_content'로 설정하세요:
-                                - 페이지 본문이 거의 비어 있거나 로그인/구독 화면인 경우
-                                - 제목만 있고 음식 관련 내용이 전혀 없는 경우
-                                재료 목록, 조리 순서, 음식 이름 + 식재료 관련 문장 중 하나라도 있으면 recipe_search로 추출하세요.
-                                단계가 비격식체이거나 분량이 없거나 구조가 불완전해도 추출하세요.
-                                추출할 것이 아무것도 없을 때만 insufficient_content를 사용하세요.
-
-                                [이미지 선택 규칙]
-                                recipe_data의 image_url에는 아래 기준에 맞는 이미지 URL을 하나만 선택하세요:
-                                - 완성된 요리가 그릇이나 접시에 담긴 사진을 최우선으로 선택하세요.
-                                - 요리가 화면의 대부분을 차지하는 대표 썸네일 이미지를 선호하세요.
-                                - 인물 얼굴, 프로필 사진, 셀카, 작가 사진, 배너, 로고, 광고 이미지는 제외하세요.
-                                - 재료 손질 사진이나 조리 중간 과정 사진보다 완성 요리 사진을 선택하세요.
-                                - 적합한 이미지가 없으면 빈 문자열을 반환하세요.
-                                """.trimIndent()
-                            }
-
-                            val aiResult = openAi.processChatRequestSuspend(prompt, history)
-                            if (aiResult is VoiceRequestResult.Success && aiResult.requestType == "not_recipe") {
-                                return@startLinkAnalysis VoiceRequestResult.Success(
-                                    requestType = "not_recipe",
-                                    keyword = "",
-                                    responseMessage = "이 링크는 요리 레시피가 아닌 것 같아요 \n\n요리 관련 페이지 링크를 다시 입력해주시거나, 음식 이름을 채팅으로 직접 알려주세요!",
-                                    recipeData = null
-                                )
-                            }
-                            if (aiResult is VoiceRequestResult.Success && aiResult.recipeData != null) {
-                                val recipeJson = JSONObject(aiResult.recipeData)
-                                val currentImageUrl = recipeJson.optString("image_url")
-                                if (currentImageUrl.isBlank() || currentImageUrl == "없음") {
-                                    val imageUrl = img ?: withContext(Dispatchers.IO) {
-                                        PublicRecipeManager().searchRecipe(aiResult.keyword)?.mainImageUrl?.takeIf { it.isNotBlank() }
-                                            ?: WebPageManager().searchFoodImage(aiResult.keyword)
-                                    }
-                                    if (imageUrl != null) {
-                                        recipeJson.put("image_url", imageUrl)
-                                        aiResult.copy(recipeData = recipeJson.toString())
-                                    } else aiResult
-                                } else aiResult
-                            } else aiResult
-                        }
+                        chatViewModel.launchLinkAnalysis(
+                            url = inputText,
+                            navController = navController,
+                            homeViewModel = null,
+                            resetAndNavigate = false,
+                            userDisplay = inputText
+                        )
                     } else {
                         chatViewModel.sendMessage()
                     }
@@ -805,9 +703,10 @@ fun TomaNavHost(
             RecipeDetailScreen(
                 keyword = keyword,
                 recipeDataJson = recipeData,
+                sourceType = sourceType,
                 onBackClick = { navController.popBackStack() },
                 onFinish = { kw, data ->
-                    navController.navigate(TomaDestination.RecipeComplete.createRoute(kw, data)) {
+                    navController.navigate(TomaDestination.RecipeComplete.createRoute(kw, sourceType, data)) {
                         popUpTo(TomaDestination.RecipeDetail.route) { inclusive = true }
                     }
                 },
@@ -819,6 +718,7 @@ fun TomaNavHost(
             route = TomaDestination.RecipeComplete.route,
             arguments = listOf(
                 navArgument("keyword") { type = NavType.StringType },
+                navArgument("sourceType") { type = NavType.StringType },
                 navArgument("recipeData") {
                     type = NavType.StringType
                     nullable = true
@@ -827,10 +727,13 @@ fun TomaNavHost(
             )
         ) { backStackEntry ->
             val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
+            val sourceTypeStr = backStackEntry.arguments?.getString("sourceType") ?: "TEXT"
+            val sourceType = com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr)
             val recipeData = backStackEntry.arguments?.getString("recipeData")
             RecipeCompleteScreen(
                 keyword = keyword,
                 recipeDataJson = recipeData,
+                sourceType = sourceType,
                 onDoneClick = {
                     navController.popBackStack(TomaDestination.Home.route, false)
                 }
