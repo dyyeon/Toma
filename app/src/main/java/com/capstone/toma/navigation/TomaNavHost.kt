@@ -66,6 +66,18 @@ private val voiceSuggestions = listOf(
 private fun buildYoutubePrompt(title: String?): String {
     val cleanTitle = title?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim() ?: ""
     return """
+    ABSOLUTE RULE — KOREAN ONLY:
+    Every single output field MUST be in Korean without exception.
+    This includes: title, keyword, response, category, ingredients,
+    steps, difficulty, time, and any other text value fields.
+    If the video title or content is in English, Japanese, Chinese,
+    or any other language — translate EVERYTHING to Korean.
+    - Translate ingredient names: "2 cloves garlic" → "마늘 2쪽"
+    - Translate step text fully: "Boil for 10 minutes" → "10분간 끓여주세요"
+    - Transliterate when no direct translation exists: "pasta" → "파스타"
+    - Numbers, units (g, ml, tbsp, tsp, °C), and image URLs are exempt.
+    Any English word in a value field (except units/numbers) = rule violation.
+
     다음 유튜브 영상 제목을 보고 요리/레시피 영상인지 먼저 판단하세요.
     영상 제목: ${title ?: ""}
 
@@ -80,6 +92,18 @@ private fun buildYoutubePrompt(title: String?): String {
 }
 
 private fun buildWebPrompt(url: String, title: String?, description: String?): String = """
+    ABSOLUTE RULE — KOREAN ONLY:
+    Every single output field MUST be in Korean without exception.
+    This includes: title, keyword, response, category, ingredients,
+    steps, difficulty, time, and any other text value fields.
+    If the web page content is in English, Japanese, Chinese,
+    or any other language — translate EVERYTHING to Korean.
+    - Translate ingredient names: "2 cloves garlic" → "마늘 2쪽"
+    - Translate step text fully: "Boil for 10 minutes" → "10분간 끓여주세요"
+    - Transliterate when no direct translation exists: "pasta" → "파스타"
+    - Numbers, units (g, ml, tbsp, tsp, °C), and image URLs are exempt.
+    Any English word in a value field (except units/numbers) = rule violation.
+
     다음 웹페이지 내용을 분석해서 레시피 정보를 추출해주세요.
     이 페이지가 요리/레시피와 관련 없다면 type을 'not_recipe'로 설정하세요.
     URL: $url
