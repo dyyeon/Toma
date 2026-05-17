@@ -787,6 +787,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             timerOriginalSeconds = minutes * 60
+            _timerRemainingSeconds.value = timerOriginalSeconds
             timerStartedAtStep = currentStepIndex
             _isTimerVisible.value = true
 
@@ -810,6 +811,48 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
                 forceResetToIdle("timer_trigger_done")
             }
         }
+    }
+
+    fun adjustTimer(deltaSeconds: Int) {
+        val current = _timerRemainingSeconds.value
+        val next = (current + deltaSeconds).coerceAtLeast(0)
+        if (next == current) return
+
+        _timerRemainingSeconds.value = next
+        
+        if (_isTimerRunning.value) {
+            val intent = Intent(getApplication(), TimerService::class.java).apply {
+                action = "START"
+                putExtra("minutes", next / 60)
+                putExtra("seconds", next % 60)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getApplication<Application>().startForegroundService(intent)
+            } else {
+                getApplication<Application>().startService(intent)
+            }
+        }
+    }
+
+    fun toggleTimerState() {
+        if (_isTimerRunning.value) {
+            cancelTimerSilently()
+        } else {
+            val mins = _timerRemainingSeconds.value / 60
+            if (mins > 0) triggerTimer(mins)
+        }
+    }
+
+    fun hideTimerCard() {
+        cancelTimerSilently()
+        _isTimerVisible.value = false
+    }
+
+    fun showTimerForStep(minutes: Int) {
+        _timerRemainingSeconds.value = minutes * 60
+        timerOriginalSeconds = minutes * 60
+        timerStartedAtStep = currentStepIndex
+        _isTimerVisible.value = true
     }
 
     fun cancelTimer() {

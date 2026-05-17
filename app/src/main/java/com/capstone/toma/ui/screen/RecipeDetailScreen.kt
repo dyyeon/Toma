@@ -1078,114 +1078,127 @@ fun StepTimerCard(
     val mins = remainingSeconds / 60
     val secs = remainingSeconds % 60
     val timeText = "%02d:%02d".format(mins, secs)
-    val orangeAccent = Color(0xFFFF6B2C)
-    val greenAccent = Color(0xFF2F9E44)
     val isFinished = timerState == StepTimerState.FINISHED
 
-    Card(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+            .padding(vertical = 12.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = Color.White,
+        shadowElevation = 8.dp,
+        border = BorderStroke(1.dp, Color(0xFFF1F3F5))
     ) {
-        Box(modifier = Modifier.padding(16.dp)) {
-            // Close (×) button — always visible including FINISHED state
+        Box(modifier = Modifier.padding(20.dp)) {
+            // Close (×) button (Top Right)
             IconButton(
                 onClick = onCancel,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .size(28.dp)
+                    .size(24.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
                     contentDescription = "Close",
-                    tint = Color.Gray,
+                    tint = Color.LightGray,
                     modifier = Modifier.size(18.dp)
                 )
             }
 
             if (isFinished) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp, end = 24.dp),
-                    contentAlignment = Alignment.Center
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    Text(
+                        text = "요리가 완성되었습니다!",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF2F9E44)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
                     Button(
                         onClick = onRestart,
-                        colors = ButtonDefaults.buttonColors(containerColor = greenAccent),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp)
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2F9E44)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.height(40.dp)
                     ) {
-                        Text(
-                            text = "✅ 완료! 다시 시작",
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            fontSize = 16.sp
-                        )
+                        Text("다시 시작", fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             } else {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    TextButton(onClick = { onAdjust(-60) }) {
-                        Text("-1분", color = orangeAccent, fontWeight = FontWeight.Bold)
-                    }
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.weight(1f)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
+                        // -1m
+                        Text(
+                            text = "-1분",
+                            color = Color(0xFFFA5252),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable { onAdjust(-60) }
+                                .padding(12.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(16.dp))
+
                         Text(
                             text = timeText,
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = orangeAccent
+                            fontSize = 42.sp,
+                            fontWeight = FontWeight.Black,
+                            color = TomaMainOrange,
+                            letterSpacing = 1.sp
                         )
-                        Spacer(modifier = Modifier.height(8.dp))
 
-                        when (timerState) {
-                            StepTimerState.IDLE -> {
-                                Button(
-                                    onClick = onStart,
-                                    colors = ButtonDefaults.buttonColors(containerColor = orangeAccent),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
-                                ) {
-                                    Text("시작", fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                            }
-                            StepTimerState.RUNNING -> {
-                                OutlinedButton(
-                                    onClick = onPause,
-                                    border = BorderStroke(2.dp, orangeAccent),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
-                                ) {
-                                    Text("일시정지", fontWeight = FontWeight.Bold, color = orangeAccent)
-                                }
-                            }
-                            StepTimerState.PAUSED -> {
-                                Button(
-                                    onClick = onResume,
-                                    colors = ButtonDefaults.buttonColors(containerColor = orangeAccent),
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
-                                ) {
-                                    Text("재개", fontWeight = FontWeight.Bold, color = Color.White)
-                                }
-                            }
-                            else -> Unit
-                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+
+                        // +1m
+                        Text(
+                            text = "+1분",
+                            color = Color(0xFFFA5252),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clickable { onAdjust(60) }
+                                .padding(12.dp)
+                        )
                     }
 
-                    TextButton(onClick = { onAdjust(60) }) {
-                        Text("+1분", color = orangeAccent, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Action Button
+                    Button(
+                        onClick = {
+                            when (timerState) {
+                                StepTimerState.IDLE -> onStart()
+                                StepTimerState.RUNNING -> onPause()
+                                StepTimerState.PAUSED -> onResume()
+                                else -> Unit
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = TomaMainOrange),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.height(38.dp).width(90.dp),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(
+                            text = when (timerState) {
+                                StepTimerState.IDLE -> "시작"
+                                StepTimerState.RUNNING -> "중지"
+                                StepTimerState.PAUSED -> "재개"
+                                else -> ""
+                            },
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
                     }
                 }
             }
