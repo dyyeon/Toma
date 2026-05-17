@@ -63,8 +63,10 @@ private val voiceSuggestions = listOf(
     "자취생 요리 알려줘"
 )
 
-private fun buildYoutubePrompt(title: String?): String {
+private fun buildYoutubePrompt(title: String?, description: String?): String {
     val cleanTitle = title?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim() ?: ""
+    val descSection = if (!description.isNullOrBlank())
+        "\n    영상 설명/내용:\n    ${description.take(1500)}\n" else ""
     return """
     ABSOLUTE RULE — KOREAN ONLY:
     Every single output field MUST be in Korean without exception.
@@ -79,8 +81,7 @@ private fun buildYoutubePrompt(title: String?): String {
     Any English word in a value field (except units/numbers) = rule violation.
 
     다음 유튜브 영상 제목을 보고 요리/레시피 영상인지 먼저 판단하세요.
-    영상 제목: ${title ?: ""}
-
+    영상 제목: ${title ?: ""}$descSection
     요리/레시피 영상이 맞다면 레시피를 작성해주세요:
     - 요리명: $cleanTitle
     - 재료명, 단계, 모든 내용을 반드시 한국어로만 작성하세요. 영어 사용 금지.
@@ -148,7 +149,7 @@ private suspend fun analyzePageContent(
     )
 
     val openAi = com.capstone.toma.OpenAiManager()
-    val prompt = if (isYoutube) buildYoutubePrompt(title) else buildWebPrompt(url, title, description)
+    val prompt = if (isYoutube) buildYoutubePrompt(title, description) else buildWebPrompt(url, title, description)
     val keywordCandidate = title?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim().orEmpty()
 
     return coroutineScope {

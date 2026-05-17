@@ -33,8 +33,17 @@ class YoutubeManager {
                     if (continuation.isActive) {
                         if (response.isSuccessful) {
                             val content = response.body?.string() ?: ""
-                            val title = content.lines().firstOrNull { it.isNotBlank() }?.replace("#", "")?.trim()
-                            continuation.resume(title to content)
+                            val rawTitle = content.lines().firstOrNull { it.isNotBlank() }?.replace("#", "")?.trim()
+                            val isInterstitial = rawTitle == null
+                                || rawTitle.equals("YouTube", ignoreCase = true)
+                                || rawTitle.contains("Sign in", ignoreCase = true)
+                                || rawTitle.contains("Just a moment", ignoreCase = true)
+                                || rawTitle.contains("Before you continue", ignoreCase = true)
+                            if (isInterstitial) {
+                                continuation.resume(null to "유튜브 정보를 로드할 수 없습니다 (페이지를 읽을 수 없습니다)")
+                            } else {
+                                continuation.resume(rawTitle to content)
+                            }
                         } else {
                             continuation.resume(null to "유튜브 정보를 로드할 수 없습니다 (HTTP ${response.code})")
                         }
