@@ -111,7 +111,7 @@ class OpenAiManager {
             - For FRYING (튀기기): include oil temperature check method (젓가락 넣었을 때 거품 올라오면).
 
             STEPTIME & TOTAL TIME RULES:
-            - "stepTimes": array of integers in SECONDS, one per step (same length as "steps").
+            - "stepTimes": array of integers in SECONDS. MUST have exactly the same number of entries as "steps" — one entry per step, in the same order. If "steps" has 8 elements, "stepTimes" MUST also have exactly 8 elements.
               - 0 for prep/non-timed steps (chopping, mixing, plating).
               - Timed step examples: oil preheat 2min → 120, boiling 10min → 600, simmering 15min → 900.
             - "time": total cooking time as a plain INTEGER in MINUTES. NO units, no text, just a number.

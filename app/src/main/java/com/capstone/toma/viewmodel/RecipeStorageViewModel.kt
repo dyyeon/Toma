@@ -67,7 +67,7 @@ class RecipeStorageViewModel(
                     steps = parseJsonArray(json, "steps").ifEmpty { existing?.steps ?: emptyList() },
                     sourceType = existing?.sourceType ?: sourceType,
                     timeText = "\uBC29\uAE08 \uC800\uC7A5",
-                    imageUri = json.optString("image_url").takeIf { it.isNotBlank() } ?: existing?.imageUri
+                    imageUri = json.optString("image_url").takeIf { it.isNotBlank() && it != "없음" } ?: existing?.imageUri
                 )
 
                 repository.saveRecipe(savedRecipe)
@@ -112,7 +112,7 @@ class RecipeStorageViewModel(
                             steps = parseJsonArray(json, "steps"),
                             sourceType = sourceType,
                             timeText = "\uBC29\uAE08 \uBD84\uC11D",
-                            imageUri = json.optString("image_url").takeIf { it.isNotBlank() }
+                            imageUri = json.optString("image_url").takeIf { it.isNotBlank() && it != "없음" }
                         )
                         repository.saveRecipe(recipe)
                     }

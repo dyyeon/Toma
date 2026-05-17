@@ -128,9 +128,11 @@ fun RecipeDetailContent(
     }
 
     val stepTimes = remember(recipeData) {
-        recipeData?.optJSONArray("stepTimes")?.let { arr ->
+        val raw = recipeData?.optJSONArray("stepTimes")?.let { arr ->
             List(arr.length()) { arr.optInt(it, 0) }
         } ?: emptyList()
+        // Pad with 0s when GPT returns fewer stepTimes than steps
+        if (raw.size < steps.size) raw + List(steps.size - raw.size) { 0 } else raw
     }
 
     val difficulty = recipeData?.optString("difficulty") ?: "보통"
@@ -445,6 +447,21 @@ fun RecipeDetailContent(
                 sourceType = sourceType,
                 fromStorage = fromStorage
             )
+
+            if (steps.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "레시피 단계를 불러올 수 없어요.",
+                        color = Color(0xFF868E96),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                return@Column
+            }
 
             AnimatedVisibility(
                 visible = showStepTimer,

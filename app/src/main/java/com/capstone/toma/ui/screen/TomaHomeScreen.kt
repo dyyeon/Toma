@@ -596,7 +596,7 @@ fun RecentAnalysisSection(
 private fun extractImageUrl(recipeDataJson: String?): String? {
     if (recipeDataJson.isNullOrBlank()) return null
     return runCatching {
-        JSONObject(recipeDataJson).optString("image_url").takeIf { it.isNotBlank() }
+        JSONObject(recipeDataJson).optString("image_url").takeIf { it.isNotBlank() && it != "없음" }
     }.getOrNull()
 }
 
@@ -606,7 +606,7 @@ fun RecentAnalysisCard(
     onClick: () -> Unit
 ) {
     val (icon, bgColor, iconColor, badgeText) = when (item.sourceType) {
-        RecipeSourceType.TEXT -> listOf(Icons.AutoMirrored.Filled.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7), "TEXT")
+        RecipeSourceType.TEXT -> listOf(Icons.AutoMirrored.Filled.MenuBook, Color(0xFFE8F1FF), Color(0xFF4DABF7), "AI")
         RecipeSourceType.YOUTUBE -> listOf(Icons.Filled.SmartDisplay, Color(0xFFFFF1E8), TomaMainOrange, "YOUTUBE")
         RecipeSourceType.IMAGE -> listOf(Icons.Default.CameraAlt, Color(0xFFFFECEC), TomaMainRed, "IMAGE")
         RecipeSourceType.WEB -> listOf(Icons.Default.Public, Color(0xFFE7F5FF), Color(0xFF228BE6), "WEB")
