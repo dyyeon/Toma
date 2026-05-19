@@ -425,61 +425,6 @@ private fun StorageTopHeader(title: String, onBackClick: () -> Unit) {
 }
 
 @Composable
-private fun RecipeCard(recipe: StoredRecipe, onOpen: () -> Unit, onFavoriteToggle: () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, StorageCardBorder),
-        shadowElevation = 4.dp,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen)
-    ) {
-        Column {
-            RecipeArtworkStable(
-                recipe = recipe,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(180.dp)
-                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
-            )
-            Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(shape = RoundedCornerShape(6.dp), color = StorageAccent.copy(alpha = 0.1f)) {
-                        Text(recipe.category, color = StorageAccent, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
-                    }
-                    Spacer(modifier = Modifier.weight(1f))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Timer, contentDescription = null, tint = StorageMuted, modifier = Modifier.size(14.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("${recipe.time}분 조리", color = StorageMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-                    Text(
-                        text = recipe.title,
-                        color = StorageInk,
-                        fontSize = 20.sp,
-                        lineHeight = 28.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(onClick = onFavoriteToggle, modifier = Modifier.size(32.dp).padding(start = 8.dp)) {
-                        Icon(
-                            imageVector = if (recipe.favorite) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                            contentDescription = "즐겨찾기",
-                            tint = if (recipe.favorite) StorageAccent else Color.LightGray,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun RecipeStorageListCard(
     recipe: StoredRecipe,
     onOpen: () -> Unit,
