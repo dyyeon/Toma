@@ -1,5 +1,6 @@
 package com.capstone.toma.ui.screen
 
+import android.media.AudioAttributes
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
@@ -208,7 +209,10 @@ fun RecipeDetailContent(
         pendingTtsResumeJob?.cancel()
         lastSpokenKey = key
         voiceViewModel.pauseAudioCapture()
-        tts.speak(text, queueMode, null, key)
+        scope.launch {
+            delay(80)
+            tts.speak(text, queueMode, null, key)
+        }
     }
 
     DisposableEffect(context) {
@@ -217,6 +221,12 @@ fun RecipeDetailContent(
         engine = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 engine?.language = Locale.KOREAN
+                engine?.setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
                 engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {
                         pendingTtsResumeJob?.cancel()
