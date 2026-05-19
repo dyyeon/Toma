@@ -381,7 +381,7 @@ fun TomaNavHost(
     ) {
         composable(TomaDestination.Home.route) {
             LaunchedEffect(Unit) {
-                voiceViewModel.stopWakeWord()
+                voiceViewModel.startWakeWord()
                 // BYPASSED: Speaker Enrollment check disabled for now.
                 homeViewModel.refreshRecentItems()
             }
