@@ -16,7 +16,7 @@ class AudioRecorder(private val context: Context) {
         // 내부 저장소의 캐시 폴더에 임시 파일 생성
         audioFile = File(context.cacheDir, "toma_command.m4a")
 
-        recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        val mr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             MediaRecorder(context)
         } else {
             @Suppress("DEPRECATION")
@@ -26,14 +26,17 @@ class AudioRecorder(private val context: Context) {
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
             setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
             setOutputFile(audioFile?.absolutePath)
+        }
 
-            try {
-                prepare()
-                start()
-                Log.d("AudioRecorder", "녹음 중...")
-            } catch (e: IOException) {
-                Log.e("AudioRecorder", "녹음기 준비 실패: ${e.message}")
-            }
+        recorder = try {
+            mr.prepare()
+            mr.start()
+            Log.d("AudioRecorder", "녹음 중...")
+            mr
+        } catch (e: Exception) {
+            Log.e("AudioRecorder", "녹음기 준비 실패: ${e.message}")
+            try { mr.release() } catch (_: Exception) {}
+            null
         }
     }
 

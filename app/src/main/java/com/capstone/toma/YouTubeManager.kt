@@ -22,8 +22,9 @@ class YouTubeManager {
         val maxRes = "https://img.youtube.com/vi/$videoId/maxresdefault.jpg"
         val hq    = "https://img.youtube.com/vi/$videoId/hqdefault.jpg"
         try {
-            val resp = client.newCall(Request.Builder().url(maxRes).head().build()).execute()
-            if (resp.isSuccessful && (resp.header("Content-Length")?.toLongOrNull() ?: 0L) > 1000L) maxRes else hq
+            client.newCall(Request.Builder().url(maxRes).head().build()).execute().use { resp ->
+                if (resp.isSuccessful && (resp.header("Content-Length")?.toLongOrNull() ?: 0L) > 1000L) maxRes else hq
+            }
         } catch (e: Exception) { hq }
     }
 
@@ -36,34 +37,35 @@ class YouTubeManager {
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36")
                 .header("Accept-Language", "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7")
                 .build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext null
-            val html = response.body?.string() ?: return@withContext null
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val html = response.body?.string() ?: return@use null
 
-            // YouTube may serialize the meta tag attributes in either order.
-            val patterns = listOf(
-                Regex("""<meta\s+property="og:description"\s+content="([^"]+)"""", RegexOption.IGNORE_CASE),
-                Regex("""<meta\s+content="([^"]+)"\s+property="og:description"""", RegexOption.IGNORE_CASE),
-                Regex("""<meta\s+name="description"\s+content="([^"]+)"""", RegexOption.IGNORE_CASE)
-            )
-            val raw = patterns.firstNotNullOfOrNull { it.find(html)?.groupValues?.get(1) }
-                ?: return@withContext null
+                // YouTube may serialize the meta tag attributes in either order.
+                val patterns = listOf(
+                    Regex("""<meta\s+property="og:description"\s+content="([^"]+)"""", RegexOption.IGNORE_CASE),
+                    Regex("""<meta\s+content="([^"]+)"\s+property="og:description"""", RegexOption.IGNORE_CASE),
+                    Regex("""<meta\s+name="description"\s+content="([^"]+)"""", RegexOption.IGNORE_CASE)
+                )
+                val raw = patterns.firstNotNullOfOrNull { it.find(html)?.groupValues?.get(1) }
+                    ?: return@use null
 
-            val decoded = raw
-                .replace("&quot;", "\"")
-                .replace("&apos;", "'")
-                .replace("&#39;", "'")
-                .replace("&lt;", "<")
-                .replace("&gt;", ">")
-                .replace("&amp;", "&")
-                .trim()
+                val decoded = raw
+                    .replace("&quot;", "\"")
+                    .replace("&apos;", "'")
+                    .replace("&#39;", "'")
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&amp;", "&")
+                    .trim()
 
-            // Filter out generic/consent placeholders.
-            val isGeneric = decoded.isBlank()
-                || decoded.equals("YouTube", ignoreCase = true)
-                || decoded.contains("Enjoy the videos and music", ignoreCase = true)
-                || decoded.contains("Share your videos with friends", ignoreCase = true)
-            if (isGeneric) null else decoded
+                // Filter out generic/consent placeholders.
+                val isGeneric = decoded.isBlank()
+                    || decoded.equals("YouTube", ignoreCase = true)
+                    || decoded.contains("Enjoy the videos and music", ignoreCase = true)
+                    || decoded.contains("Share your videos with friends", ignoreCase = true)
+                if (isGeneric) null else decoded
+            }
         } catch (e: Exception) { null }
     }
 
@@ -80,13 +82,14 @@ class YouTubeManager {
 
         val (title, errorMsg) = withContext(Dispatchers.IO) {
             try {
-                val response = client.newCall(Request.Builder().url(oEmbedUrl).build()).execute()
-                if (response.isSuccessful) {
-                    val json = JSONObject(response.body?.string() ?: "{}")
-                    val t = json.optString("title").takeIf { it.isNotBlank() }
-                    t to null
-                } else {
-                    null to "유튜브 정보를 로드할 수 없습니다 (HTTP ${response.code})"
+                client.newCall(Request.Builder().url(oEmbedUrl).build()).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val json = JSONObject(response.body?.string() ?: "{}")
+                        val t = json.optString("title").takeIf { it.isNotBlank() }
+                        t to null
+                    } else {
+                        null to "유튜브 정보를 로드할 수 없습니다 (HTTP ${response.code})"
+                    }
                 }
             } catch (e: Exception) {
                 null to "유튜브 정보를 가져오는데 실패했습니다: ${e.message}"

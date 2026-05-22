@@ -26,7 +26,7 @@ class AudioStreamManager(private val context: Context) {
     private val BUFFER_SIZE = 1280 // 80ms at 16kHz, 16-bit mono => 2560 bytes/read
 
     private var audioRecord: AudioRecord? = null
-    private var isRunning = false
+    @Volatile private var isRunning = false
 
     val pcmChannel = Channel<ByteArray>(128)
 

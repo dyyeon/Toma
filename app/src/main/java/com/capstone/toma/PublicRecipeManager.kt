@@ -50,10 +50,11 @@ class PublicRecipeManager {
         try {
             val url = "$baseUrl/RCP_NM=$keyword"
             val request = Request.Builder().url(url).build()
-            val response = client.newCall(request).execute()
-            val body = response.body?.string() ?: return@withContext null
-            if (!response.isSuccessful) return@withContext null
-            parseRecipe(body)
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val body = response.body?.string() ?: return@use null
+                parseRecipe(body)
+            }
         } catch (e: Exception) {
             null
         }

@@ -164,6 +164,7 @@ class OpenAiManager {
 
     fun transcribeAudio(audioFile: File, onResult: (String?) -> Unit) {
         if (!hasApiKey()) {
+            android.util.Log.e("OpenAiManager", "transcribeAudio: OPENAI_API_KEY not set")
             onResult(null)
             return
         }
@@ -188,15 +189,24 @@ class OpenAiManager {
             .build()
 
         client.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) = onResult(null)
+            override fun onFailure(call: Call, e: IOException) {
+                android.util.Log.e("OpenAiManager", "transcribeAudio network failure: ${e.message}", e)
+                onResult(null)
+            }
 
             override fun onResponse(call: Call, response: Response) {
-                val body = response.body?.string()
-                if (response.isSuccessful && body != null) {
-                    val json = JSONObject(body)
-                    onResult(json.optString("text"))
-                } else {
-                    onResult(null)
+                response.use { resp ->
+                    val body = resp.body?.string()
+                    if (resp.isSuccessful && body != null) {
+                        val json = JSONObject(body)
+                        onResult(json.optString("text"))
+                    } else {
+                        android.util.Log.e(
+                            "OpenAiManager",
+                            "transcribeAudio HTTP ${resp.code} (model=${OpenAiConfig.STT_MODEL}): ${parseApiError(resp, body)}"
+                        )
+                        onResult(null)
+                    }
                 }
             }
         })
@@ -268,34 +278,36 @@ class OpenAiManager {
             }
 
             override fun onResponse(call: Call, response: Response) {
-                val responseBody = response.body?.string()
-                if (!response.isSuccessful || responseBody == null) {
-                    onResult(VoiceRequestResult.Error(parseApiError(response, responseBody)))
-                    return
-                }
+                response.use { resp ->
+                    val responseBody = resp.body?.string()
+                    if (!resp.isSuccessful || responseBody == null) {
+                        onResult(VoiceRequestResult.Error(parseApiError(resp, responseBody)))
+                        return@use
+                    }
 
-                try {
-                    val content = JSONObject(responseBody)
-                        .getJSONArray("choices")
-                        .getJSONObject(0)
-                        .getJSONObject("message")
-                        .getString("content")
-                    val resultJson = JSONObject(content)
-                    val type = resultJson.optString("type", "chat")
-                    val responseMsg = resultJson.optString("response", "")
-                    
-                    val normalizedRecipeData = normalizeRecipeData(resultJson.optJSONObject("recipe_data"))
-                    
-                    onResult(
-                        VoiceRequestResult.Success(
-                            requestType = type,
-                            keyword = resultJson.optString("keyword", ""),
-                            responseMessage = responseMsg,
-                            recipeData = normalizedRecipeData?.toString()
+                    try {
+                        val content = JSONObject(responseBody)
+                            .getJSONArray("choices")
+                            .getJSONObject(0)
+                            .getJSONObject("message")
+                            .getString("content")
+                        val resultJson = JSONObject(content)
+                        val type = resultJson.optString("type", "chat")
+                        val responseMsg = resultJson.optString("response", "")
+
+                        val normalizedRecipeData = normalizeRecipeData(resultJson.optJSONObject("recipe_data"))
+
+                        onResult(
+                            VoiceRequestResult.Success(
+                                requestType = type,
+                                keyword = resultJson.optString("keyword", ""),
+                                responseMessage = responseMsg,
+                                recipeData = normalizedRecipeData?.toString()
+                            )
                         )
-                    )
-                } catch (e: Exception) {
-                    onResult(VoiceRequestResult.Error("응답 파싱 실패: ${e.message ?: "unknown"}"))
+                    } catch (e: Exception) {
+                        onResult(VoiceRequestResult.Error("응답 파싱 실패: ${e.message ?: "unknown"}"))
+                    }
                 }
             }
         })
@@ -417,42 +429,44 @@ class OpenAiManager {
                     }
 
                     override fun onResponse(call: Call, response: Response) {
-                        val responseBody = response.body?.string()
-                        if (!response.isSuccessful || responseBody == null) {
-                            if (continuation.isActive) {
-                                continuation.resume(VoiceRequestResult.Error(parseApiError(response, responseBody)))
+                        response.use { resp ->
+                            val responseBody = resp.body?.string()
+                            if (!resp.isSuccessful || responseBody == null) {
+                                if (continuation.isActive) {
+                                    continuation.resume(VoiceRequestResult.Error(parseApiError(resp, responseBody)))
+                                }
+                                return@use
                             }
-                            return
-                        }
 
-                        try {
-                            val content = JSONObject(responseBody)
-                                .getJSONArray("choices")
-                                .getJSONObject(0)
-                                .getJSONObject("message")
-                                .getString("content")
-                            val resultJson = JSONObject(content)
-                            val recipeJson = normalizeRecipeImageResult(resultJson, imageUri)
-                            val keyword = resultJson.optString("keyword")
-                                .ifBlank { recipeJson.optString("title") }
-                                .ifBlank { "이미지 레시피" }
+                            try {
+                                val content = JSONObject(responseBody)
+                                    .getJSONArray("choices")
+                                    .getJSONObject(0)
+                                    .getJSONObject("message")
+                                    .getString("content")
+                                val resultJson = JSONObject(content)
+                                val recipeJson = normalizeRecipeImageResult(resultJson, imageUri)
+                                val keyword = resultJson.optString("keyword")
+                                    .ifBlank { recipeJson.optString("title") }
+                                    .ifBlank { "이미지 레시피" }
 
-                            if (continuation.isActive) {
-                                continuation.resume(
-                                    VoiceRequestResult.Success(
-                                        requestType = resultJson.optString("type", "recipe_search"),
-                                        keyword = keyword,
-                                        responseMessage = resultJson.optString(
-                                            "response",
-                                            "이미지에서 레시피를 분석했어요."
-                                        ),
-                                        recipeData = recipeJson.toString()
+                                if (continuation.isActive) {
+                                    continuation.resume(
+                                        VoiceRequestResult.Success(
+                                            requestType = resultJson.optString("type", "recipe_search"),
+                                            keyword = keyword,
+                                            responseMessage = resultJson.optString(
+                                                "response",
+                                                "이미지에서 레시피를 분석했어요."
+                                            ),
+                                            recipeData = recipeJson.toString()
+                                        )
                                     )
-                                )
-                            }
-                        } catch (e: Exception) {
-                            if (continuation.isActive) {
-                                continuation.resume(VoiceRequestResult.Error("응답 파싱 실패: ${e.message ?: "unknown"}"))
+                                }
+                            } catch (e: Exception) {
+                                if (continuation.isActive) {
+                                    continuation.resume(VoiceRequestResult.Error("응답 파싱 실패: ${e.message ?: "unknown"}"))
+                                }
                             }
                         }
                     }

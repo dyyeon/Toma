@@ -85,7 +85,8 @@ class OpenAiRealtimeManager(
                     put("input", JSONObject().apply {
                         put("format", JSONObject().apply {
                             put("type", "audio/pcm")
-                            put("rate", 24000)
+                            // Must match AudioStreamManager.SAMPLE_RATE — that's what we actually capture and send.
+                            put("rate", 16000)
                         })
                         put("transcription", JSONObject().apply {
                             put("model", OpenAiConfig.STT_MODEL)

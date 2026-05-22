@@ -134,29 +134,31 @@ class WebPageManager {
             }
 
             override fun onResponse(call: Call, response: Response) {
-                if (response.isSuccessful) {
-                    val content = response.body?.string() ?: ""
+                response.use { resp ->
+                    if (resp.isSuccessful) {
+                        val content = resp.body?.string() ?: ""
 
-                    val title = content.lines().firstOrNull { it.isNotBlank() }?.replace("#", "")?.trim()
+                        val title = content.lines().firstOrNull { it.isNotBlank() }?.replace("#", "")?.trim()
 
-                    val imageRegex = Regex("""!\[.*?\]\((https://[^)]+\.(?:jpg|jpeg|png|webp|GIF)[^)]*)\)""", RegexOption.IGNORE_CASE)
-                    val images = imageRegex.findAll(content).map { upgradeToFullResolution(it.groupValues[1]) }.toList()
+                        val imageRegex = Regex("""!\[.*?\]\((https://[^)]+\.(?:jpg|jpeg|png|webp|GIF)[^)]*)\)""", RegexOption.IGNORE_CASE)
+                        val images = imageRegex.findAll(content).map { upgradeToFullResolution(it.groupValues[1]) }.toList()
 
-                    val facePatterns = listOf(
-                        "profile", "author", "avatar", "member",
-                        "blogger", "writer", "thumb_p", "portimage", "dthumb", "mugshot"
-                    )
-                    val firstImage = images.find { it.contains("cache/recipe") || it.contains("recipe") }
-                        ?: images.firstOrNull { imgUrl ->
-                            !imgUrl.contains("logo", ignoreCase = true) &&
-                            !imgUrl.contains("icon", ignoreCase = true) &&
-                            !imgUrl.contains("button", ignoreCase = true) &&
-                            facePatterns.none { imgUrl.contains(it, ignoreCase = true) }
-                        }
+                        val facePatterns = listOf(
+                            "profile", "author", "avatar", "member",
+                            "blogger", "writer", "thumb_p", "portimage", "dthumb", "mugshot"
+                        )
+                        val firstImage = images.find { it.contains("cache/recipe") || it.contains("recipe") }
+                            ?: images.firstOrNull { imgUrl ->
+                                !imgUrl.contains("logo", ignoreCase = true) &&
+                                !imgUrl.contains("icon", ignoreCase = true) &&
+                                !imgUrl.contains("button", ignoreCase = true) &&
+                                facePatterns.none { imgUrl.contains(it, ignoreCase = true) }
+                            }
 
-                    onResult(title, content, firstImage)
-                } else {
-                    onResult(null, "페이지 로드 실패 (HTTP ${response.code})", null)
+                        onResult(title, content, firstImage)
+                    } else {
+                        onResult(null, "페이지 로드 실패 (HTTP ${resp.code})", null)
+                    }
                 }
             }
         })
@@ -170,18 +172,19 @@ class WebPageManager {
                 .url("https://r.jina.ai/$searchUrl")
                 .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36")
                 .build()
-            val response = client.newCall(request).execute()
-            if (!response.isSuccessful) return@withContext null
-            val content = response.body?.string() ?: return@withContext null
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@use null
+                val content = response.body?.string() ?: return@use null
 
-            val imageRegex = Regex("""!\[.*?\]\((https://[^)]+\.(?:jpg|jpeg|png|webp|GIF)[^)]*)\)""", RegexOption.IGNORE_CASE)
-            val images = imageRegex.findAll(content).map { it.groupValues[1] }.toList()
+                val imageRegex = Regex("""!\[.*?\]\((https://[^)]+\.(?:jpg|jpeg|png|webp|GIF)[^)]*)\)""", RegexOption.IGNORE_CASE)
+                val images = imageRegex.findAll(content).map { it.groupValues[1] }.toList()
 
-            images.find { it.contains("cache/recipe") }
-                ?: images.firstOrNull {
-                    !it.contains("logo", ignoreCase = true) &&
-                    !it.contains("icon", ignoreCase = true)
-                }
+                images.find { it.contains("cache/recipe") }
+                    ?: images.firstOrNull {
+                        !it.contains("logo", ignoreCase = true) &&
+                        !it.contains("icon", ignoreCase = true)
+                    }
+            }
         } catch (e: Exception) {
             null
         }
