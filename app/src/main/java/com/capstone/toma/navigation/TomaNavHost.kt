@@ -33,7 +33,7 @@ import com.capstone.toma.PublicRecipeManager
 import com.capstone.toma.TomaIntent
 import com.capstone.toma.UserManager
 import com.capstone.toma.WebPageManager
-import com.capstone.toma.YoutubeManager
+import com.capstone.toma.YouTubeManager
 import com.capstone.toma.VoiceRequestResult
 import com.capstone.toma.VoiceUiState
 import com.capstone.toma.model.toRecipeDataJson
@@ -140,8 +140,15 @@ private suspend fun analyzePageContent(
     history: List<Pair<String, Boolean>>,
     updateStatus: (String) -> Unit
 ): VoiceRequestResult {
-    val isLikelyRecipe = title?.contains(Regex("요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주")) == true
-        || description?.contains(Regex("요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주")) == true
+    val recipeKeywords = Regex(
+        "요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주|" +
+        "만들기|굽기|끓이기|볶기|튀기기|찌기|무치기|" +
+        "조림|구이|볶음|튀김|찜|무침|" +
+        "김치|찌개|국|죽|떡|면|파스타|피자|샐러드|디저트|베이킹|" +
+        "밥|비빔밥|덮밥|볶음밥"
+    )
+    val isLikelyRecipe = title?.contains(recipeKeywords) == true
+        || description?.contains(recipeKeywords) == true
 
     updateStatus(
         if (isLikelyRecipe) "전문가 AI가 실전 정보를 추출 중이에요... ✨"
@@ -234,7 +241,7 @@ private fun ChatViewModel.launchLinkAnalysis(
         fixedSourceType = if (isYoutube) com.capstone.toma.model.RecipeSourceType.YOUTUBE else com.capstone.toma.model.RecipeSourceType.WEB
     ) { updateStatus ->
         val webPageManager = WebPageManager()
-        val youtubeManager = YoutubeManager()
+        val youtubeManager = YouTubeManager()
         val (t, d, img) = if (isYoutube) youtubeManager.fetchVideoInfoSuspend(url) else webPageManager.fetchPageInfoSuspend(url)
 
         val fetchFailed = t == null && (d == null
