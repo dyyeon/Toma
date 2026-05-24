@@ -35,9 +35,10 @@ class WakeWordManager(
     //   Tuning guide:
     //     Still firing on normal speech? Raise toward 0.85f.
     //     Missing clear "Hey Toma" utterances?  Lower toward 0.60f.
-    //   Current: 0.75f  (raised from 0.30f — scores of 0.99–1.0 on non-wake
-    //   speech showed the old floor was far too permissive)
-    var detectionThreshold: Float = 0.75f
+    //   Current: 0.65f  (lowered from 0.75f for pre-demo — default model needs
+    //   a lower floor than the personalized model; layered VAD/RMS gates still
+    //   guard against false positives)
+    var detectionThreshold: Float = 0.65f
 
     // REQUIRED_CONSECUTIVE: how many consecutive frames must exceed the threshold
     // before a detection fires.  One "frame" = one classifier output (~80 ms of audio).
@@ -47,8 +48,10 @@ class WakeWordManager(
     //   Tuning guide:
     //     Still getting spike-triggered detections? Raise to 6.
     //     Real utterances sometimes missed?         Lower to 4.
-    //   Current: 5  (raised from 3 — prevents brief, confident-but-wrong spikes)
-    var requiredConsecutive: Int = 5
+    //   Current: 3  (lowered from 5 for pre-demo — 5 × 80 ms = 400 ms of sustained
+    //   score was too high a bar for the default model; 3 × 80 ms = 240 ms still
+    //   rejects single-frame spikes while letting real "Hey Toma" utterances pass)
+    var requiredConsecutive: Int = 3
     // ─────────────────────────────────────────────────────────────────────────
 
     var verboseLogging: Boolean = true
@@ -117,9 +120,11 @@ class WakeWordManager(
         private set
     private var lastDetectionTime = 0L
     // detectionCooldownMs: minimum gap between two consecutive detections.
-    // 7 000 ms keeps a quiet-room demo from firing twice on the same utterance
-    // or on the TTS reply audio.  Lower toward 3 000 for production use.
-    var detectionCooldownMs = 7000L
+    // 4 000 ms prevents double-fire on the same utterance and on TTS audio bleed
+    // while still letting the user re-trigger soon after an early-cancelled session.
+    // (Lowered from 7 000 ms for pre-demo; TTS AudioAttributes + 80 ms speak-delay
+    // already mitigate self-trigger from TTS playback.)
+    var detectionCooldownMs = 4000L
 
     var bypassVad: Boolean = false
 
