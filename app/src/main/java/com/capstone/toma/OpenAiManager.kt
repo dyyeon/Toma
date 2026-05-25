@@ -361,19 +361,26 @@ class OpenAiManager {
                                         A response containing ANY non-Korean characters in value fields
                                         (except numbers and units) is considered a failure.
 
+                                        CRITICAL FOOD CHECK — DO THIS FIRST:
+                                        Before anything else, ask: "Is there actual food, ingredients, or a recipe visible?"
+                                        - Food/ingredients = vegetables, fruits, meat, seafood, grains, cooked dishes, beverages, sauces, spices, packaged food
+                                        - NOT food = keyboard, computer, phone, screen, document, text, person, animal, plant (non-edible), furniture, vehicle, clothing, scenery, sky, building, tools, appliances (non-cooking)
+
                                         RULES:
-                                        1. If the image contains clear food, ingredients, or a cooking menu, extract/infer the recipe.
-                                        2. If the image is NOT food-related (e.g. keyboard, shoe, scenery) or too blurry to identify anything, return:
+                                        1. ONLY if the image clearly shows food, edible ingredients, or a cooking recipe/menu → extract/infer the recipe.
+                                        2. For ingredient images (raw vegetables, meat, pantry items, fridge contents etc.) → identify what ingredients are visible and suggest a recipe using them.
+                                        3. If the image does NOT contain food or edible ingredients (e.g. keyboard, laptop, phone, scenery, people, animals, text documents, electronic devices) → you MUST return:
                                            {
                                              "type": "not_recipe",
-                                             "response": "식재료를 찾을 수 없어요. 요리 재료가 잘 보이게 다시 찍어주시겠어요? 😊"
+                                             "response": "음식이나 식재료 사진이 아닌 것 같아요. 요리나 재료가 잘 보이게 다시 찍어주세요! 😊"
                                            }
-                                        3. Do NOT hallucinate a recipe if food is not present.
+                                        4. ABSOLUTE PROHIBITION: Never create a recipe for non-food images. A keyboard is NOT food. A computer is NOT food. Do NOT invent a recipe just because you cannot identify the object.
+                                        5. When uncertain whether it is food, return "not_recipe".
 
                                         Return exactly this shape for recipes:
                                         {
                                           "type": "recipe_search",
-                                          "keyword": "dish name",
+                                          "keyword": "dish name in Korean",
                                           "response": "short Korean message",
                                           "recipe_data": {
                                             "title": "dish name",
@@ -392,7 +399,7 @@ class OpenAiManager {
                                         - Pizza/Pasta is WESTERN (양식).
                                         - Sushi is JAPANESE (일식).
                                         If the image is a recipe text image, extract the recipe.
-                                        If the image is food without text, infer a likely recipe.
+                                        If the image shows raw/mixed ingredients, identify them and suggest the best fitting recipe.
                                         """.trimIndent()
                                     )
                                 })
@@ -445,6 +452,25 @@ class OpenAiManager {
                                     .getJSONObject("message")
                                     .getString("content")
                                 val resultJson = JSONObject(content)
+                                val type = resultJson.optString("type", "recipe_search")
+
+                                if (type == "not_recipe") {
+                                    if (continuation.isActive) {
+                                        continuation.resume(
+                                            VoiceRequestResult.Success(
+                                                requestType = "not_recipe",
+                                                keyword = "",
+                                                responseMessage = resultJson.optString(
+                                                    "response",
+                                                    "음식이나 식재료 사진이 아닌 것 같아요. 요리나 재료가 잘 보이게 다시 찍어주세요! 😊"
+                                                ),
+                                                recipeData = null
+                                            )
+                                        )
+                                    }
+                                    return@use
+                                }
+
                                 val recipeJson = normalizeRecipeImageResult(resultJson, imageUri)
                                 val keyword = resultJson.optString("keyword")
                                     .ifBlank { recipeJson.optString("title") }
@@ -453,7 +479,7 @@ class OpenAiManager {
                                 if (continuation.isActive) {
                                     continuation.resume(
                                         VoiceRequestResult.Success(
-                                            requestType = resultJson.optString("type", "recipe_search"),
+                                            requestType = type,
                                             keyword = keyword,
                                             responseMessage = resultJson.optString(
                                                 "response",

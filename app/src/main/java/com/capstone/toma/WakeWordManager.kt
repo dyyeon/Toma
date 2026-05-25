@@ -38,7 +38,7 @@ class WakeWordManager(
     //   Current: 0.65f  (lowered from 0.75f for pre-demo — default model needs
     //   a lower floor than the personalized model; layered VAD/RMS gates still
     //   guard against false positives)
-    var detectionThreshold: Float = 0.65f
+    var detectionThreshold: Float = 0.50f
 
     // REQUIRED_CONSECUTIVE: how many consecutive frames must exceed the threshold
     // before a detection fires.  One "frame" = one classifier output (~80 ms of audio).
@@ -51,7 +51,7 @@ class WakeWordManager(
     //   Current: 3  (lowered from 5 for pre-demo — 5 × 80 ms = 400 ms of sustained
     //   score was too high a bar for the default model; 3 × 80 ms = 240 ms still
     //   rejects single-frame spikes while letting real "Hey Toma" utterances pass)
-    var requiredConsecutive: Int = 3
+    var requiredConsecutive: Int = 2
     // ─────────────────────────────────────────────────────────────────────────
 
     var verboseLogging: Boolean = true
@@ -64,7 +64,7 @@ class WakeWordManager(
     // Higher = fewer false positives from low-level ambient noise (fans, HVAC).
     // Raise toward 400 for very quiet rooms; lower toward 250 for noisy venues.
     // Demo-safe default: 350 (was 200 — far too permissive for a quiet-room demo).
-    var VAD_RMS_THRESHOLD = 350f
+    var VAD_RMS_THRESHOLD = 200f
 
     // MIN_VAD_PASSES_BEFORE_SCORING: consecutive VAD-passing frames required before
     // the classifier pipeline opens.  A brief transient (click, rustle, breath)
@@ -90,14 +90,14 @@ class WakeWordManager(
     // VAD_RMS_THRESHOLD so that legitimate speech (which fills the window over
     // ~1-2 s) passes, while a 1-2 frame burst (whose zeros dominate the average)
     // is rejected.  Raise toward 400 to be more aggressive.
-    private val MIN_SCORING_RMS = 300f
+    private val MIN_SCORING_RMS = 150f
     // ─────────────────────────────────────────────────────────────────────────
 
     private var consecutiveSilentFrames = 0
 
     // ✅ 시간 윈도우: 600ms 안에 3회 연속이어야 유효
     private var firstDetectionTime = 0L
-    private val DETECTION_WINDOW_MS = 600L
+    private val DETECTION_WINDOW_MS = 800L
 
     @Volatile
     var isArmed: Boolean = true
@@ -124,7 +124,7 @@ class WakeWordManager(
     // while still letting the user re-trigger soon after an early-cancelled session.
     // (Lowered from 7 000 ms for pre-demo; TTS AudioAttributes + 80 ms speak-delay
     // already mitigate self-trigger from TTS playback.)
-    var detectionCooldownMs = 4000L
+    var detectionCooldownMs = 2500L
 
     var bypassVad: Boolean = false
 

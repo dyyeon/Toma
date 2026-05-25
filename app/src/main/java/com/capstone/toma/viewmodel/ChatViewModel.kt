@@ -342,6 +342,8 @@ class ChatViewModel : ViewModel() {
         val effectiveRecipeData = latestRecipeData ?: lastAnalyzedRecipeData
         val hasRecipeContext = result.keyword.isNotBlank() || !effectiveRecipeData.isNullOrBlank()
 
+        if (result.requestType == "not_recipe") return
+
         if (hasRecipeContext && (
                 result.requestType == "recipe_search" ||
                     result.requestType == "recipe_navigation"
