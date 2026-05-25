@@ -33,25 +33,18 @@ class WakeWordManager(
     //   • Higher → fewer false positives, but you must say the word more clearly.
     //   • Lower  → more sensitive, but unrelated speech may trigger it.
     //   Tuning guide:
-    //     Still firing on normal speech? Raise toward 0.85f.
-    //     Missing clear "Hey Toma" utterances?  Lower toward 0.60f.
-    //   Current: 0.65f  (lowered from 0.75f for pre-demo — default model needs
-    //   a lower floor than the personalized model; layered VAD/RMS gates still
-    //   guard against false positives)
-    var detectionThreshold: Float = 0.50f
+    //     Still firing on normal speech? Raise toward 0.80f.
+    //     Missing clear "Hey Toma" utterances? Lower toward 0.60f.
+    var detectionThreshold: Float = 0.70f
 
     // REQUIRED_CONSECUTIVE: how many consecutive frames must exceed the threshold
     // before a detection fires.  One "frame" = one classifier output (~80 ms of audio).
-    //   • Higher → a single loud syllable or brief noise won't trigger detection;
-    //              the full wake phrase must sustain a high score across this many frames.
-    //   • Lower  → faster response, but also more vulnerable to spurious spikes.
+    //   3 frames × 80 ms = 240 ms — rejects one-shot spikes while still responding
+    //   to a clearly spoken "헤이 토마" (~500–600 ms total utterance).
     //   Tuning guide:
-    //     Still getting spike-triggered detections? Raise to 6.
-    //     Real utterances sometimes missed?         Lower to 4.
-    //   Current: 3  (lowered from 5 for pre-demo — 5 × 80 ms = 400 ms of sustained
-    //   score was too high a bar for the default model; 3 × 80 ms = 240 ms still
-    //   rejects single-frame spikes while letting real "Hey Toma" utterances pass)
-    var requiredConsecutive: Int = 2
+    //     Still getting spike-triggered detections? Raise to 4–5.
+    //     Real utterances sometimes missed? Lower to 2.
+    var requiredConsecutive: Int = 3
     // ─────────────────────────────────────────────────────────────────────────
 
     var verboseLogging: Boolean = true
@@ -59,44 +52,35 @@ class WakeWordManager(
     private val RESET_FLOOR = 0.20f
     private val SILENCE_RESET_FRAMES = 50
 
-    // ─── Demo-mode signal-quality gates ──────────────────────────────────────
+    // ─── Signal-quality gates ─────────────────────────────────────────────────
     // VAD_RMS_THRESHOLD: frames below this RMS are discarded before the pipeline.
     // Higher = fewer false positives from low-level ambient noise (fans, HVAC).
-    // Raise toward 400 for very quiet rooms; lower toward 250 for noisy venues.
-    // Demo-safe default: 350 (was 200 — far too permissive for a quiet-room demo).
-    var VAD_RMS_THRESHOLD = 200f
+    // Raise toward 400 for very quiet rooms; lower toward 200 for noisy venues.
+    var VAD_RMS_THRESHOLD = 300f
 
     // MIN_VAD_PASSES_BEFORE_SCORING: consecutive VAD-passing frames required before
-    // the classifier pipeline opens.  A brief transient (click, rustle, breath)
-    // passes VAD for at most 1 frame; real speech passes for many frames in a row.
-    // 2 frames ≈ 160 ms of sustained signal — enough to reject one-shot noise.
-    private val MIN_VAD_PASSES_BEFORE_SCORING = 2
+    // the classifier pipeline opens.  Rejects one-shot transients (clicks, breaths).
+    // 3 frames ≈ 240 ms of sustained signal above VAD_RMS_THRESHOLD.
+    private val MIN_VAD_PASSES_BEFORE_SCORING = 3
     private var consecutiveVadPasses = 0
 
-    // Rolling RMS history across ALL frames (including silent ones).
-    // Window: RMS_WINDOW_SIZE × ~80 ms ≈ 1.28 s.  Including silent frames is
-    // intentional: after a brief noise burst the zeros from preceding silence drag
-    // the average down, so MIN_SCORING_RMS is not met even though the burst itself
-    // exceeded VAD_RMS_THRESHOLD.  By the time real wake-word speech has sustained
-    // long enough to fill the mel/embedding buffers (≥ 16 pipeline frames), the
-    // window contains mostly speech frames and the average rises well above 300.
-    private val RMS_WINDOW_SIZE = 16
+    // Rolling RMS history across all frames (silent frames included so brief bursts
+    // don't count as speech while the rolling average is still near zero).
+    private val RMS_WINDOW_SIZE = 6
     private val rmsHistory = FloatArray(RMS_WINDOW_SIZE) { 0f }
     private var rmsHistoryIdx = 0
     @Volatile private var recentAvgRms = 0f
 
-    // MIN_SCORING_RMS: rolling average RMS must exceed this before a score above
-    // detectionThreshold is counted toward a detection.  Purposely set below
-    // VAD_RMS_THRESHOLD so that legitimate speech (which fills the window over
-    // ~1-2 s) passes, while a 1-2 frame burst (whose zeros dominate the average)
-    // is rejected.  Raise toward 400 to be more aggressive.
-    private val MIN_SCORING_RMS = 150f
+    // MIN_SCORING_RMS: rolling-average gate applied after VAD.  Must be lower than
+    // VAD_RMS_THRESHOLD so real sustained speech passes; set equal here so that only
+    // audio that has held above 300 for the whole window counts.
+    private val MIN_SCORING_RMS = 100f
     // ─────────────────────────────────────────────────────────────────────────
 
     private var consecutiveSilentFrames = 0
 
     private var firstDetectionTime = 0L
-    private val DETECTION_WINDOW_MS = 800L
+    private val DETECTION_WINDOW_MS = 1000L
 
     @Volatile
     var isArmed: Boolean = true
@@ -119,11 +103,9 @@ class WakeWordManager(
         private set
     private var lastDetectionTime = 0L
     // detectionCooldownMs: minimum gap between two consecutive detections.
-    // 4 000 ms prevents double-fire on the same utterance and on TTS audio bleed
+    // 3 000 ms prevents double-fire on the same utterance and on TTS audio bleed
     // while still letting the user re-trigger soon after an early-cancelled session.
-    // (Lowered from 7 000 ms for pre-demo; TTS AudioAttributes + 80 ms speak-delay
-    // already mitigate self-trigger from TTS playback.)
-    var detectionCooldownMs = 2500L
+    var detectionCooldownMs = 3000L
 
     var bypassVad: Boolean = false
 

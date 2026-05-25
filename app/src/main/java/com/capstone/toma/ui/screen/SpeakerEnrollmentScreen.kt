@@ -22,13 +22,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.activity.ComponentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.capstone.toma.viewmodel.SpeakerEnrollmentViewModel
 import com.capstone.toma.viewmodel.VoiceViewModel
@@ -47,7 +48,7 @@ fun SpeakerEnrollmentScreen(
 ) {
     val vm: SpeakerEnrollmentViewModel = viewModel()
     val voiceVm: VoiceViewModel = viewModel(
-        viewModelStoreOwner = LocalContext.current as ComponentActivity
+        viewModelStoreOwner = LocalActivity.current as ComponentActivity
     )
     val step by vm.step.collectAsState()
     val sampleIndex by vm.sampleIndex.collectAsState()

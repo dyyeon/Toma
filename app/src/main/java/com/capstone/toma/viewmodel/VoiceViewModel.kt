@@ -175,7 +175,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
-        wakeWordManager.verboseLogging = true
+        wakeWordManager.verboseLogging = false
         observeAudioStream()
 
         val intent = Intent(application, TimerService::class.java)

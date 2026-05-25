@@ -1,6 +1,9 @@
 package com.capstone.toma.viewmodel
 
+import android.annotation.SuppressLint
 import android.app.Application
+import android.media.AudioFormat
+import android.media.AudioRecord
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -225,6 +228,7 @@ class SpeakerEnrollmentViewModel(application: Application) : AndroidViewModel(ap
         }
     }
 
+    @SuppressLint("MissingPermission") // RECORD_AUDIO is granted before enrollment flow starts
     private suspend fun runPersonalizationBestEffort() {
         val ctx = getApplication<Application>()
         val wm = wakeWordManager
@@ -266,17 +270,48 @@ class SpeakerEnrollmentViewModel(application: Application) : AndroidViewModel(ap
                     }
                 }
 
-                // ── Collect negative embeddings from 3 s of silence ──
+                // ── Collect negative embeddings from real room audio ──
                 wm.clearLastEmbedding()
                 wm.startAmbientCollection()
-                val silenceChunk = ByteArray(CHUNK_SIZE * 2) // all zeros = silence
+
+                val minBuf = AudioRecord.getMinBufferSize(
+                    SAMPLE_RATE,
+                    AudioFormat.CHANNEL_IN_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT
+                )
+                val audioRecord = runCatching {
+                    AudioRecord(
+                        MediaRecorder.AudioSource.MIC,
+                        SAMPLE_RATE,
+                        AudioFormat.CHANNEL_IN_MONO,
+                        AudioFormat.ENCODING_PCM_16BIT,
+                        maxOf(minBuf, CHUNK_SIZE * 2)
+                    )
+                }.getOrNull()
+
                 val silenceSamples = SILENCE_SECONDS * SAMPLE_RATE
-                var fed = 0
-                while (fed + CHUNK_SIZE <= silenceSamples) {
-                    wm.processFrame(silenceChunk)
-                    fed += CHUNK_SIZE
-                    delay(100)
+                if (audioRecord != null && audioRecord.state == AudioRecord.STATE_INITIALIZED) {
+                    audioRecord.startRecording()
+                    val chunk = ByteArray(CHUNK_SIZE * 2)
+                    var fed = 0
+                    while (fed + CHUNK_SIZE <= silenceSamples) {
+                        val read = audioRecord.read(chunk, 0, chunk.size, AudioRecord.READ_BLOCKING)
+                        if (read > 0) wm.processFrame(chunk)
+                        fed += CHUNK_SIZE
+                    }
+                    audioRecord.stop()
+                    audioRecord.release()
+                } else {
+                    // Fallback: feed zero audio if AudioRecord unavailable
+                    val silenceChunk = ByteArray(CHUNK_SIZE * 2)
+                    var fed = 0
+                    while (fed + CHUNK_SIZE <= silenceSamples) {
+                        wm.processFrame(silenceChunk)
+                        fed += CHUNK_SIZE
+                        delay(80)
+                    }
                 }
+
                 delay(500)
                 val negatives = wm.stopAmbientCollection()
                 personalizer.setNegativeSamples(negatives)
@@ -345,7 +380,7 @@ class SpeakerEnrollmentViewModel(application: Application) : AndroidViewModel(ap
             codec.start()
 
             val raw = ArrayList<Short>(65536)
-            var channels = fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT, 1)
+            var channels = runCatching { fmt.getInteger(MediaFormat.KEY_CHANNEL_COUNT) }.getOrDefault(1)
             val info = MediaCodec.BufferInfo()
             var inDone = false
             var outDone = false
@@ -368,7 +403,7 @@ class SpeakerEnrollmentViewModel(application: Application) : AndroidViewModel(ap
                 val outIdx = codec.dequeueOutputBuffer(info, 10_000L)
                 when {
                     outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED ->
-                        channels = codec.outputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT, channels)
+                        channels = runCatching { codec.outputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT) }.getOrDefault(channels)
                     outIdx >= 0 -> {
                         val outBuf = codec.getOutputBuffer(outIdx)!!.order(ByteOrder.LITTLE_ENDIAN)
                         val sb = outBuf.asShortBuffer()
@@ -423,7 +458,7 @@ class SpeakerEnrollmentViewModel(application: Application) : AndroidViewModel(ap
     }
 
     companion object {
-        const val TOTAL_SAMPLES = 3
+        const val TOTAL_SAMPLES = 5
         const val TARGET_SENTENCE = "헤이 토마"
         const val CHUNK_SIZE = 1280
 
