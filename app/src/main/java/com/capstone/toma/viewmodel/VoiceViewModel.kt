@@ -923,10 +923,4 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun startEnrollmentRecording(context: Context) {}
-    fun stopEnrollmentRecording() {}
-    fun uploadEnrollmentWavs(context: Context, onComplete: () -> Unit, onError: (String) -> Unit) {
-        onComplete()
-    }
-    fun startModelPolling(context: Context) {}
 }

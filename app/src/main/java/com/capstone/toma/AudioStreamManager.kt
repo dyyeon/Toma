@@ -15,9 +15,6 @@ import android.util.Log
 import kotlinx.coroutines.channels.Channel
 import kotlin.concurrent.thread
 
-/**
- * openWakeWord migration - Low-latency Audio Capture Hub
- */
 class AudioStreamManager(private val context: Context) {
     private val TAG = "AudioStream"
     private val SAMPLE_RATE = 16000

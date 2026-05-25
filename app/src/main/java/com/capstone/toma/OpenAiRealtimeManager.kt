@@ -6,9 +6,6 @@ import okhttp3.*
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-/**
- * CHANGED: openWakeWord migration - OpenAI Realtime API Manager
- */
 class OpenAiRealtimeManager(
     private val apiKey: String,
     private val onResult: (String) -> Unit,

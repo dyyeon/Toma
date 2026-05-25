@@ -129,8 +129,6 @@ private fun buildWebPrompt(url: String, title: String?, description: String?): S
     - 적합한 이미지가 없으면 빈 문자열을 반환하세요.
     """.trimIndent()
 
-// Opt 1+2: AI call and image prefetch run in parallel; minimum status delay is absorbed
-// into AI latency rather than blocking the coroutine sequentially.
 private suspend fun analyzePageContent(
     url: String,
     isYoutube: Boolean,
@@ -219,8 +217,6 @@ private fun getAnalysisMessage(url: String): String {
     }
 }
 
-// Opt 3: single entry point for all three URL-analysis call sites.
-// homeViewModel = null signals chat context: fetch errors return not_recipe instead of a dialog.
 private fun ChatViewModel.launchLinkAnalysis(
     url: String,
     navController: NavHostController,
@@ -389,7 +385,6 @@ fun TomaNavHost(
         composable(TomaDestination.Home.route) {
             LaunchedEffect(Unit) {
                 voiceViewModel.stopWakeWord()
-                // BYPASSED: Speaker Enrollment check disabled for now.
                 homeViewModel.refreshRecentItems()
             }
 

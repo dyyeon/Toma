@@ -95,7 +95,6 @@ class WakeWordManager(
 
     private var consecutiveSilentFrames = 0
 
-    // ✅ 시간 윈도우: 600ms 안에 3회 연속이어야 유효
     private var firstDetectionTime = 0L
     private val DETECTION_WINDOW_MS = 800L
 
@@ -478,7 +477,6 @@ class WakeWordManager(
                 score >= detectionThreshold -> {
                     val now = System.currentTimeMillis()
 
-                    // ✅ 시간 윈도우 체크 — 첫 감지 후 600ms 안에 연속이어야 유효
                     if (consecutiveDetections == 0) {
                         firstDetectionTime = now
                     } else if (now - firstDetectionTime > DETECTION_WINDOW_MS) {

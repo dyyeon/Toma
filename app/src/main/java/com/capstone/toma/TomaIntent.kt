@@ -9,7 +9,7 @@ sealed class TomaIntent {
     object REPEAT_STEP : TomaIntent()
     data class SET_TIMER(val durationMin: Int) : TomaIntent()
     object RECOMMENDED_TIMER : TomaIntent()
-    object CANCEL_TIMER : TomaIntent()          // ✅ 추가 — 타이머 중지 전용
+    object CANCEL_TIMER : TomaIntent()
     data class RECIPE_SEARCH(val keyword: String) : TomaIntent()
     object INGREDIENT_CHECK : TomaIntent()
     object HELP : TomaIntent()
@@ -33,7 +33,7 @@ object TomaIntentParser {
                 "REPEAT_STEP" -> TomaIntent.REPEAT_STEP
                 "SET_TIMER" -> TomaIntent.SET_TIMER(args?.optInt("duration_min") ?: 3)
                 "RECOMMENDED_TIMER" -> TomaIntent.RECOMMENDED_TIMER
-                "CANCEL_TIMER" -> TomaIntent.CANCEL_TIMER   // ✅ 추가
+                "CANCEL_TIMER" -> TomaIntent.CANCEL_TIMER
                 "RECIPE_SEARCH" -> TomaIntent.RECIPE_SEARCH(args?.optString("keyword") ?: "")
                 "INGREDIENT_CHECK" -> TomaIntent.INGREDIENT_CHECK
                 "HELP" -> TomaIntent.HELP
@@ -62,7 +62,7 @@ object TomaIntentParser {
             return TomaIntent.RECOMMENDED_TIMER
         }
 
-        // 2. ✅ CANCEL_TIMER — 숫자 없이 타이머 취소/중지 의도
+        // 2. 타이머 취소/중지 (숫자 없는 경우)
         val timerStopKeywords = listOf("취소", "꺼줘", "꺼", "중지", "멈춰", "그만", "stop")
         if ((lower.contains("타이머") || lower.contains("알람")) &&
             timerStopKeywords.any { lower.contains(it) }) {

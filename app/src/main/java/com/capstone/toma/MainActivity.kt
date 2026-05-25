@@ -54,8 +54,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-    // ✅ onStop/onStart 모두 제거
-    // 백그라운드 처리는 RecipeDetailScreen의 DisposableEffect(ON_PAUSE/ON_RESUME)가 담당
 }
 
 @Composable

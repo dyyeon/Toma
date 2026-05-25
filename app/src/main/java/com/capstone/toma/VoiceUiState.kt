@@ -1,6 +1,5 @@
 package com.capstone.toma
 
-// CHANGED: openWakeWord migration - Expanded states for better UX
 sealed interface VoiceUiState {
     data object Idle : VoiceUiState
     data object Listening : VoiceUiState

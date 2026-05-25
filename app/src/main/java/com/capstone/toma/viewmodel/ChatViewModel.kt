@@ -199,10 +199,8 @@ class ChatViewModel : ViewModel() {
                         ).takeIf { it.isNotEmpty() }
                     } else null
 
-                    // Fix 1: confirmed generalized recipe must not inherit the original WEB sourceType.
                     if (isInsufficient) sessionSourceType = null
 
-                    // Fix 2: no keyword means no chips — guide the user to type the food name.
                     val displayMessage = if (isInsufficient && result.keyword.isBlank()) {
                         "이 페이지 본문을 충분히 읽지 못했어요. 음식 이름을 직접 알려주시면 일반적인 레시피로 정리해드릴게요."
                     } else {
@@ -303,7 +301,7 @@ class ChatViewModel : ViewModel() {
                                 text = enrichedResult.responseMessage,
                                 isUser = false,
                                 timestamp = getCurrentTime(),
-                                imageUri = recipeImageUrl // ADDED: Show thumbnail in chat bubble
+                                imageUri = recipeImageUrl
                             )
 
                             _uiState.update {

@@ -250,7 +250,6 @@ class OpenAiManager {
             })
         }
 
-        // CHANGED: Use isIntentRequest() to choose a lightweight model for short commands
         val chosenModel = when {
             isComplexRequest(userText) -> OpenAiConfig.ADVANCED_MODEL
             isIntentRequest(userText) -> OpenAiConfig.INTENT_MODEL
@@ -519,7 +518,6 @@ class OpenAiManager {
             sampleSize *= 2
         }
 
-        // ADDED: TASK 2 - Fixed decodeImageForAnalysis with EXIF rotation correction
         val rotationDegrees = resolver.openInputStream(uri)?.use { input ->
             try {
                 when (ExifInterface(input).getAttributeInt(
@@ -546,7 +544,6 @@ class OpenAiManager {
             true
         ).also { if (it != decoded) decoded.recycle() }
 
-        // ADDED: Apply rotation correction if needed
         return if (rotationDegrees != 0f) {
             val matrix = Matrix().apply { postRotate(rotationDegrees) }
             Bitmap.createBitmap(scaled, 0, 0, scaled.width, scaled.height, matrix, true)
@@ -609,7 +606,6 @@ class OpenAiManager {
         return constraintScore >= 2 || reasoningScore >= 2 || text.length > 200
     }
 
-    // ADDED: TASK 1 - lightweight model for short intent commands
     private fun isIntentRequest(text: String): Boolean {
         val lower = text.lowercase()
         val keywords = listOf("다음","이전","시작","정지","멈춰",

@@ -19,41 +19,10 @@ class OnDevicePersonalizer(private val context: Context) {
 
     private val EMBEDDING_SIZE = 1536
 
-    // init {
-    //     // REMOVED: Loading negative_samples.bin from Python pipeline causes feature space mismatch.
-    //     // We now collect negative samples directly on device.
-    // }
-
     fun setNegativeSamples(samples: List<FloatArray>) {
         negativeEmbeddings.clear()
         negativeEmbeddings.addAll(samples)
         Log.d("OnDevice", "✅ Set ${negativeEmbeddings.size} Android-native negative samples")
-    }
-
-    /**
-     * Legacy method. No longer called by default to avoid pipeline mismatch.
-     */
-    fun loadNegativeSamplesFromAssets(): Boolean {
-        return try {
-            val bytes = context.assets.open("negative_samples.bin").use { it.readBytes() }
-            val floatBuffer = ByteBuffer.wrap(bytes)
-                .order(ByteOrder.LITTLE_ENDIAN)
-                .asFloatBuffer()
-            
-            negativeEmbeddings.clear()
-            for (i in 0 until 300) {
-                val embedding = FloatArray(EMBEDDING_SIZE)
-                for (j in 0 until EMBEDDING_SIZE) {
-                    embedding[j] = floatBuffer.get()
-                }
-                negativeEmbeddings.add(embedding)
-            }
-            Log.d(TAG, "✅ Legacy negative samples loaded: ${negativeEmbeddings.size}")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Failed to load legacy negative samples: ${e.message}")
-            false
-        }
     }
 
     fun addPositiveSample(embedding: FloatArray) {

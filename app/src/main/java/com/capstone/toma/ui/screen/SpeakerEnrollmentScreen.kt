@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Stop
@@ -149,7 +149,7 @@ private fun IntroContent(
     Column(modifier = Modifier.fillMaxSize()) {
         IconButton(onClick = onBack) {
             Icon(
-                imageVector = Icons.Default.ArrowBack,
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "뒤로",
                 tint = TomaPrimaryText
             )
@@ -250,7 +250,7 @@ private fun RecordingContent(
     Column(modifier = Modifier.fillMaxSize()) {
         IconButton(onClick = onBack) {
             Icon(
-                imageVector = Icons.Default.ArrowBack,
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "뒤로",
                 tint = TomaPrimaryText
             )

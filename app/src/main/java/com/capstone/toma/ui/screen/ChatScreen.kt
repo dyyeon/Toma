@@ -36,7 +36,6 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.capstone.toma.OpenAiManager
 import com.capstone.toma.R
-import com.capstone.toma.ui.theme.*
 import androidx.compose.foundation.BorderStroke
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay

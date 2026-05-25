@@ -35,7 +35,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -723,68 +722,6 @@ fun RecentAnalysisCard(
                 )
             }
         }
-    }
-}
-
-@Composable
-fun SelectedRecentItemCard(
-    title: String,
-    sourceType: RecipeSourceType,
-    timeText: String,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = TomaMainOrange.copy(alpha = 0.05f),
-        border = BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.2f))
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Default.BookmarkBorder,
-                contentDescription = null,
-                tint = TomaMainOrange,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = title,
-                    color = TomaPrimaryText,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "불러오기 완료 · $timeText",
-                    color = TomaSecondaryText,
-                    fontSize = 13.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun ErrorMessageCard(
-    message: String,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = Color(0xFFFFF4F4),
-        border = BorderStroke(1.dp, Color(0xFFFFE3E3))
-    ) {
-        Text(
-            text = message,
-            color = Color(0xFFE03131),
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(16.dp)
-        )
     }
 }
 
