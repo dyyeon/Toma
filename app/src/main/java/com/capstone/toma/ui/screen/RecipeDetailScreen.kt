@@ -208,7 +208,6 @@ fun RecipeDetailContent(
 
         pendingTtsResumeJob?.cancel()
         lastSpokenKey = key
-        voiceViewModel.pauseAudioCapture()
         scope.launch {
             delay(80)
             tts.speak(text, queueMode, null, key)
@@ -237,47 +236,26 @@ fun RecipeDetailContent(
 
                     override fun onDone(utteranceId: String?) {
                         pendingTtsResumeJob?.cancel()
-                        pendingTtsResumeJob = scope.launch {
-                            voiceViewModel.isTtsSpeaking = false
-                            isTtsSpeaking = false
-                            Log.d("WakeWord", "✅ TTS finished id=$utteranceId — re-arming in 700ms")
-                            delay(700)
-                            voiceViewModel.resumeAudioCapture()
-                            Log.d("WakeWord", "🔓 Re-armed after TTS playback")
-                        }
+                        voiceViewModel.isTtsSpeaking = false
+                        scope.launch { isTtsSpeaking = false }
                     }
 
                     override fun onError(utteranceId: String?) {
                         pendingTtsResumeJob?.cancel()
-                        scope.launch {
-                            voiceViewModel.isTtsSpeaking = false
-                            isTtsSpeaking = false
-                            delay(150)
-                            voiceViewModel.resumeAudioCapture()
-                        }
-                        Log.d("WakeWord", "❌ TTS error id=$utteranceId")
+                        voiceViewModel.isTtsSpeaking = false
+                        scope.launch { isTtsSpeaking = false }
                     }
 
                     override fun onError(utteranceId: String?, errorCode: Int) {
                         pendingTtsResumeJob?.cancel()
-                        scope.launch {
-                            voiceViewModel.isTtsSpeaking = false
-                            isTtsSpeaking = false
-                            delay(150)
-                            voiceViewModel.resumeAudioCapture()
-                        }
-                        Log.d("WakeWord", "❌ TTS error id=$utteranceId code=$errorCode")
+                        voiceViewModel.isTtsSpeaking = false
+                        scope.launch { isTtsSpeaking = false }
                     }
 
                     override fun onStop(utteranceId: String?, interrupted: Boolean) {
                         pendingTtsResumeJob?.cancel()
                         voiceViewModel.isTtsSpeaking = false
-                        scope.launch {
-                            isTtsSpeaking = false
-                            delay(150)
-                            voiceViewModel.resumeAudioCapture()
-                        }
-                        Log.d("WakeWord", "🛑 TTS stopped id=$utteranceId interrupted=$interrupted")
+                        scope.launch { isTtsSpeaking = false }
                     }
                 })
 
@@ -310,10 +288,6 @@ fun RecipeDetailContent(
                     voiceViewModel.onAppBackground()
                 }
 
-                Lifecycle.Event.ON_RESUME -> {
-                    voiceViewModel.onAppForeground()
-                }
-
                 else -> {}
             }
         }
@@ -330,19 +304,15 @@ fun RecipeDetailContent(
             hardStopTtsAndPrepareListening()
         }
 
-        voiceViewModel.startWakeWord()
-
         onDispose {
             voiceViewModel.onStopTtsRequest = null
             hardStopTtsAndPrepareListening()
-            voiceViewModel.stopWakeWord()
         }
     }
 
     LaunchedEffect(voiceUiState) {
         if (voiceUiState == VoiceUiState.Listening && isTtsSpeaking) {
             hardStopTtsAndPrepareListening()
-            voiceViewModel.resumeAudioCapture()
         }
     }
 
@@ -549,7 +519,6 @@ fun RecipeDetailContent(
                 onSpeechClick = {
                     if (isTtsSpeaking) {
                         hardStopTtsAndPrepareListening()
-                        voiceViewModel.resumeAudioCapture()
                     } else {
                         val text = if (currentStepIndex == 0) {
                             "재료 준비 단계입니다. ${ingredients.joinToString(", ")}"

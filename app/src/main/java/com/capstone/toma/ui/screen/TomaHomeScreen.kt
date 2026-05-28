@@ -91,7 +91,6 @@ fun TomaHomeScreen(
     onStorageClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onPrivacyPolicyClick: () -> Unit = {},
-    onSpeakerEnrollmentClick: () -> Unit = {},
     onErrorDismiss: () -> Unit = {}
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)

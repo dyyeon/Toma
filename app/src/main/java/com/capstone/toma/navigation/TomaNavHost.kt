@@ -384,7 +384,6 @@ fun TomaNavHost(
     ) {
         composable(TomaDestination.Home.route) {
             LaunchedEffect(Unit) {
-                voiceViewModel.stopWakeWord()
                 homeViewModel.refreshRecentItems()
             }
 
@@ -452,9 +451,6 @@ fun TomaNavHost(
                 },
                 onPrivacyPolicyClick = {
                     navController.navigateSingleTop(TomaDestination.PrivacyPolicy.route)
-                },
-                onSpeakerEnrollmentClick = {
-                    navController.navigateSingleTop(TomaDestination.SpeakerEnrollment.route)
                 },
                 onErrorDismiss = homeViewModel::clearError
             )
@@ -571,9 +567,6 @@ fun TomaNavHost(
         }
 
         composable(TomaDestination.Chat.route) {
-            LaunchedEffect(Unit) {
-                voiceViewModel.stopWakeWord()
-            }
             val navEvent by chatViewModel.navigationEvent.collectAsState()
             val errorEvent by chatViewModel.errorEvent.collectAsState()
             val recipeContextsByMessageId by chatViewModel.recipeContextsByMessageId.collectAsState()
@@ -653,7 +646,6 @@ fun TomaNavHost(
                 onEmailClick = { navController.navigate(TomaDestination.EmailSetting.route) },
                 onCustomerCenterClick = { navController.navigate(TomaDestination.CustomerCenter.route) },
                 onContactClick = { navController.navigate(TomaDestination.ContactUs.route) },
-                onSpeakerEnrollmentClick = { navController.navigate(TomaDestination.SpeakerEnrollment.route) },
                 onClearRecentHistoryClick = homeViewModel::clearRecentHistory
             )
         }
@@ -663,20 +655,6 @@ fun TomaNavHost(
         composable(TomaDestination.CustomerCenter.route) { CustomerCenterScreen(onBackClick = { navController.popBackStack() }) }
         composable(TomaDestination.ContactUs.route) { ContactUsScreen(onBackClick = { navController.popBackStack() }) }
         composable(TomaDestination.PrivacyPolicy.route) { PrivacyPolicyScreen(onBackClick = { navController.popBackStack() }) }
-
-        composable(TomaDestination.SpeakerEnrollment.route) {
-            SpeakerEnrollmentScreen(
-                onFinish = {
-                    // Navigate to Home and clear the back stack so the user
-                    // cannot return to the enrollment flow with the back button.
-                    navController.navigate(TomaDestination.Home.route) {
-                        popUpTo(navController.graph.startDestinationId) { inclusive = false }
-                        launchSingleTop = true
-                    }
-                },
-                onBackClick = { navController.popBackStack() }
-            )
-        }
 
         composable(
             route = TomaDestination.RecipeConfirm.route,

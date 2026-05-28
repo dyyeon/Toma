@@ -25,7 +25,6 @@ import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material3.AlertDialog
@@ -60,7 +59,6 @@ fun SettingsScreen(
     onEmailClick: () -> Unit = {},
     onCustomerCenterClick: () -> Unit = {},
     onContactClick: () -> Unit = {},
-    onSpeakerEnrollmentClick: () -> Unit = {},
     onClearRecentHistoryClick: () -> Unit = {}
 ) {
     var showClearRecentHistoryDialog by remember { mutableStateOf(false) }
@@ -124,17 +122,6 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
         ) {
             Spacer(modifier = Modifier.height(16.dp))
-
-            SectionHeader(title = "개인화 설정", icon = Icons.Default.Person)
-            SettingsCard {
-                SettingsItemRow(
-                    icon = Icons.Default.RecordVoiceOver,
-                    title = "화자등록관리",
-                    onClick = onSpeakerEnrollmentClick
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
 
             SectionHeader(title = "데이터 관리", icon = Icons.Default.Storage)
             SettingsCard {
