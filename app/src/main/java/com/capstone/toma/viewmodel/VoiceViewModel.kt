@@ -33,18 +33,6 @@ import java.util.Locale
 
 class VoiceViewModel(application: Application) : AndroidViewModel(application) {
 
-    sealed interface EnrollmentStatus {
-        data object Idle : EnrollmentStatus
-        data object CollectingAmbient : EnrollmentStatus
-        data object Recording : EnrollmentStatus
-        data object Verifying : EnrollmentStatus
-        data class Success(val count: Int) : EnrollmentStatus
-        data object Failed : EnrollmentStatus
-    }
-
-    private val _enrollmentStatus = MutableStateFlow<EnrollmentStatus>(EnrollmentStatus.Idle)
-    val enrollmentStatus = _enrollmentStatus.asStateFlow()
-
     private val _uiState = MutableStateFlow<VoiceUiState>(VoiceUiState.Idle)
     val uiState = _uiState.asStateFlow()
 
@@ -58,41 +46,10 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     val voiceAnnouncement = _voiceAnnouncement.asSharedFlow()
 
     private val openAiManager = OpenAiManager()
-    private val audioStreamManager = AudioStreamManager(application)
-    private val onDevicePersonalizer = OnDevicePersonalizer(application)
-
-    val wakeWordManager = WakeWordManager(application, onDevicePersonalizer) {
-        onWakeWordDetected()
-    }
 
     private val toneGenerator = ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100)
 
-    private val realtimeManager = OpenAiRealtimeManager(
-        apiKey = BuildConfig.OPENAI_API_KEY,
-        onResult = { jsonResponse -> handleAiIntent(jsonResponse) },
-        onError = { error ->
-            viewModelScope.launch {
-                Log.e("VoiceViewModel", "Realtime error: $error")
-                _uiState.value = VoiceUiState.Error(error)
-                delay(1500)
-                forceResetToIdle("realtime_error")
-            }
-        },
-        onSessionReady = {
-            if (_uiState.value == VoiceUiState.Listening && !isManualFlow) {
-                viewModelScope.launch {
-                    _uiState.value = VoiceUiState.Result("토마 준비됐어요!")
-                    delay(1000)
-                    if (_uiState.value is VoiceUiState.Result) {
-                        _uiState.value = VoiceUiState.Listening
-                    }
-                }
-            }
-        }
-    )
-
     private var speechRecognizer: SpeechRecognizer? = null
-    private var isManualFlow = false
 
     val manualAudioFile = File(application.cacheDir, "manual_voice_search.m4a")
     private var mediaRecorder: MediaRecorder? = null
@@ -175,9 +132,6 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
-        wakeWordManager.verboseLogging = false
-        observeAudioStream()
-
         val intent = Intent(application, TimerService::class.java)
         application.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
 
@@ -263,178 +217,13 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         })
     }
 
-    private fun observeAudioStream() {
-        viewModelScope.launch(Dispatchers.IO) {
-            for (pcmData in audioStreamManager.pcmChannel) {
-                if (_uiState.value == VoiceUiState.Idle && !isManualListening && !isTtsSpeaking) {
-                    wakeWordManager.processFrame(pcmData)
-                }
-
-                if (_uiState.value == VoiceUiState.Listening && !isManualFlow) {
-                    realtimeManager.sendAudio(pcmData)
-                }
-            }
-        }
-    }
-
-    private fun onWakeWordDetected() {
-        viewModelScope.launch {
-            Log.d(
-                "VoiceViewModel",
-                "onWakeWordDetected uiState=${_uiState.value}, isTtsSpeaking=$isTtsSpeaking, isManualListening=$isManualListening"
-            )
-
-            if (_uiState.value != VoiceUiState.Idle) return@launch
-            if (isManualListening) return@launch
-
-            wakeWordManager.disarm()
-            onStopTtsRequest?.invoke()
-
-            isManualFlow = false
-            isManualListening = false
-            isTtsSpeaking = false
-
-            _uiState.value = VoiceUiState.Listening
-            toneGenerator.startTone(ToneGenerator.TONE_PROP_BEEP, 120)
-
-            delay(8000)
-            if (_uiState.value == VoiceUiState.Listening && !isManualFlow) {
-                forceResetToIdle("wakeword_timeout")
-            }
-        }
-    }
-
-    private fun handleAiIntent(jsonResponse: String) {
-        viewModelScope.launch(Dispatchers.Default) {
-            try {
-                val intent = TomaIntentParser.parse(jsonResponse)
-                Log.d("VoiceViewModel", "Parsed intent=$intent")
-
-                withContext(Dispatchers.Main) {
-                    _uiState.value = VoiceUiState.Processing
-                }
-
-                _intentEvent.emit(intent)
-
-                withContext(Dispatchers.Main) {
-                    when (intent) {
-                        is TomaIntent.SET_TIMER -> triggerTimer(intent.durationMin)
-                        TomaIntent.NEXT_STEP -> _uiState.value = VoiceUiState.Result("다음 단계로 넘어갑니다.")
-                        TomaIntent.PREVIOUS_STEP -> _uiState.value = VoiceUiState.Result("이전 단계로 돌아갑니다.")
-                        TomaIntent.REPEAT_STEP -> _uiState.value = VoiceUiState.Result("다시 읽어드릴게요.")
-                        TomaIntent.RECOMMENDED_TIMER -> _uiState.value = VoiceUiState.Result("추천 타이머를 확인할게요.")
-                        TomaIntent.CANCEL_TIMER -> cancelTimer()
-                        is TomaIntent.RECIPE_SEARCH -> _uiState.value = VoiceUiState.Result("'${intent.keyword}' 레시피를 찾아볼게요.")
-                        TomaIntent.CANCEL -> forceResetToIdle("cancel_intent")
-                        else -> _uiState.value = VoiceUiState.Error("명령을 이해하지 못했어요.")
-                    }
-                }
-
-                delay(1200)
-                if (_uiState.value !is VoiceUiState.Listening) {
-                    withContext(Dispatchers.Main) {
-                        forceResetToIdle("ai_intent_done")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("VoiceViewModel", "handleAiIntent failed", e)
-                withContext(Dispatchers.Main) {
-                    _uiState.value = VoiceUiState.Error("오류가 발생했습니다.")
-                }
-                delay(1200)
-                withContext(Dispatchers.Main) {
-                    forceResetToIdle("ai_exception")
-                }
-            }
-        }
-    }
-
-    fun startWakeWord() {
-        Log.d("VoiceViewModel", "startWakeWord()")
-        _uiState.value = VoiceUiState.Idle
-        isManualFlow = false
-        isManualListening = false
-
-        if (!isTtsSpeaking) {
-            wakeWordManager.arm()
-            viewModelScope.launch(Dispatchers.IO) {
-                realtimeManager.connect()
-                audioStreamManager.startCapture()
-            }
-        }
-    }
-
-    fun stopWakeWord() {
-        Log.d("VoiceViewModel", "stopWakeWord()")
-        wakeWordManager.disarm()
-        isManualFlow = false
-        isManualListening = false
-        _uiState.value = VoiceUiState.Idle
-
-        viewModelScope.launch(Dispatchers.IO) {
-            audioStreamManager.stopCapture()
-            realtimeManager.disconnect()
-        }
-    }
-
     fun onAppBackground() {
         Log.d("VoiceViewModel", "onAppBackground()")
         onStopTtsRequest?.invoke()
-        wakeWordManager.disarm()
         speechRecognizer?.cancel()
 
-        isManualFlow = false
         isManualListening = false
         _uiState.value = VoiceUiState.Idle
-
-        viewModelScope.launch(Dispatchers.IO) {
-            audioStreamManager.stopCapture()
-        }
-    }
-
-    fun onAppForeground() {
-        Log.d("VoiceViewModel", "onAppForeground()")
-        if (!isTtsSpeaking && !isManualListening) {
-            wakeWordManager.arm()
-            viewModelScope.launch(Dispatchers.IO) {
-                audioStreamManager.startCapture()
-            }
-        }
-    }
-
-    fun pauseAudioCapture() {
-        Log.d("WakeWord", "pauseAudioCapture()")
-        wakeWordManager.disarm()
-        viewModelScope.launch(Dispatchers.IO) {
-            audioStreamManager.stopCapture()
-        }
-    }
-
-    fun resumeAudioCapture() {
-        Log.d(
-            "WakeWord",
-            "resumeAudioCapture() isTtsSpeaking=$isTtsSpeaking, isManualListening=$isManualListening, uiState=${_uiState.value}"
-        )
-
-        if (isTtsSpeaking) {
-            Log.d("WakeWord", "⛔ Re-arm blocked: TTS still speaking")
-            return
-        }
-
-        if (isManualListening) {
-            Log.d("WakeWord", "⛔ Re-arm blocked: manual listening active")
-            return
-        }
-
-        if (_uiState.value == VoiceUiState.Listening && isManualFlow) {
-            Log.d("WakeWord", "⛔ Re-arm blocked: manual flow currently listening")
-            return
-        }
-
-        wakeWordManager.arm()
-        viewModelScope.launch(Dispatchers.IO) {
-            audioStreamManager.startCapture()
-        }
     }
 
     fun startListeningManually() {
@@ -449,12 +238,6 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         speechRecognizer?.cancel()
         stopWhisperRecordingSilently()
 
-        wakeWordManager.disarm()
-        viewModelScope.launch(Dispatchers.IO) {
-            audioStreamManager.stopCapture()
-        }
-
-        isManualFlow = true
         isManualListening = true
         _uiState.value = VoiceUiState.Listening
 
@@ -728,7 +511,6 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             "forceResetToIdle($reason) | uiState=${_uiState.value}, isTtsSpeaking=$isTtsSpeaking, isManualListening=$isManualListening"
         )
 
-        isManualFlow = false
         isManualListening = false
         _uiState.value = VoiceUiState.Idle
 
@@ -738,13 +520,6 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         stopWhisperRecordingSilently()
-
-        if (!isTtsSpeaking) {
-            wakeWordManager.arm()
-            viewModelScope.launch(Dispatchers.IO) {
-                audioStreamManager.startCapture()
-            }
-        }
     }
 
     fun onMicClick() {
@@ -819,7 +594,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         if (next == current) return
 
         _timerRemainingSeconds.value = next
-        
+
         if (_isTimerRunning.value) {
             val intent = Intent(getApplication(), TimerService::class.java).apply {
                 action = "START"
@@ -906,10 +681,6 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         onStopTtsRequest?.invoke()
-        wakeWordManager.disarm()
-        audioStreamManager.stopCapture()
-        realtimeManager.disconnect()
-        wakeWordManager.release()
 
         try {
             speechRecognizer?.destroy()
@@ -922,5 +693,4 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         } catch (_: Exception) {
         }
     }
-
 }

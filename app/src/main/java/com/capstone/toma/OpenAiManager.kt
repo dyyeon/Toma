@@ -368,13 +368,47 @@ class OpenAiManager {
                                         RULES:
                                         1. ONLY if the image clearly shows food, edible ingredients, or a cooking recipe/menu → extract/infer the recipe.
                                         2. For ingredient images (raw vegetables, meat, pantry items, fridge contents etc.) → identify what ingredients are visible and suggest a recipe using them.
-                                        3. If the image does NOT contain food or edible ingredients (e.g. keyboard, laptop, phone, scenery, people, animals, text documents, electronic devices) → you MUST return:
+                                        3. If the image clearly does NOT contain food or edible ingredients (e.g. keyboard, laptop, phone, scenery, people, animals, text documents, electronic devices) → you MUST return:
                                            {
                                              "type": "not_recipe",
                                              "response": "음식이나 식재료 사진이 아닌 것 같아요. 요리나 재료가 잘 보이게 다시 찍어주세요! 😊"
                                            }
                                         4. ABSOLUTE PROHIBITION: Never create a recipe for non-food images. A keyboard is NOT food. A computer is NOT food. Do NOT invent a recipe just because you cannot identify the object.
-                                        5. When uncertain whether it is food, return "not_recipe".
+                                        5. When the image is ambiguous (could be food or not), attempt to identify it and proceed.
+                                           Only return "not_recipe" when the image is CLEARLY non-food — not because of low quantity or blur.
+
+                                        DISH IDENTIFICATION RULES (for cooked dishes):
+                                        1. Confidence gate: If you cannot identify the specific dish with HIGH confidence (>80%),
+                                           use a descriptive generic keyword (e.g. "간장 베이스 고기 조림", "맑은 국물 고기탕")
+                                           and STILL return recipe_search — never return not_recipe for a low-confidence dish.
+                                           Ask for confirmation in the response field
+                                           (e.g. "갈비찜 같아 보여요! 맞나요? 다르다면 말씀해주세요 😊").
+                                        2. Korean braised meat dishes — distinguish by visual cues:
+                                           - 갈비찜: bone-in short ribs in dark glossy soy sauce, often with carrot/potato/jujube/chestnut
+                                           - 찜닭: chicken pieces with glass noodles (당면) visible, dark soy-based sauce
+                                           - 장조림: small uniform meat cubes, drier/less saucy, often with quail eggs (메추리알)
+                                           - 갈비탕: ribs in CLEAR broth (NOT braised, NOT dark)
+                                           - LA갈비: flat cross-cut ribs, grilled appearance, no heavy sauce
+                                           - 소불고기: thin sliced beef, lighter sauce, often with onion/scallion
+                                        3. Korean soup/stew disambiguation:
+                                           - 김치찌개: red, with kimchi visible
+                                           - 된장찌개: brown-yellow, with tofu/zucchini, NO kimchi
+                                           - 부대찌개: red, with sausage/spam/ramen visible
+                                           - 순두부찌개: red, with soft tofu, served in earthenware
+                                        4. If two dishes look plausible, pick the more likely one AND invite correction
+                                           in the response (e.g. "갈비찜으로 보여요! 혹시 찜닭이라면 말씀해주세요 😊").
+
+                                        INGREDIENT IMAGE RULES (for raw ingredients):
+                                        1. Always proceed with whatever ingredients are visible — do NOT refuse due to small quantity.
+                                           Even 1 ingredient is enough: suggest a simple recipe featuring it as the main ingredient.
+                                        2. Multiple ingredients / fridge contents → list ALL clearly visible ingredients in the
+                                           response first (e.g. "양파, 감자, 당근이 보이네요!"), then suggest ONE recipe that uses
+                                           the maximum number of them.
+                                        3. ALWAYS end the response with an open invitation for follow-up chat, e.g.
+                                           "다른 재료도 있으시면 말씀해주세요!", "혹시 더 있는 재료 알려주시면 더 잘 맞춰드릴게요! 😊"
+                                        4. Return "not_recipe" ONLY when NO ingredient whatsoever can be identified
+                                           (e.g. completely dark image, severe blur with no recognizable object at all).
+                                        5. Do NOT invent ingredients that are not clearly visible.
 
                                         Return exactly this shape for recipes:
                                         {
@@ -394,11 +428,12 @@ class OpenAiManager {
                                         }
                                         CATEGORY RULES:
                                         - Maratang (마라탕) is CHINESE (중식).
-                                        - Tteokbokki (떡복이) is KOREAN (한식).
+                                        - Tteokbokki (떡볶이) is KOREAN (한식).
                                         - Pizza/Pasta is WESTERN (양식).
                                         - Sushi is JAPANESE (일식).
-                                        If the image is a recipe text image, extract the recipe.
-                                        If the image shows raw/mixed ingredients, identify them and suggest the best fitting recipe.
+                                        If the image is a recipe text image (cookbook page, menu, recipe card),
+                                        extract the recipe text faithfully — do NOT apply DISH IDENTIFICATION confidence gate
+                                        (the dish name comes from the text itself).
                                         """.trimIndent()
                                     )
                                 })
