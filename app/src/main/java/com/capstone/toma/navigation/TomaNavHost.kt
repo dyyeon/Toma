@@ -63,10 +63,35 @@ private val voiceSuggestions = listOf(
     "자취생 요리 알려줘"
 )
 
-private fun buildYoutubePrompt(title: String?, description: String?): String {
-    val cleanTitle = title?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim() ?: ""
+private fun buildMultiRecipeListPrompt(title: String?, description: String?): String {
     val descSection = if (!description.isNullOrBlank())
-        "\n    영상 설명/내용:\n    ${description.take(1500)}\n" else ""
+        "\n영상 설명: ${description.take(800)}" else ""
+    return """
+    다음 유튜브 영상에 포함된 요리 이름 목록을 추출하세요.
+    영상 제목: ${title ?: ""}$descSection
+
+    반드시 아래 JSON 형식으로만 응답하세요:
+    {
+      "type": "multi_recipe",
+      "keyword": "요리명1,요리명2,요리명3",
+      "response": "이 영상에는 N가지 요리가 포함되어 있어요. 어떤 요리의 레시피를 원하시나요?"
+    }
+
+    규칙:
+    - keyword: 쉼표로 구분된 요리 이름 목록 (최대 5개, 한국어만, 공백 없이)
+    - 영상 제목·설명에서 파악 가능한 요리 이름만 포함하세요
+    - 요리명을 전혀 파악할 수 없다면 keyword를 빈 문자열로 두세요
+    - response는 자연스러운 한국어로 작성하세요
+    """.trimIndent()
+}
+
+private fun buildYoutubePrompt(title: String?, description: String?, isShorts: Boolean = false): String {
+    val cleanTitle = title?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim() ?: ""
+    val descSection = when {
+        !description.isNullOrBlank() -> "\n    영상 설명/내용:\n    ${description.take(1500)}\n"
+        isShorts -> "\n    [이 숏츠 영상은 설명이 없습니다. 제목에 나타난 요리명을 기준으로 일반적인 레시피를 작성하세요. 제목이 너무 모호하거나 요리명을 특정하기 어렵다면 type을 'insufficient_content'로 설정하세요.]\n"
+        else -> ""
+    }
     return """
     ABSOLUTE RULE — KOREAN ONLY:
     Every single output field MUST be in Korean without exception.
@@ -138,6 +163,19 @@ private suspend fun analyzePageContent(
     history: List<Pair<String, Boolean>>,
     updateStatus: (String) -> Unit
 ): VoiceRequestResult {
+    // 여러 요리를 묶은 브이로그/모음 영상 — AI로 요리 목록 추출 후 선택지 제공
+    if (isYoutube) {
+        val multiRecipePattern = Regex("([3-9]|[1-9]\\d+)\\s*가지|주간\\s*밥상|밥상\\s*모음")
+        if (title?.contains(multiRecipePattern) == true) {
+            updateStatus("영상에 포함된 요리 목록을 확인하고 있어요... 🍽️")
+            val openAiForList = com.capstone.toma.OpenAiManager()
+            return openAiForList.processChatRequestSuspend(
+                buildMultiRecipeListPrompt(title, description),
+                history
+            )
+        }
+    }
+
     val recipeKeywords = Regex(
         "요리|레시피|음식|맛|먹|식|재료|조리|간식|반찬|안주|" +
         "만들기|굽기|끓이기|볶기|튀기기|찌기|무치기|" +
@@ -153,8 +191,9 @@ private suspend fun analyzePageContent(
         else "전문가 AI가 내용을 분석하고 있어요... ✨"
     )
 
+    val isShorts = isYoutube && url.contains("youtube.com/shorts/", ignoreCase = true)
     val openAi = com.capstone.toma.OpenAiManager()
-    val prompt = if (isYoutube) buildYoutubePrompt(title, description) else buildWebPrompt(url, title, description)
+    val prompt = if (isYoutube) buildYoutubePrompt(title, description, isShorts) else buildWebPrompt(url, title, description)
     val keywordCandidate = title?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim().orEmpty()
 
     return coroutineScope {
@@ -247,17 +286,12 @@ private fun ChatViewModel.launchLinkAnalysis(
             || d.startsWith("유튜브 정보를 로드할 수 없습니다"))
 
         if (fetchFailed) {
-            return@startLinkAnalysis if (homeViewModel != null) {
-                homeViewModel.showError("링크를 읽어올 수 없어요. 다시 시도해주세요.", isDialog = true)
-                VoiceRequestResult.Error("스크래핑 실패")
-            } else {
-                VoiceRequestResult.Success(
-                    requestType = "not_recipe",
-                    keyword = "",
-                    responseMessage = "링크를 읽어올 수 없어요 \n다시 시도하거나 음식 이름을 직접 알려주세요!",
-                    recipeData = null
-                )
-            }
+            return@startLinkAnalysis VoiceRequestResult.Success(
+                requestType = "not_recipe",
+                keyword = "",
+                responseMessage = "링크를 읽어올 수 없어요\n다시 시도하거나 음식 이름을 직접 알려주세요!",
+                recipeData = null
+            )
         }
 
         val history = uiState.value.messages.map { it.text to it.isUser }

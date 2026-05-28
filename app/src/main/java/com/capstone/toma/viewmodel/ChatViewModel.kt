@@ -191,15 +191,23 @@ class ChatViewModel : ViewModel() {
             when (result) {
                 is VoiceRequestResult.Success -> {
                     val isInsufficient = result.requestType == "insufficient_content"
-                    val chips = if (isInsufficient) {
-                        listOfNotNull(
+                    val isMultiRecipe = result.requestType == "multi_recipe"
+                    val chips = when {
+                        isMultiRecipe -> result.keyword
+                            .split(",")
+                            .map { it.trim() }
+                            .filter { it.isNotBlank() }
+                            .map { dish -> dish to "$dish 레시피를 만들어주세요" }
+                            .takeIf { it.isNotEmpty() }
+                        isInsufficient -> listOfNotNull(
                             if (result.keyword.isNotBlank())
                                 ("네, 만들어주세요" to "${result.keyword} 레시피를 만들어주세요")
                             else null
                         ).takeIf { it.isNotEmpty() }
-                    } else null
+                        else -> null
+                    }
 
-                    if (isInsufficient) sessionSourceType = null
+                    if (isInsufficient || isMultiRecipe) sessionSourceType = null
 
                     val displayMessage = if (isInsufficient && result.keyword.isBlank()) {
                         "이 페이지 본문을 충분히 읽지 못했어요. 음식 이름을 직접 알려주시면 일반적인 레시피로 정리해드릴게요."
@@ -340,7 +348,7 @@ class ChatViewModel : ViewModel() {
         val effectiveRecipeData = latestRecipeData ?: lastAnalyzedRecipeData
         val hasRecipeContext = result.keyword.isNotBlank() || !effectiveRecipeData.isNullOrBlank()
 
-        if (result.requestType == "not_recipe") return
+        if (result.requestType == "not_recipe" || result.requestType == "multi_recipe") return
 
         if (hasRecipeContext && (
                 result.requestType == "recipe_search" ||
