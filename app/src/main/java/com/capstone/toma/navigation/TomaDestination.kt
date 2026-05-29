@@ -11,6 +11,7 @@ sealed class TomaDestination(val route: String) {
     object ContactUs : TomaDestination("contact_us")
     object PrivacyPolicy : TomaDestination("privacy_policy")
     object Chat : TomaDestination("ai_chat")
+    object ChatHistory : TomaDestination("chat_history")
     object RecentHistory : TomaDestination("recent_history")
     object RecipeComplete : TomaDestination("recipe_complete/{keyword}/{sourceType}?recipeData={recipeData}") {
         fun createRoute(keyword: String, sourceType: com.capstone.toma.model.RecipeSourceType, recipeData: String? = null): String {

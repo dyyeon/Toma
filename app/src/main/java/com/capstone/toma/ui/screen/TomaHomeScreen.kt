@@ -90,6 +90,7 @@ fun TomaHomeScreen(
     onHomeClick: () -> Unit = {},
     onStorageClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
+    onChatHistoryClick: () -> Unit = {},
     onPrivacyPolicyClick: () -> Unit = {},
     onErrorDismiss: () -> Unit = {}
 ) {
@@ -117,6 +118,12 @@ fun TomaHomeScreen(
             subtitle = "저장한 레시피를 관리합니다",
             icon = Icons.Default.BookmarkBorder,
             onClick = { scope.launch { drawerState.close(); onStorageClick() } }
+        ),
+        TomaDrawerItem(
+            label = "채팅 기록",
+            subtitle = "이전 AI 대화 내역을 확인합니다",
+            icon = Icons.Default.History,
+            onClick = { scope.launch { drawerState.close(); onChatHistoryClick() } }
         ),
         TomaDrawerItem(
             label = "설정",

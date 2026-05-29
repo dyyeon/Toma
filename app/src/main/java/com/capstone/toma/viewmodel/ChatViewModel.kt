@@ -1,16 +1,21 @@
 package com.capstone.toma.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.capstone.toma.OpenAiManager
 import com.capstone.toma.PublicRecipeManager
 import com.capstone.toma.VoiceRequestResult
 import com.capstone.toma.WebPageManager
+import com.capstone.toma.storage.ChatMessageEntity
+import com.capstone.toma.storage.ChatRepository
+import com.capstone.toma.storage.ChatSessionEntity
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import com.capstone.toma.ui.screen.AiChatUiState
 import com.capstone.toma.ui.screen.ChatMessage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,8 +46,9 @@ sealed class ChatNavigationEvent {
     ) : ChatNavigationEvent()
 }
 
-class ChatViewModel : ViewModel() {
+class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val openAiManager = OpenAiManager()
+    private val chatRepository = ChatRepository.getInstance(app)
 
     private val _uiState = MutableStateFlow(AiChatUiState())
     val uiState: StateFlow<AiChatUiState> = _uiState.asStateFlow()
@@ -60,7 +66,80 @@ class ChatViewModel : ViewModel() {
     private var lastAnalyzedRecipeData: String? = null
     private var sessionSourceType: com.capstone.toma.model.RecipeSourceType? = null
 
+    private var currentSessionId: String? = null
+    private var messageOrderIndex = 0
+
+    fun observeSessions(): Flow<List<ChatSessionEntity>> = chatRepository.observeSessions()
+
+    fun loadSession(sessionId: String) {
+        viewModelScope.launch {
+            val messages = withContext(Dispatchers.IO) {
+                chatRepository.getMessages(sessionId)
+            }.map { entity ->
+                ChatMessage(
+                    id = entity.id,
+                    text = entity.text,
+                    isUser = entity.isUser,
+                    timestamp = entity.timestamp,
+                    imageUri = entity.imageUri
+                )
+            }
+            currentSessionId = sessionId
+            messageOrderIndex = messages.size
+            lastAnalyzedRecipeData = null
+            sessionSourceType = null
+            _recipeContexts.value = emptyMap()
+            clearNavigationEvent()
+            clearErrorEvent()
+            _uiState.value = AiChatUiState(messages = messages)
+        }
+    }
+
+    fun deleteSession(sessionId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            chatRepository.deleteSession(sessionId)
+        }
+        if (currentSessionId == sessionId) {
+            currentSessionId = null
+            messageOrderIndex = 0
+        }
+    }
+
+    private fun ensureSessionId(firstMessageText: String): String {
+        return currentSessionId ?: run {
+            val id = UUID.randomUUID().toString()
+            val title = firstMessageText.trim().take(30).ifBlank { "새 대화" }
+            currentSessionId = id
+            messageOrderIndex = 0
+            viewModelScope.launch(Dispatchers.IO) {
+                chatRepository.createSession(id, title, System.currentTimeMillis())
+            }
+            id
+        }
+    }
+
+    private fun persistMessage(message: ChatMessage) {
+        val sessionId = currentSessionId ?: return
+        val order = messageOrderIndex++
+        viewModelScope.launch(Dispatchers.IO) {
+            chatRepository.saveMessage(
+                ChatMessageEntity(
+                    id = message.id,
+                    sessionId = sessionId,
+                    text = message.text,
+                    isUser = message.isUser,
+                    timestamp = message.timestamp,
+                    imageUri = message.imageUri,
+                    orderIndex = order
+                )
+            )
+            chatRepository.touchSession(sessionId)
+        }
+    }
+
     fun resetChat() {
+        currentSessionId = null
+        messageOrderIndex = 0
         _uiState.value = AiChatUiState()
         lastAnalyzedRecipeData = null
         sessionSourceType = null
@@ -105,11 +184,10 @@ class ChatViewModel : ViewModel() {
             )
         }
 
-        if (imageUri != null) {
-            // If image is attached, we use the specific analysis flow
-            // Note: In a real app, you might want to pass the actual context.
-            // For now, this logic assumes startLinkAnalysis is the entry point for images.
-        } else {
+        ensureSessionId(userMessage.text)
+        persistMessage(userMessage)
+
+        if (imageUri == null) {
             processAiResponse(messageText)
         }
     }
@@ -133,6 +211,9 @@ class ChatViewModel : ViewModel() {
             )
         }
 
+        ensureSessionId(userMessage.text)
+        persistMessage(userMessage)
+
         val target = hiddenPrompt ?: displayText
         processAiResponse(target)
     }
@@ -150,18 +231,20 @@ class ChatViewModel : ViewModel() {
 
         val userMessageId = UUID.randomUUID().toString()
         val aiMessageId = UUID.randomUUID().toString()
+        val userTimestamp = getCurrentTime()
+        val aiTimestamp = getCurrentTime()
 
         val userMessage = ChatMessage(
             id = userMessageId,
             text = userDisplay,
             isUser = true,
-            timestamp = getCurrentTime()
+            timestamp = userTimestamp
         )
         val aiMessage = ChatMessage(
             id = aiMessageId,
             text = initialAiText,
             isUser = false,
-            timestamp = getCurrentTime()
+            timestamp = aiTimestamp
         )
 
         _uiState.update {
@@ -173,16 +256,15 @@ class ChatViewModel : ViewModel() {
             )
         }
 
+        ensureSessionId(userMessage.text)
+        persistMessage(userMessage)
+
         viewModelScope.launch {
             val result = onAnalyze { status ->
                 _uiState.update { state ->
                     state.copy(
                         messages = state.messages.map { message ->
-                            if (message.id == aiMessageId) {
-                                message.copy(text = status)
-                            } else {
-                                message
-                            }
+                            if (message.id == aiMessageId) message.copy(text = status) else message
                         }
                     )
                 }
@@ -226,23 +308,22 @@ class ChatViewModel : ViewModel() {
                             quickActions = chips
                         )
                     }
+                    persistMessage(ChatMessage(id = aiMessageId, text = displayMessage, isUser = false, timestamp = aiTimestamp))
                     handleNavigation(result, aiMessageId, fixedSourceType)
                 }
                 is VoiceRequestResult.Error -> {
+                    val errorText = "분석 중 문제가 발생했습니다."
                     _uiState.update { state ->
                         state.copy(
                             messages = state.messages.map { message ->
-                                if (message.id == aiMessageId) {
-                                    message.copy(text = "분석 중 문제가 발생했습니다.")
-                                } else {
-                                    message
-                                }
+                                if (message.id == aiMessageId) message.copy(text = errorText) else message
                             },
                             isTyping = false,
                             isSpecificAnalysis = false,
                             errorDialogMessage = result.message
                         )
                     }
+                    persistMessage(ChatMessage(id = aiMessageId, text = errorText, isUser = false, timestamp = aiTimestamp))
                     _errorEvent.value = result.message
                 }
             }
@@ -266,6 +347,9 @@ class ChatViewModel : ViewModel() {
         )
 
         _uiState.update { it.copy(messages = it.messages + userMessage + aiMessage) }
+        ensureSessionId(userMessage.text)
+        persistMessage(userMessage)
+        persistMessage(aiMessage)
     }
 
     private fun processAiResponse(userText: String) {
@@ -285,9 +369,7 @@ class ChatViewModel : ViewModel() {
                                 val currentImageUrl = recipeJson.optString("image_url")
                                 if (currentImageUrl.isBlank() || currentImageUrl == "없음") {
                                     val imageUrl = withContext(Dispatchers.IO) {
-                                        // 1순위: 공공 레시피 API
                                         PublicRecipeManager().searchRecipe(result.keyword)?.mainImageUrl?.takeIf { it.isNotBlank() }
-                                        // 2순위: 만개의레시피 블로그 이미지 검색
                                             ?: WebPageManager().searchFoodImage(result.keyword)
                                     }
                                     if (imageUrl != null) {
@@ -298,8 +380,8 @@ class ChatViewModel : ViewModel() {
                             } else result
 
                             val aiMessageId = UUID.randomUUID().toString()
-                            
-                            // Extract image URL from enriched result to show in chat bubble
+                            val aiTimestamp = getCurrentTime()
+
                             val recipeImageUrl = enrichedResult.recipeData?.let {
                                 try { JSONObject(it).optString("image_url") } catch (_: Exception) { null }
                             }?.takeIf { it.isNotBlank() && it != "없음" }
@@ -308,7 +390,7 @@ class ChatViewModel : ViewModel() {
                                 id = aiMessageId,
                                 text = enrichedResult.responseMessage,
                                 isUser = false,
-                                timestamp = getCurrentTime(),
+                                timestamp = aiTimestamp,
                                 imageUri = recipeImageUrl
                             )
 
@@ -318,6 +400,7 @@ class ChatViewModel : ViewModel() {
                                     isTyping = false
                                 )
                             }
+                            persistMessage(aiMessage)
                             handleNavigation(enrichedResult, aiMessageId)
                         }
                         is VoiceRequestResult.Error -> {
@@ -371,11 +454,13 @@ class ChatViewModel : ViewModel() {
                     com.capstone.toma.model.RecipeSourceType.TEXT
                 }
 
-            _recipeContexts.update { it + (aiMessageId to LastRecipeContext(
-                keyword = keyword,
-                sourceType = sourceType,
-                recipeData = effectiveRecipeData ?: ""
-            )) }
+            _recipeContexts.update {
+                it + (aiMessageId to LastRecipeContext(
+                    keyword = keyword,
+                    sourceType = sourceType,
+                    recipeData = effectiveRecipeData ?: ""
+                ))
+            }
             _navigationEvent.value = ChatNavigationEvent.ToConfirm(
                 keyword = keyword,
                 sourceType = sourceType,

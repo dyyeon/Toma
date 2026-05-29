@@ -38,6 +38,7 @@ import com.capstone.toma.VoiceRequestResult
 import com.capstone.toma.VoiceUiState
 import com.capstone.toma.model.toRecipeDataJson
 import com.capstone.toma.ui.screen.*
+import com.capstone.toma.storage.ChatSessionEntity
 import com.capstone.toma.viewmodel.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -480,6 +481,9 @@ fun TomaNavHost(
                 onStorageClick = {
                     navController.navigateSingleTop(TomaDestination.RecipeStorage.route)
                 },
+                onChatHistoryClick = {
+                    navController.navigateSingleTop(TomaDestination.ChatHistory.route)
+                },
                 onSettingsClick = {
                     navController.navigateSingleTop(TomaDestination.Settings.route)
                 },
@@ -647,6 +651,7 @@ fun TomaNavHost(
                 onBackClick = { navController.popBackStack() },
                 onInputTextChange = chatViewModel::onInputTextChange,
                 onAddImageClick = { showImageSourceSheet = true },
+                onHistoryClick = { navController.navigateSingleTop(TomaDestination.ChatHistory.route) },
                 recipeMessageIds = recipeContextsByMessageId.keys,
                 onReopenRecipe = { messageId -> chatViewModel.reopenRecipe(messageId) },
                 onQuickAction = { label, prompt ->
@@ -670,6 +675,27 @@ fun TomaNavHost(
                     }
                 },
                 onErrorDismiss = chatViewModel::clearErrorEvent
+            )
+        }
+
+        composable(TomaDestination.ChatHistory.route) {
+            val sessions by chatViewModel.observeSessions().collectAsState(initial = emptyList())
+            SessionListScreen(
+                sessions = sessions,
+                onBackClick = { navController.popBackStack() },
+                onSessionClick = { sessionId ->
+                    chatViewModel.loadSession(sessionId)
+                    navController.navigate(TomaDestination.Chat.route) {
+                        popUpTo(TomaDestination.ChatHistory.route) { inclusive = true }
+                    }
+                },
+                onDeleteSession = { sessionId -> chatViewModel.deleteSession(sessionId) },
+                onNewChatClick = {
+                    chatViewModel.resetChat()
+                    navController.navigate(TomaDestination.Chat.route) {
+                        popUpTo(TomaDestination.ChatHistory.route) { inclusive = true }
+                    }
+                }
             )
         }
 

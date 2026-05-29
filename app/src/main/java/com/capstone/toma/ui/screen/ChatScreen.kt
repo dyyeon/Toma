@@ -18,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -80,6 +81,7 @@ fun AiChatScreen(
     onMicClick: () -> Unit = {},
     onAddImageClick: () -> Unit = {},
     onErrorDismiss: () -> Unit = {},
+    onHistoryClick: () -> Unit = {},
     recipeMessageIds: Set<String> = emptySet(),
     onReopenRecipe: (messageId: String) -> Unit = {},
     onQuickAction: (label: String, prompt: String?) -> Unit = { _, _ -> }
@@ -216,7 +218,7 @@ fun AiChatScreen(
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = TomaBackground,
-        topBar = { ChatTopAppBar(onBackClick = onBackClick) },
+        topBar = { ChatTopAppBar(onBackClick = onBackClick, onHistoryClick = onHistoryClick) },
         bottomBar = {
             ChatInputBar(
                 inputText = uiState.inputText,
@@ -275,7 +277,7 @@ fun AiChatScreen(
 }
 
 @Composable
-private fun ChatTopAppBar(onBackClick: () -> Unit) {
+private fun ChatTopAppBar(onBackClick: () -> Unit, onHistoryClick: () -> Unit = {}) {
     Surface(
         color = Color.White.copy(alpha = 0.95f),
         shadowElevation = 2.dp
@@ -341,6 +343,23 @@ private fun ChatTopAppBar(onBackClick: () -> Unit) {
                         fontWeight = FontWeight.Medium
                     )
                 }
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Surface(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clickable { onHistoryClick() },
+                shape = CircleShape,
+                color = Color.Transparent
+            ) {
+                Icon(
+                    imageVector = Icons.Default.History,
+                    contentDescription = "채팅 기록",
+                    tint = TomaSecondaryText,
+                    modifier = Modifier.padding(8.dp)
+                )
             }
         }
     }

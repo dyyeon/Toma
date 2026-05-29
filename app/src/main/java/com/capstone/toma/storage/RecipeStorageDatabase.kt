@@ -43,6 +43,25 @@ data class RecentRecipeHistoryEntity(
     val updatedAt: Long
 )
 
+@Entity(tableName = "chat_sessions")
+data class ChatSessionEntity(
+    @PrimaryKey val id: String,
+    val title: String,
+    val createdAt: Long,
+    val lastUpdatedAt: Long
+)
+
+@Entity(tableName = "chat_messages")
+data class ChatMessageEntity(
+    @PrimaryKey val id: String,
+    val sessionId: String,
+    val text: String,
+    val isUser: Boolean,
+    val timestamp: String,
+    val imageUri: String?,
+    val orderIndex: Int
+)
+
 class RecipeStorageConverters {
     @TypeConverter
     fun fromStringList(value: List<String>): String {
@@ -71,13 +90,14 @@ class RecipeStorageConverters {
 }
 
 @Database(
-    entities = [StoredRecipeEntity::class, RecentRecipeHistoryEntity::class],
-    version = 6,
+    entities = [StoredRecipeEntity::class, RecentRecipeHistoryEntity::class, ChatSessionEntity::class, ChatMessageEntity::class],
+    version = 7,
     exportSchema = false
 )
 @TypeConverters(RecipeStorageConverters::class)
 abstract class RecipeStorageDatabase : RoomDatabase() {
     abstract fun recipeStorageDao(): RecipeStorageDao
+    abstract fun chatStorageDao(): ChatStorageDao
 
     companion object {
         @Volatile
@@ -138,6 +158,34 @@ abstract class RecipeStorageDatabase : RoomDatabase() {
         // Corrects stored_recipes rows that were wrongly saved as IMAGE due to inferSourceType
         // treating any non-blank image_url as IMAGE. Camera-scanned recipes have content:// imageUri
         // and are left alone; web/YouTube recipes have http imageUri and are re-labelled.
+        private val Migration6To7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS chat_sessions (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        lastUpdatedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS chat_messages (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        sessionId TEXT NOT NULL,
+                        text TEXT NOT NULL,
+                        isUser INTEGER NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        imageUri TEXT,
+                        orderIndex INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         private val Migration5To6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -180,6 +228,7 @@ abstract class RecipeStorageDatabase : RoomDatabase() {
                     .addMigrations(Migration3To4)
                     .addMigrations(Migration4To5)
                     .addMigrations(Migration5To6)
+                    .addMigrations(Migration6To7)
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { instance = it }
