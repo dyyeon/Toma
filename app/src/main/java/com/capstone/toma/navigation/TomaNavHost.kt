@@ -38,6 +38,7 @@ import com.capstone.toma.VoiceRequestResult
 import com.capstone.toma.VoiceUiState
 import com.capstone.toma.model.toRecipeDataJson
 import com.capstone.toma.ui.screen.*
+import com.capstone.toma.ui.util.rememberMultipleClickHandler
 import com.capstone.toma.storage.ChatSessionEntity
 import com.capstone.toma.viewmodel.*
 import kotlinx.coroutines.Dispatchers
@@ -323,6 +324,7 @@ fun TomaNavHost(
     val voiceUiState by voiceViewModel.uiState.collectAsState()
 
     val context = LocalContext.current
+    val navClickHandler = rememberMultipleClickHandler()
 
     var showImageSourceSheet by remember { mutableStateOf(false) }
     var pendingCameraFile by remember { mutableStateOf<File?>(null) }
@@ -433,69 +435,87 @@ fun TomaNavHost(
                 uiState = homeUiState,
                 onSearchQueryChange = homeViewModel::updateSearchQuery,
                 onSearchSubmit = {
-                    val query = homeUiState.searchQuery
-                    if (query.isNotBlank()) {
-                        val isValidUrl = query.startsWith("http://") || query.startsWith("https://")
-                        if (isValidUrl) {
-                            chatViewModel.launchLinkAnalysis(
-                                url = query,
-                                navController = navController,
-                                homeViewModel = homeViewModel
-                            )
-                            homeViewModel.updateSearchQuery("")
-                        } else {
-                            chatViewModel.resetChat()
-                            chatViewModel.sendMessage(query)
-                            navController.navigate(TomaDestination.Chat.route)
-                            homeViewModel.updateSearchQuery("")
+                    navClickHandler.processClick {
+                        val query = homeUiState.searchQuery
+                        if (query.isNotBlank()) {
+                            val isValidUrl = query.startsWith("http://") || query.startsWith("https://")
+                            if (isValidUrl) {
+                                chatViewModel.launchLinkAnalysis(
+                                    url = query,
+                                    navController = navController,
+                                    homeViewModel = homeViewModel
+                                )
+                                homeViewModel.updateSearchQuery("")
+                            } else {
+                                chatViewModel.resetChat()
+                                chatViewModel.sendMessage(query)
+                                navController.navigate(TomaDestination.Chat.route)
+                                homeViewModel.updateSearchQuery("")
+                            }
                         }
                     }
                 },
                 onMicClick = {
-                    navController.navigateSingleTop(TomaDestination.VoiceGuide.route)
+                    navClickHandler.processClick {
+                        navController.navigateSingleTop(TomaDestination.VoiceGuide.route)
+                    }
                 },
                 onYoutubeLinkChange = homeViewModel::updateYoutubeLink,
                 onYoutubeSubmit = {
-                    val link = homeUiState.youtubeLink
+                    navClickHandler.processClick {
+                        val link = homeUiState.youtubeLink
 
-                    if (link.isNotBlank()) {
-                        val isValidUrl = link.startsWith("http://") || link.startsWith("https://")
+                        if (link.isNotBlank()) {
+                            val isValidUrl = link.startsWith("http://") || link.startsWith("https://")
 
-                        if (isValidUrl) {
-                            chatViewModel.launchLinkAnalysis(
-                                url = link,
-                                navController = navController,
-                                homeViewModel = homeViewModel
-                            )
-                            homeViewModel.updateYoutubeLink("")
-                        } else {
-                            homeViewModel.showError("올바른 링크를 입력해주세요.")
+                            if (isValidUrl) {
+                                chatViewModel.launchLinkAnalysis(
+                                    url = link,
+                                    navController = navController,
+                                    homeViewModel = homeViewModel
+                                )
+                                homeViewModel.updateYoutubeLink("")
+                            } else {
+                                homeViewModel.showError("올바른 링크를 입력해주세요.")
+                            }
                         }
                     }
                 },
                 onPhotoScanClick = { showImageSourceSheet = true },
                 onRecentItemClick = { itemId ->
-                    val item = homeUiState.recentItems.find { it.id == itemId }
-                    item?.let {
-                        navController.navigate(
-                            TomaDestination.RecipeDetail.createRoute(it.title, it.sourceType, it.recipeDataJson)
-                        )
+                    navClickHandler.processClick {
+                        val item = homeUiState.recentItems.find { it.id == itemId }
+                        item?.let {
+                            navController.navigate(
+                                TomaDestination.RecipeDetail.createRoute(it.title, it.sourceType, it.recipeDataJson)
+                            )
+                        }
                     }
                 },
                 onRecentMoreClick = {
-                    navController.navigateSingleTop(TomaDestination.RecentHistory.route)
+                    navClickHandler.processClick {
+                        navController.navigateSingleTop(TomaDestination.RecentHistory.route)
+                    }
                 },
                 onStorageClick = {
-                    navController.navigateSingleTop(TomaDestination.RecipeStorage.route)
+                    navClickHandler.processClick {
+                        navController.navigateSingleTop(TomaDestination.RecipeStorage.route)
+                    }
                 },
                 onChatHistoryClick = {
-                    navController.navigateSingleTop(TomaDestination.ChatHistory.route)
+                    navClickHandler.processClick {
+                        navController.navigateSingleTop(TomaDestination.ChatHistory.route)
+                    }
                 },
                 onSettingsClick = {
-                    navController.navigateSingleTop(TomaDestination.Settings.route)
+                    navClickHandler.processClick {
+                        navController.navigateSingleTop(TomaDestination.Settings.route)
+                    }
                 },
                 onPrivacyPolicyClick = {
-                    navController.navigateSingleTop(TomaDestination.PrivacyPolicy.route)
+                    navClickHandler.processClick {
+                        navController.navigateSingleTop(TomaDestination.PrivacyPolicy.route)
+                    }
                 },
                 onErrorDismiss = homeViewModel::clearError
             )
@@ -744,13 +764,15 @@ fun TomaNavHost(
                 recipeDataJson = recipeData,
                 onBackClick = { navController.popBackStack() },
                 onConfirmClick = {
-                    homeViewModel.saveRecentRecipe(
-                        keyword = keyword,
-                        recipeDataJson = recipeData,
-                        sourceType = sourceType
-                    )
-                    navController.navigate(TomaDestination.RecipeDetail.createRoute(keyword, sourceType, recipeData)) {
-                        popUpTo(TomaDestination.RecipeConfirm.route) { inclusive = true }
+                    navClickHandler.processClick {
+                        homeViewModel.saveRecentRecipe(
+                            keyword = keyword,
+                            recipeDataJson = recipeData,
+                            sourceType = sourceType
+                        )
+                        navController.navigate(TomaDestination.RecipeDetail.createRoute(keyword, sourceType, recipeData)) {
+                            popUpTo(TomaDestination.RecipeConfirm.route) { inclusive = true }
+                        }
                     }
                 },
                 onRejectClick = { navController.popBackStack() }

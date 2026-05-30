@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.capstone.toma.ui.theme.*
+import com.capstone.toma.ui.util.rememberMultipleClickHandler
 import org.json.JSONObject
 
 @Composable
@@ -310,6 +311,8 @@ private fun ConfirmDecisionBar(
     onConfirmClick: () -> Unit,
     onRejectClick: () -> Unit
 ) {
+    val clickHandler = rememberMultipleClickHandler()
+
     Surface(
         color = Color.White,
         shadowElevation = 24.dp,
@@ -335,7 +338,7 @@ private fun ConfirmDecisionBar(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedButton(
-                    onClick = onRejectClick,
+                    onClick = { clickHandler.processClick { onRejectClick() } },
                     modifier = Modifier
                         .weight(1f)
                         .height(56.dp),
@@ -353,7 +356,7 @@ private fun ConfirmDecisionBar(
                 }
 
                 Button(
-                    onClick = onConfirmClick,
+                    onClick = { clickHandler.processClick { onConfirmClick() } },
                     modifier = Modifier
                         .weight(1f)
                         .height(56.dp)

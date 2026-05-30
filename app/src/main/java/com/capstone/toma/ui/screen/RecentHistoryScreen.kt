@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.*
+import com.capstone.toma.ui.util.debouncedClickable
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -79,7 +80,7 @@ private fun HistoryTopBar(onBackClick: () -> Unit) {
         Surface(
             modifier = Modifier
                 .size(44.dp)
-                .clickable { onBackClick() },
+                .debouncedClickable { onBackClick() },
             shape = CircleShape,
             color = Color.White,
             border = BorderStroke(1.dp, Color(0xFFEEEEEE)),
@@ -164,7 +165,7 @@ private fun HistoryItemCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() },
+            .debouncedClickable { onClick() },
         shape = RoundedCornerShape(20.dp),
         color = Color.White,
         border = BorderStroke(1.dp, Color(0xFFF1F3F5)),

@@ -47,6 +47,7 @@ import com.capstone.toma.ui.component.LoadingSection
 import com.capstone.toma.ui.component.TomaDrawerItem
 import com.capstone.toma.ui.component.TomaDrawerSheet
 import com.capstone.toma.ui.component.TomaTopAppBar
+import com.capstone.toma.ui.util.debouncedClickable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -311,7 +312,7 @@ fun AIRecipeSearchCard(
                             tint = Color(0xFFADB5BD),
                             modifier = Modifier
                                 .size(20.dp)
-                                .clickable(enabled = enabled) { onSearchSubmit() }
+                                .debouncedClickable(enabled = enabled) { onSearchSubmit() }
                         )
                     }
                 }
@@ -321,7 +322,7 @@ fun AIRecipeSearchCard(
                 Surface(
                     modifier = Modifier
                         .size(48.dp)
-                        .clickable(enabled = enabled) { onMicClick() },
+                        .debouncedClickable(enabled = enabled) { onMicClick() },
                     shape = RoundedCornerShape(16.dp),
                     color = if (enabled) TomaMainOrange else Color(0xFFD9D9D9),
                     shadowElevation = if (enabled) 4.dp else 0.dp
@@ -462,7 +463,7 @@ fun YoutubeImportCard(
                 color = TomaMainOrange,
                 modifier = Modifier
                     .size(36.dp)
-                    .clickable(enabled = enabled) { onSubmit() }
+                    .debouncedClickable(enabled = enabled) { onSubmit() }
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.CallMade,
@@ -484,7 +485,7 @@ fun PhotoImportCard(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled) { onClick() },
+            .debouncedClickable(enabled = enabled) { onClick() },
         shape = RoundedCornerShape(20.dp),
         color = Color.White,
         border = BorderStroke(1.dp, TomaCardBorder),
@@ -624,7 +625,7 @@ fun RecentAnalysisCard(
         modifier = Modifier
             .width(165.dp)
             .height(240.dp)
-            .clickable { onClick() },
+            .debouncedClickable { onClick() },
         shape = RoundedCornerShape(20.dp),
         color = Color.White,
         border = BorderStroke(1.dp, TomaCardBorder),

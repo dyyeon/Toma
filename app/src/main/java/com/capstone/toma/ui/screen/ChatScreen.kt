@@ -38,6 +38,8 @@ import coil.compose.AsyncImage
 import com.capstone.toma.OpenAiManager
 import com.capstone.toma.R
 import androidx.compose.foundation.BorderStroke
+import com.capstone.toma.ui.util.debouncedClickable
+import com.capstone.toma.ui.util.rememberMultipleClickHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -292,7 +294,7 @@ private fun ChatTopAppBar(onBackClick: () -> Unit, onHistoryClick: () -> Unit = 
             Surface(
                 modifier = Modifier
                     .size(40.dp)
-                    .clickable { onBackClick() },
+                    .debouncedClickable { onBackClick() },
                 shape = CircleShape,
                 color = Color.Transparent
             ) {
@@ -350,7 +352,7 @@ private fun ChatTopAppBar(onBackClick: () -> Unit, onHistoryClick: () -> Unit = 
             Surface(
                 modifier = Modifier
                     .size(40.dp)
-                    .clickable { onHistoryClick() },
+                    .debouncedClickable { onHistoryClick() },
                 shape = CircleShape,
                 color = Color.Transparent
             ) {
@@ -558,6 +560,8 @@ private fun QuickActionsRow(
     actions: List<Pair<String, String?>>,
     onAction: (label: String, prompt: String?) -> Unit
 ) {
+    val clickHandler = rememberMultipleClickHandler()
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -566,7 +570,7 @@ private fun QuickActionsRow(
     ) {
         actions.forEach { (label, prompt) ->
             Surface(
-                onClick = { onAction(label, prompt) },
+                onClick = { clickHandler.processClick { onAction(label, prompt) } },
                 shape = RoundedCornerShape(20.dp),
                 color = TomaMainOrange.copy(alpha = 0.1f),
                 border = BorderStroke(1.dp, TomaMainOrange.copy(alpha = 0.35f))
@@ -594,6 +598,7 @@ private fun ChatInputBar(
     onMicClick: () -> Unit,
     onAddImageClick: () -> Unit = {}
 ) {
+    val clickHandler = rememberMultipleClickHandler()
     val micBusy = isTyping || isTranscribing
 
     // 녹음 중 마이크 아이콘 호흡 애니메이션
@@ -640,7 +645,7 @@ private fun ChatInputBar(
 
             // 마이크 버튼
             Surface(
-                onClick = onMicClick,
+                onClick = { clickHandler.processClick { onMicClick() } },
                 enabled = !micBusy,
                 shape = CircleShape,
                 color = when {
@@ -719,7 +724,7 @@ private fun ChatInputBar(
 
             val isSendEnabled = inputText.isNotBlank() && !isTyping
             Surface(
-                onClick = onSendMessage,
+                onClick = { clickHandler.processClick { onSendMessage() } },
                 enabled = isSendEnabled,
                 shape = CircleShape,
                 color = if (isSendEnabled) TomaMainOrange else Color(0xFFE9ECEF),

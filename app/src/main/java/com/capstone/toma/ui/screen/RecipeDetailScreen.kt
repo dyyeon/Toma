@@ -44,6 +44,7 @@ import com.capstone.toma.TomaIntent
 import com.capstone.toma.VoiceUiState
 import com.capstone.toma.model.RecipeSourceType
 import com.capstone.toma.ui.theme.*
+import com.capstone.toma.ui.util.debouncedClickable
 import com.capstone.toma.viewmodel.RecipeDetailViewModel
 import com.capstone.toma.viewmodel.RecipeStorageViewModel
 import com.capstone.toma.viewmodel.StepTimerState
@@ -936,7 +937,7 @@ private fun BottomControlSection(
         Surface(
             modifier = Modifier
                 .size(56.dp)
-                .clickable { onPrevClick() },
+                .debouncedClickable { onPrevClick() },
             shape = CircleShape,
             color = Color.White,
             border = BorderStroke(1.dp, Color(0xFFEEEEEE))
@@ -975,7 +976,7 @@ private fun BottomControlSection(
         Surface(
             modifier = Modifier
                 .size(56.dp)
-                .clickable { onNextClick() },
+                .debouncedClickable { onNextClick() },
             shape = CircleShape,
             color = Color.Black,
             shadowElevation = 4.dp
