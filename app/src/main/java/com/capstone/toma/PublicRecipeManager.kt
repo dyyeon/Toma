@@ -5,6 +5,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 data class PublicRecipe(
     val name: String,
@@ -42,7 +43,10 @@ data class PublicRecipe(
 }
 
 class PublicRecipeManager {
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(20, TimeUnit.SECONDS)
+        .build()
     private val apiKey = BuildConfig.FOOD_SAFETY_API_KEY
     private val baseUrl = "https://openapi.foodsafetykorea.go.kr/api/$apiKey/COOKRCP01/json/1/3"
 

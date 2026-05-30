@@ -34,20 +34,21 @@ class TimerService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val action = intent?.action
         val minutes = intent?.getIntOfExtra("minutes", 0) ?: 0
+        val seconds = intent?.getIntOfExtra("seconds", 0) ?: 0
 
         when (action) {
-            "START" -> startTimer(minutes)
+            "START" -> startTimer(minutes * 60 + seconds)
             "STOP" -> stopTimer()
         }
         return START_NOT_STICKY
     }
 
-    private fun startTimer(minutes: Int) {
-        if (minutes <= 0) return
-        
+    private fun startTimer(totalSeconds: Int) {
+        if (totalSeconds <= 0) return
+
         stopTimer() // Clear any existing
-        
-        _remainingSeconds.value = minutes * 60
+
+        _remainingSeconds.value = totalSeconds
         _isTimerRunning.value = true
         
         startForeground(NOTIFICATION_ID, createNotification(_remainingSeconds.value))

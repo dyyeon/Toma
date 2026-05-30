@@ -7,10 +7,14 @@ import kotlinx.coroutines.withContext
 import okhttp3.*
 import java.io.IOException
 import java.net.URLEncoder
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
 class WebPageManager {
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .build()
 
     private data class NaverBlogInfo(val userId: String, val postNo: String)
 

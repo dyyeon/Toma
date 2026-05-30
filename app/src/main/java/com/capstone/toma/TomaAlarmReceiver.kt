@@ -30,7 +30,7 @@ class TomaAlarmReceiver : BroadcastReceiver() {
 
         val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
         val notification = NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+            .setSmallIcon(R.drawable.ic_tomato)
             .setContentTitle("토마 타이머")
             .setContentText("설정한 요리 시간이 다 되었습니다! 🍳")
             .setPriority(NotificationCompat.PRIORITY_HIGH)

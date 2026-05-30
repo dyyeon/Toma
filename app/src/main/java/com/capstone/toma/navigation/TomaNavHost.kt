@@ -323,7 +323,6 @@ fun TomaNavHost(
     val voiceUiState by voiceViewModel.uiState.collectAsState()
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     var showImageSourceSheet by remember { mutableStateOf(false) }
     var pendingCameraFile by remember { mutableStateOf<File?>(null) }
@@ -537,7 +536,8 @@ fun TomaNavHost(
         ) { backStackEntry ->
             val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
             val sourceTypeStr = backStackEntry.arguments?.getString("sourceType") ?: "TEXT"
-            val sourceType = com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr)
+            val sourceType = runCatching { com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr) }
+                .getOrDefault(com.capstone.toma.model.RecipeSourceType.TEXT)
             val recipeData = backStackEntry.arguments?.getString("recipeData")
             RecipeDetailScreen(
                 keyword = keyword,
@@ -573,15 +573,13 @@ fun TomaNavHost(
         composable(TomaDestination.VoiceGuide.route) {
             // Redirect user's recognized speech directly to Chat
             LaunchedEffect(Unit) {
-                scope.launch {
-                    voiceViewModel.recognizedTextEvent.collect { text ->
-                        Log.d("TomaNavHost", "Recognized text received: \"$text\"")
-                        if (text.isNotBlank()) {
-                            chatViewModel.resetChat()
-                            chatViewModel.sendMessage(text)
-                            navController.navigate(TomaDestination.Chat.route) {
-                                popUpTo(TomaDestination.VoiceGuide.route) { inclusive = true }
-                            }
+                voiceViewModel.recognizedTextEvent.collect { text ->
+                    Log.d("TomaNavHost", "Recognized text received: \"$text\"")
+                    if (text.isNotBlank()) {
+                        chatViewModel.resetChat()
+                        chatViewModel.sendMessage(text)
+                        navController.navigate(TomaDestination.Chat.route) {
+                            popUpTo(TomaDestination.VoiceGuide.route) { inclusive = true }
                         }
                     }
                 }
@@ -738,7 +736,8 @@ fun TomaNavHost(
         ) { backStackEntry ->
             val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
             val sourceTypeStr = backStackEntry.arguments?.getString("sourceType") ?: "TEXT"
-            val sourceType = com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr)
+            val sourceType = runCatching { com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr) }
+                .getOrDefault(com.capstone.toma.model.RecipeSourceType.TEXT)
             val recipeData = backStackEntry.arguments?.getString("recipeData")
             RecipeConfirmScreen(
                 keyword = keyword,
@@ -772,7 +771,8 @@ fun TomaNavHost(
         ) { backStackEntry ->
             val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
             val sourceTypeStr = backStackEntry.arguments?.getString("sourceType") ?: "TEXT"
-            val sourceType = com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr)
+            val sourceType = runCatching { com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr) }
+                .getOrDefault(com.capstone.toma.model.RecipeSourceType.TEXT)
             val recipeData = backStackEntry.arguments?.getString("recipeData")
             RecipeDetailScreen(
                 keyword = keyword,
@@ -802,7 +802,8 @@ fun TomaNavHost(
         ) { backStackEntry ->
             val keyword = backStackEntry.arguments?.getString("keyword") ?: ""
             val sourceTypeStr = backStackEntry.arguments?.getString("sourceType") ?: "TEXT"
-            val sourceType = com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr)
+            val sourceType = runCatching { com.capstone.toma.model.RecipeSourceType.valueOf(sourceTypeStr) }
+                .getOrDefault(com.capstone.toma.model.RecipeSourceType.TEXT)
             val recipeData = backStackEntry.arguments?.getString("recipeData")
             RecipeCompleteScreen(
                 keyword = keyword,
