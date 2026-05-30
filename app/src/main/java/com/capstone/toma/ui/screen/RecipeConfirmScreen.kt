@@ -402,7 +402,13 @@ private fun parseConfirmRecipe(keyword: String, recipeDataJson: String?): Confir
         var totalSeconds = 0
         for (i in 0 until stepTimesArray.length()) totalSeconds += stepTimesArray.optInt(i, 0)
         val m = kotlin.math.ceil(totalSeconds / 60.0).toInt()
-        if (m <= 0) "-" else if (m < 60) "${m}분" else if (m % 60 == 0) "${m/60}시간" else "${m/60}시간 ${m%60}분"
+        if (m > 0) {
+            if (m < 60) "${m}분" else if (m % 60 == 0) "${m/60}시간" else "${m/60}시간 ${m%60}분"
+        } else {
+            json?.optString("time")?.toIntOrNull()?.takeIf { it > 0 }?.let { fallbackMinutes ->
+                if (fallbackMinutes < 60) "${fallbackMinutes}분" else if (fallbackMinutes % 60 == 0) "${fallbackMinutes/60}시간" else "${fallbackMinutes/60}시간 ${fallbackMinutes%60}분"
+            } ?: "-"
+        }
     } else {
         json?.optString("time")?.toIntOrNull()?.takeIf { it > 0 }?.let { m ->
             if (m < 60) "${m}분" else if (m % 60 == 0) "${m/60}시간" else "${m/60}시간 ${m%60}분"

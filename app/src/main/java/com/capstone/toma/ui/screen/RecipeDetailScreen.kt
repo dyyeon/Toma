@@ -144,8 +144,12 @@ fun RecipeDetailContent(
             for (i in 0 until stepTimesArray.length()) {
                 totalSeconds += stepTimesArray.optInt(i, 0)
             }
-            val totalMinutes = kotlin.math.ceil(totalSeconds / 60.0).toInt()
-            parseTimeDisplay(totalMinutes.toString())
+            if (totalSeconds > 0) {
+                val totalMinutes = kotlin.math.ceil(totalSeconds / 60.0).toInt()
+                parseTimeDisplay(totalMinutes.toString())
+            } else {
+                parseTimeDisplay(recipeData?.optString("time"))
+            }
         } else {
             parseTimeDisplay(recipeData?.optString("time"))
         }
@@ -1018,28 +1022,22 @@ private fun resolveStepTimerSeconds(
         if (preset > 0) return preset
     }
 
-    // 2. Else parse stepText for "N분" → N*60, "N초" → N (use regex)
-    val minutesRegex = "(\\d+)\\s*분".toRegex()
-    val secondsRegex = "(\\d+)\\s*초".toRegex()
-    
-    val minsMatch = minutesRegex.find(stepText)
-    val secsMatch = secondsRegex.find(stepText)
-    
-    if (minsMatch != null || secsMatch != null) {
+    // 2. Else parse only explicit time expressions in the step text.
+    val minuteRangeMatch = Regex("""(\d+)\s*[~-]\s*(\d+)\s*분""").find(stepText)
+    val minuteMatch = Regex("""(\d+)\s*분""").find(stepText)
+    val secondMatch = Regex("""(\d+)\s*초""").find(stepText)
+
+    if (minuteRangeMatch != null || minuteMatch != null || secondMatch != null) {
         var totalSecs = 0
-        minsMatch?.groupValues?.get(1)?.toIntOrNull()?.let { totalSecs += it * 60 }
-        secsMatch?.groupValues?.get(1)?.toIntOrNull()?.let { totalSecs += it }
+        minuteRangeMatch?.groupValues?.get(2)?.toIntOrNull()?.let { totalSecs += it * 60 }
+        if (minuteRangeMatch == null) {
+            minuteMatch?.groupValues?.get(1)?.toIntOrNull()?.let { totalSecs += it * 60 }
+        }
+        secondMatch?.groupValues?.get(1)?.toIntOrNull()?.let { totalSecs += it }
         if (totalSecs > 0) return totalSecs
     }
 
-    // 3. Else if stepText contains any of: 끓, 볶, 굽, 찌, 튀, 재우, 삶, 분, 초, 시간
-    //    → return 180 (default 3분)
-    val keywords = listOf("끓", "볶", "굽", "찌", "튀", "재우", "삶", "분", "초", "시간")
-    if (keywords.any { stepText.contains(it) }) {
-        return 180
-    }
-
-    // 4. Else return 0 (no timer for this step)
+    // 3. Else return 0 (no timer for this step)
     return 0
 }
 

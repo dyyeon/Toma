@@ -101,8 +101,10 @@ class OpenAiManager {
             - "현재 상태": Visual/sensory cues (e.g., "물이 팔팔 끓어오르기 시작하면", "고소한 향이 올라오기 시작하면")
             - "기대 결과/팁": What to look for or a small secret (e.g., "노릇한 색이 돌 때까지 볶아주면 풍미가 훨씬 좋아져요")
             - ALWAYS specify heat level when using fire: 강불 / 중불 / 약불 / 불 끔
-            - ALWAYS specify a precise time in minutes (e.g. "약 3분간", "15~20분간") for any step that requires heat, marinating, or waiting.
-              * This time is used for the app's auto-timer feature, so it must be clear (e.g., "3분간 끓여주세요").
+            - For AI-generated recipes (the user asks you to create/suggest a recipe), include reasonable explicit
+              durations in the step text for steps that genuinely need timing, such as heating, boiling, simmering,
+              baking, frying, marinating, resting, or waiting (e.g. "중불에서 3분간 볶아주세요").
+            - For extracted recipes from source text, preserve only durations that are explicitly present in the source.
             - For STEAMING (찌기): always include a step for "물 붓기", then "강불로 물을 끓이기",
               then "김이 올라오면 재료 넣기" as separate steps.
             - For BOILING (끓이기): include water state changes (찬물부터 → 끓어오르면 → 중불로 줄이기).
@@ -112,12 +114,16 @@ class OpenAiManager {
 
             STEPTIME & TOTAL TIME RULES:
             - "stepTimes": array of integers in SECONDS. MUST have exactly the same number of entries as "steps" — one entry per step, in the same order. If "steps" has 8 elements, "stepTimes" MUST also have exactly 8 elements.
-              - 0 for prep/non-timed steps (chopping, mixing, plating).
-              - Timed step examples: oil preheat 2min → 120, boiling 10min → 600, simmering 15min → 900.
+              - Use a non-zero value ONLY when the matching step text contains an explicit numeric duration (e.g. "3분간 끓이세요" → 180, "30초 볶으세요" → 30).
+              - For AI-generated recipes, you may decide reasonable durations, but you MUST write that duration visibly in the matching step text.
+              - For extracted/source-based recipes, use non-zero stepTimes only for durations that were explicitly present in the source text.
+              - Use 0 for prep/non-timed steps (chopping, mixing, plating).
+              - Use 0 for heat, marinating, resting, boiling, simmering, steaming, baking, or frying steps if the matching step text has no numeric duration.
+              - Never assign a default timer such as 3 minutes based only on cooking verbs like 끓이다, 볶다, 굽다, 찌다, 튀기다, 재우다, or 삶다.
             - "time": total cooking time as a plain INTEGER in MINUTES. NO units, no text, just a number.
               - If the user's request explicitly states a duration → use that number.
               - If not, sum all non-zero stepTimes and convert to minutes (round up to nearest minute).
-              - If neither, estimate from step count: simple 2~3min/step, cooking 5~10min/step.
+              - If there are no explicit step durations, estimate total recipe time for display only.
               - Minimum value: 1. Never 0 or null. Never a string like "30분".
 
             WHEN TO RETURN recipe_search:
@@ -426,6 +432,18 @@ class OpenAiManager {
                                             "image_url": "$imageUri"
                                           }
                                         }
+                                        TIMER RULES:
+                                        - "stepTimes" must have exactly one integer per step, in seconds.
+                                        - Put a non-zero value ONLY when that exact step text contains an explicit numeric duration
+                                          such as "3분", "30초", or "15~20분".
+                                        - For recipe suggestions based on visible raw ingredients or an identified dish photo,
+                                          you may choose reasonable durations, but you MUST write those durations visibly
+                                          in the matching step text.
+                                        - If the image is a recipe text image (cookbook page, menu, recipe card), preserve only
+                                          durations that are explicitly present in that text.
+                                        - For steps without an explicit numeric duration, put 0 even if the action uses heat,
+                                          waiting, boiling, stir-frying, steaming, baking, frying, marinating, or simmering.
+                                        - Never infer a default timer from cooking verbs or typical recipe knowledge.
                                         CATEGORY RULES:
                                         - Maratang (마라탕) is CHINESE (중식).
                                         - Tteokbokki (떡볶이) is KOREAN (한식).
