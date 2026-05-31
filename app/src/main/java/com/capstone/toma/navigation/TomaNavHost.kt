@@ -330,6 +330,16 @@ fun TomaNavHost(
     var pendingCameraFile by remember { mutableStateOf<File?>(null) }
     var pendingCameraUri  by remember { mutableStateOf<Uri?>(null) }
 
+    fun navigateBackSafely() {
+        navClickHandler.processClick {
+            if (navController.previousBackStackEntry != null) {
+                navController.popBackStack()
+            } else if (navController.currentDestination?.route != TomaDestination.Home.route) {
+                navController.navigateSingleTop(TomaDestination.Home.route)
+            }
+        }
+    }
+
     fun prepareCameraUri(): Pair<File, Uri> {
         val dir  = File(context.cacheDir, "camera").also { it.mkdirs() }
         val file = File(dir, "capture_${System.currentTimeMillis()}.jpg")
@@ -523,7 +533,7 @@ fun TomaNavHost(
 
         composable(TomaDestination.RecipeStorage.route) {
             RecipeStorageScreen(
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navigateBackSafely() },
                 onStartGuide = { recipe ->
                     val recipeData = recipe.toRecipeDataJson()
                     homeViewModel.saveRecentRecipe(
@@ -564,7 +574,7 @@ fun TomaNavHost(
                 recipeDataJson = recipeData,
                 sourceType = sourceType,
                 fromStorage = true,
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navigateBackSafely() },
                 onFinish = { kw, data ->
                     navController.navigate(TomaDestination.RecipeComplete.createRoute(kw, sourceType, data)) {
                         popUpTo(TomaDestination.RecipeDetailFromStorage.route) { inclusive = true }
@@ -581,7 +591,7 @@ fun TomaNavHost(
 
             RecentHistoryScreen(
                 items = homeUiState.recentItems,
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navigateBackSafely() },
                 onItemClick = { item ->
                     navController.navigate(
                         TomaDestination.RecipeDetail.createRoute(item.title, item.sourceType, item.recipeDataJson)
@@ -625,7 +635,7 @@ fun TomaNavHost(
                 },
                 onBackClick = {
                     voiceViewModel.stopListeningManually()
-                    navController.popBackStack()
+                    navigateBackSafely()
                 }
             )
         }
@@ -674,7 +684,7 @@ fun TomaNavHost(
 
             AiChatScreen(
                 uiState = chatUiState,
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navigateBackSafely() },
                 onInputTextChange = chatViewModel::onInputTextChange,
                 onAddImageClick = { showImageSourceSheet = true },
                 onHistoryClick = { navController.navigateSingleTop(TomaDestination.ChatHistory.route) },
@@ -708,7 +718,7 @@ fun TomaNavHost(
             val sessions by chatViewModel.observeSessions().collectAsState(initial = emptyList())
             SessionListScreen(
                 sessions = sessions,
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navigateBackSafely() },
                 onSessionClick = { sessionId ->
                     chatViewModel.loadSession(sessionId)
                     navController.navigate(TomaDestination.Chat.route) {
@@ -727,7 +737,7 @@ fun TomaNavHost(
 
         composable(TomaDestination.Settings.route) {
             SettingsScreen(
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navigateBackSafely() },
                 onPushClick = { navController.navigate(TomaDestination.PushSetting.route) },
                 onEmailClick = { navController.navigate(TomaDestination.EmailSetting.route) },
                 onCustomerCenterClick = { navController.navigate(TomaDestination.CustomerCenter.route) },
@@ -736,11 +746,11 @@ fun TomaNavHost(
             )
         }
 
-        composable(TomaDestination.PushSetting.route) { PushSettingScreen(onBackClick = { navController.popBackStack() }) }
-        composable(TomaDestination.EmailSetting.route) { EmailSettingScreen(onBackClick = { navController.popBackStack() }) }
-        composable(TomaDestination.CustomerCenter.route) { CustomerCenterScreen(onBackClick = { navController.popBackStack() }) }
-        composable(TomaDestination.ContactUs.route) { ContactUsScreen(onBackClick = { navController.popBackStack() }) }
-        composable(TomaDestination.PrivacyPolicy.route) { PrivacyPolicyScreen(onBackClick = { navController.popBackStack() }) }
+        composable(TomaDestination.PushSetting.route) { PushSettingScreen(onBackClick = { navigateBackSafely() }) }
+        composable(TomaDestination.EmailSetting.route) { EmailSettingScreen(onBackClick = { navigateBackSafely() }) }
+        composable(TomaDestination.CustomerCenter.route) { CustomerCenterScreen(onBackClick = { navigateBackSafely() }) }
+        composable(TomaDestination.ContactUs.route) { ContactUsScreen(onBackClick = { navigateBackSafely() }) }
+        composable(TomaDestination.PrivacyPolicy.route) { PrivacyPolicyScreen(onBackClick = { navigateBackSafely() }) }
 
         composable(
             route = TomaDestination.RecipeConfirm.route,
@@ -762,7 +772,7 @@ fun TomaNavHost(
             RecipeConfirmScreen(
                 keyword = keyword,
                 recipeDataJson = recipeData,
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navigateBackSafely() },
                 onConfirmClick = {
                     navClickHandler.processClick {
                         homeViewModel.saveRecentRecipe(
@@ -775,7 +785,7 @@ fun TomaNavHost(
                         }
                     }
                 },
-                onRejectClick = { navController.popBackStack() }
+                onRejectClick = { navigateBackSafely() }
             )
         }
 
@@ -800,7 +810,7 @@ fun TomaNavHost(
                 keyword = keyword,
                 recipeDataJson = recipeData,
                 sourceType = sourceType,
-                onBackClick = { navController.popBackStack() },
+                onBackClick = { navigateBackSafely() },
                 onFinish = { kw, data ->
                     navController.navigate(TomaDestination.RecipeComplete.createRoute(kw, sourceType, data)) {
                         popUpTo(TomaDestination.RecipeDetail.route) { inclusive = true }
