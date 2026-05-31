@@ -456,7 +456,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private fun classifyManualIntent(text: String): TomaIntent {
         val t = text.trim().lowercase(Locale.ROOT)
 
-        if (t.contains("다음") || t.contains("넘어가") || t.contains("넘겨") || t.contains("next"))
+        if (t.contains("다음") || t.contains("넘어가") || t.contains("next"))
             return TomaIntent.NEXT_STEP
 
         if (t.contains("이전") || t.contains("돌아가") || t.contains("뒤로") || t.contains("back"))
@@ -478,9 +478,8 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             return TomaIntent.RECOMMENDED_TIMER
         }
 
-        // 타이머 단어 없이 "멈춰"/"그만"만 단독 사용 → 요리 중 맥락에서 타이머 정지 의도
         if (t.contains("취소") || t.contains("그만") || t.contains("멈춰") || t.contains("stop"))
-            return TomaIntent.CANCEL_TIMER
+            return TomaIntent.CANCEL
 
         if (t.contains("레시피") || t.contains("요리")) {
             val keyword = t.replace("레시피", "")
