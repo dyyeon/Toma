@@ -349,17 +349,22 @@ fun RecipeDetailContent(
                         currentStepIndex++
                     } else if (!hasFinished) {
                         hasFinished = true
-                        onFinish(keyword, recipeDataJson)
+                        speakText("finish", "모든 단계를 완료했어요!", TextToSpeech.QUEUE_FLUSH)
+                        scope.launch {
+                            delay(2000)
+                            onFinish(keyword, recipeDataJson)
+                        }
                     }
                 }
 
                 TomaIntent.PREVIOUS_STEP -> {
                     if (currentStepIndex > 0) currentStepIndex--
+                    else speakText("first_step", "이미 첫 번째 단계예요.", TextToSpeech.QUEUE_FLUSH)
                 }
 
                 TomaIntent.REPEAT_STEP -> {
                     val text = if (currentStepIndex == 0) {
-                        "재료 준비 단계입니다. ${ingredients.joinToString(", ")}"
+                        "재료 준비 단계입니다. 필수 재료는 ${ingredients.joinToString(", ")}입니다."
                     } else {
                         steps.getOrNull(currentStepIndex - 1).orEmpty()
                     }
@@ -371,6 +376,7 @@ fun RecipeDetailContent(
                     if (isTimerRecommended) {
                         if (!showStepTimer) {
                             recipeDetailViewModel.showTimerCard()
+                            recipeDetailViewModel.startTimer()
                         } else when (stepTimerState) {
                             StepTimerState.IDLE     -> recipeDetailViewModel.startTimer()
                             StepTimerState.RUNNING  -> recipeDetailViewModel.pauseTimer()
@@ -382,9 +388,28 @@ fun RecipeDetailContent(
                     }
                 }
 
+                TomaIntent.START_TIMER -> {
+                    if (isTimerRecommended) {
+                        if (!showStepTimer) {
+                            recipeDetailViewModel.showTimerCard()
+                            recipeDetailViewModel.startTimer()
+                        } else when (stepTimerState) {
+                            StepTimerState.IDLE     -> recipeDetailViewModel.startTimer()
+                            StepTimerState.RUNNING  -> speakText("timer_running", "타이머가 이미 실행 중이에요.", TextToSpeech.QUEUE_FLUSH)
+                            StepTimerState.PAUSED   -> recipeDetailViewModel.resumeTimer()
+                            StepTimerState.FINISHED -> recipeDetailViewModel.restartTimer()
+                        }
+                    } else {
+                        voiceViewModel.showTimerManualGuidance()
+                    }
+                }
+
                 TomaIntent.CANCEL_TIMER -> {
                     if (stepTimerState == StepTimerState.RUNNING || stepTimerState == StepTimerState.PAUSED) {
                         recipeDetailViewModel.cancelTimer()
+                        speakText("cancel_timer", "타이머를 취소했어요.", TextToSpeech.QUEUE_FLUSH)
+                    } else {
+                        speakText("no_timer", "실행 중인 타이머가 없어요.", TextToSpeech.QUEUE_FLUSH)
                     }
                 }
 

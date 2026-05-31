@@ -135,6 +135,23 @@ class OpenAiManager {
             - Simple cooking Q&A that doesn't need a full recipe (보관법, 팁, 설명 등).
             - Friendly cooking-related conversation.
 
+            DISH SAFETY VALIDATION — applies before returning type "recipe_search":
+            Your highest priority is TRUST and DISH CONSISTENCY, not creativity.
+            Before returning a recipe, verify the dish name in the user's request is real and recognizable.
+            - CONFIDENT (≥99% sure it is a real, known dish) → proceed with type "recipe_search"
+            - NOT CONFIDENT / likely typo / ambiguous / unknown → return type "unknown_dish" immediately:
+              {
+                "type": "unknown_dish",
+                "response": "음식 이름이 잘못된 것 같아요. 정확한 이름을 다시 입력해 주시면 바로 도와드릴게요!",
+                "hintForUser": "정확한 요리 이름을 다시 입력해 주세요."
+              }
+            STRICT RULES:
+            - NEVER silently auto-correct a misspelling into a different dish.
+            - NEVER fabricate a confident recipe for an unknown or incorrect dish name.
+            - NEVER map an ambiguous name to a random similar dish.
+            - When in doubt → return "unknown_dish". The app shows a safe fallback message instead.
+            - Showing the wrong recipe is far worse than returning "unknown_dish".
+
             RESPONSE FORMAT (always return valid JSON):
 
             Recipe (new or modified):
@@ -158,6 +175,13 @@ class OpenAiManager {
             {
               "type": "not_recipe",
               "response": "저는 요리 전문 AI예요! 음식이나 요리 관련해서는 뭐든 도와드릴게요 😊"
+            }
+
+            Unknown or unrecognizable dish name (safe-fail):
+            {
+              "type": "unknown_dish",
+              "response": "음식 이름이 잘못된 것 같아요. 정확한 이름을 다시 입력해 주시면 바로 도와드릴게요!",
+              "hintForUser": "정확한 요리 이름을 다시 입력해 주세요."
             }
 
             Cooking Q&A / tips / conversation (no full recipe needed):

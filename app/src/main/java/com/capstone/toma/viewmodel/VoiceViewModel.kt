@@ -456,7 +456,7 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
     private fun classifyManualIntent(text: String): TomaIntent {
         val t = text.trim().lowercase(Locale.ROOT)
 
-        if (t.contains("다음") || t.contains("넘어가") || t.contains("next"))
+        if (t.contains("다음") || t.contains("넘어가") || t.contains("넘겨") || t.contains("next"))
             return TomaIntent.NEXT_STEP
 
         if (t.contains("이전") || t.contains("돌아가") || t.contains("뒤로") || t.contains("back"))
@@ -468,9 +468,16 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
         val hasTimerWord = t.contains("타이머") || t.contains("알람")
         val cancelWords = listOf("취소", "꺼줘", "꺼", "중지", "멈춰", "그만", "stop")
         val hasCancelWord = cancelWords.any { t.contains(it) }
+        val startWords = listOf("시작", "켜줘", "켜", "실행")
+        val hasStartWord = startWords.any { t.contains(it) }
 
         if (hasTimerWord && hasCancelWord) {
             return TomaIntent.CANCEL_TIMER
+        }
+
+        // 명시적 시작 키워드("시작", "켜", "실행") + 타이머 단어 → START_TIMER (토글 아닌 "항상 시작")
+        if (hasTimerWord && hasStartWord) {
+            return TomaIntent.START_TIMER
         }
 
         // 숫자 파싱 없이, 타이머 관련 명령은 전부 추천 타이머로만 처리
@@ -478,8 +485,9 @@ class VoiceViewModel(application: Application) : AndroidViewModel(application) {
             return TomaIntent.RECOMMENDED_TIMER
         }
 
+        // 타이머 단어 없이 단독 사용 → 요리 중 맥락에서 타이머 정지 의도
         if (t.contains("취소") || t.contains("그만") || t.contains("멈춰") || t.contains("stop"))
-            return TomaIntent.CANCEL
+            return TomaIntent.CANCEL_TIMER
 
         if (t.contains("레시피") || t.contains("요리")) {
             val keyword = t.replace("레시피", "")

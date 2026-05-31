@@ -9,6 +9,7 @@ sealed class TomaIntent {
     object REPEAT_STEP : TomaIntent()
     data class SET_TIMER(val durationMin: Int) : TomaIntent()
     object RECOMMENDED_TIMER : TomaIntent()
+    object START_TIMER : TomaIntent()
     object CANCEL_TIMER : TomaIntent()
     data class RECIPE_SEARCH(val keyword: String) : TomaIntent()
     object INGREDIENT_CHECK : TomaIntent()
