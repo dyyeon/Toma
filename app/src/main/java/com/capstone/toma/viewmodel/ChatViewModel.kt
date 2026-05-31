@@ -364,11 +364,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun processAiResponse(userText: String) {
+        val correctedText = com.capstone.toma.DishNameHelper.correctDishNameInText(userText)
         val history = _uiState.value.messages.map { it.text to it.isUser }
         val gen = ++requestGeneration
 
         viewModelScope.launch(Dispatchers.IO) {
-            openAiManager.processChatRequest(userText, history) { result ->
+            openAiManager.processChatRequest(correctedText, history) { result ->
                 viewModelScope.launch {
                     if (gen != requestGeneration) return@launch
                     when (result) {
@@ -381,9 +382,22 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                                 val recipeJson = JSONObject(result.recipeData)
                                 val currentImageUrl = recipeJson.optString("image_url")
                                 if (currentImageUrl.isBlank() || currentImageUrl == "없음") {
+                                    val recipeTitle = recipeJson.optString("title", "")
+                                    val searchKeyword = com.capstone.toma.DishNameHelper.canonicalSearchKeyword(
+                                        gptKeyword = result.keyword,
+                                        recipeTitle = recipeTitle
+                                    )
                                     val imageUrl = withContext(Dispatchers.IO) {
-                                        PublicRecipeManager().searchRecipe(result.keyword)?.mainImageUrl?.takeIf { it.isNotBlank() }
-                                            ?: WebPageManager().searchFoodImage(result.keyword)
+                                        val publicRecipe = PublicRecipeManager().searchRecipe(searchKeyword)
+                                        val publicImageUrl = if (
+                                            publicRecipe != null &&
+                                            com.capstone.toma.DishNameHelper.isImageConsistentWithRecipe(
+                                                publicRecipe.name, searchKeyword
+                                            )
+                                        ) {
+                                            publicRecipe.mainImageUrl.takeIf { it.isNotBlank() }
+                                        } else null
+                                        publicImageUrl ?: WebPageManager().searchFoodImage(searchKeyword)
                                     }
                                     if (imageUrl != null) {
                                         recipeJson.put("image_url", imageUrl)
