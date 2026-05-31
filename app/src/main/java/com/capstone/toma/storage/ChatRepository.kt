@@ -24,6 +24,10 @@ class ChatRepository private constructor(private val dao: ChatStorageDao) {
         dao.touchSession(sessionId, System.currentTimeMillis())
     }
 
+    suspend fun saveMessageRecipeContext(messageId: String, contextJson: String) {
+        dao.updateMessageRecipeContext(messageId, contextJson)
+    }
+
     companion object {
         @Volatile
         private var instance: ChatRepository? = null

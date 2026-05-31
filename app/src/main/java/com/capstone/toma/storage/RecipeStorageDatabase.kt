@@ -59,7 +59,8 @@ data class ChatMessageEntity(
     val isUser: Boolean,
     val timestamp: String,
     val imageUri: String?,
-    val orderIndex: Int
+    val orderIndex: Int,
+    val recipeContextJson: String? = null
 )
 
 class RecipeStorageConverters {
@@ -91,7 +92,7 @@ class RecipeStorageConverters {
 
 @Database(
     entities = [StoredRecipeEntity::class, RecentRecipeHistoryEntity::class, ChatSessionEntity::class, ChatMessageEntity::class],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(RecipeStorageConverters::class)
@@ -186,6 +187,12 @@ abstract class RecipeStorageDatabase : RoomDatabase() {
             }
         }
 
+        private val Migration7To8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE chat_messages ADD COLUMN recipeContextJson TEXT")
+            }
+        }
+
         private val Migration5To6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -229,6 +236,7 @@ abstract class RecipeStorageDatabase : RoomDatabase() {
                     .addMigrations(Migration4To5)
                     .addMigrations(Migration5To6)
                     .addMigrations(Migration6To7)
+                    .addMigrations(Migration7To8)
                     .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { instance = it }

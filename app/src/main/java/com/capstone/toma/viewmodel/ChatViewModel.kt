@@ -79,9 +79,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun loadSession(sessionId: String) {
         viewModelScope.launch {
-            val messages = withContext(Dispatchers.IO) {
+            val entities = withContext(Dispatchers.IO) {
                 chatRepository.getMessages(sessionId)
-            }.map { entity ->
+            }
+
+            val messages = entities.map { entity ->
                 ChatMessage(
                     id = entity.id,
                     text = entity.text,
@@ -90,11 +92,29 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     imageUri = entity.imageUri
                 )
             }
+
+            // 레시피 컨텍스트가 저장된 메시지로부터 _recipeContexts 복원
+            val restoredContexts = entities
+                .mapNotNull { entity ->
+                    val json = entity.recipeContextJson ?: return@mapNotNull null
+                    runCatching {
+                        val j = JSONObject(json)
+                        entity.id to LastRecipeContext(
+                            keyword = j.getString("keyword"),
+                            sourceType = runCatching {
+                                com.capstone.toma.model.RecipeSourceType.valueOf(j.getString("sourceType"))
+                            }.getOrDefault(com.capstone.toma.model.RecipeSourceType.TEXT),
+                            recipeData = j.getString("recipeData")
+                        )
+                    }.getOrNull()
+                }
+                .toMap()
+
             currentSessionId = sessionId
             messageOrderIndex = messages.size
             lastAnalyzedRecipeData = null
             sessionSourceType = null
-            _recipeContexts.value = emptyMap()
+            _recipeContexts.value = restoredContexts
             clearNavigationEvent()
             clearErrorEvent()
             _uiState.value = AiChatUiState(messages = messages)
@@ -481,13 +501,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                     com.capstone.toma.model.RecipeSourceType.TEXT
                 }
 
-            _recipeContexts.update {
-                it + (aiMessageId to LastRecipeContext(
-                    keyword = keyword,
-                    sourceType = sourceType,
-                    recipeData = effectiveRecipeData ?: ""
-                ))
-            }
+            val context = LastRecipeContext(
+                keyword = keyword,
+                sourceType = sourceType,
+                recipeData = effectiveRecipeData ?: ""
+            )
+            _recipeContexts.update { it + (aiMessageId to context) }
+            persistRecipeContext(aiMessageId, context)
             _navigationEvent.value = ChatNavigationEvent.ToConfirm(
                 keyword = keyword,
                 sourceType = sourceType,
@@ -507,6 +527,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun dismissQuickActions() {
         _uiState.update { it.copy(quickActions = null) }
+    }
+
+    private fun persistRecipeContext(messageId: String, context: LastRecipeContext) {
+        val contextJson = org.json.JSONObject().apply {
+            put("keyword", context.keyword)
+            put("sourceType", context.sourceType.name)
+            put("recipeData", context.recipeData)
+        }.toString()
+        viewModelScope.launch(Dispatchers.IO) {
+            chatRepository.saveMessageRecipeContext(messageId, contextJson)
+        }
     }
 
     private fun getCurrentTime(): String = timeFormat.format(Date())

@@ -28,4 +28,7 @@ interface ChatStorageDao {
 
     @Query("UPDATE chat_sessions SET lastUpdatedAt = :updatedAt WHERE id = :sessionId")
     suspend fun touchSession(sessionId: String, updatedAt: Long)
+
+    @Query("UPDATE chat_messages SET recipeContextJson = :contextJson WHERE id = :messageId")
+    suspend fun updateMessageRecipeContext(messageId: String, contextJson: String)
 }
