@@ -114,8 +114,8 @@ dependencies {
     implementation("com.google.firebase:firebase-storage-ktx")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
-    // ONNX Runtime for openWakeWord
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
+    // ONNX Runtime 제거됨 — wakeword 기능이 제거되어 미사용
+    // implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -131,5 +131,9 @@ dependencies {
     // Vosk 관련 의존성 완전 제거 (오류 방지)
     // implementation("com.alphacephei:vosk-android:0.3.32")
 
-    implementation("net.java.dev.jna:jna:5.2.0@aar")
+    // JNA 제거됨 — Vosk 제거 이후 미사용 (libjnidispatch.so 원인)
+    // implementation("net.java.dev.jna:jna:5.2.0@aar")
+
+    // 16KB 페이지 크기 정렬 버전 강제 지정 (libandroidx.graphics.path.so)
+    implementation("androidx.graphics:graphics-path:1.0.1")
 }
