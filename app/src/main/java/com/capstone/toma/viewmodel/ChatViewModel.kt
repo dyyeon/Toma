@@ -15,6 +15,7 @@ import org.json.JSONObject
 import com.capstone.toma.ui.screen.AiChatUiState
 import com.capstone.toma.ui.screen.ChatMessage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -68,6 +69,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private var currentSessionId: String? = null
     private var messageOrderIndex = 0
+
+    // Incremented on resetChat() to invalidate in-flight OkHttp callbacks
+    private var requestGeneration = 0
+    // Job for ongoing startLinkAnalysis coroutine; cancelled on resetChat()
+    private var linkAnalysisJob: Job? = null
 
     fun observeSessions(): Flow<List<ChatSessionEntity>> = chatRepository.observeSessions()
 
@@ -138,6 +144,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun resetChat() {
+        requestGeneration++
+        linkAnalysisJob?.cancel()
+        linkAnalysisJob = null
         currentSessionId = null
         messageOrderIndex = 0
         _uiState.value = AiChatUiState()
@@ -194,6 +203,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun sendCustomMessage(displayText: String, hiddenPrompt: String? = null) {
         if (displayText.isBlank()) return
+        if (_uiState.value.isTyping) return
 
         val userMessage = ChatMessage(
             id = UUID.randomUUID().toString(),
@@ -259,7 +269,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         ensureSessionId(userMessage.text)
         persistMessage(userMessage)
 
-        viewModelScope.launch {
+        linkAnalysisJob?.cancel()
+        linkAnalysisJob = viewModelScope.launch {
             val result = onAnalyze { status ->
                 _uiState.update { state ->
                     state.copy(
@@ -354,10 +365,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun processAiResponse(userText: String) {
         val history = _uiState.value.messages.map { it.text to it.isUser }
+        val gen = ++requestGeneration
 
         viewModelScope.launch(Dispatchers.IO) {
             openAiManager.processChatRequest(userText, history) { result ->
                 viewModelScope.launch {
+                    if (gen != requestGeneration) return@launch
                     when (result) {
                         is VoiceRequestResult.Success -> {
                             val enrichedResult = if (

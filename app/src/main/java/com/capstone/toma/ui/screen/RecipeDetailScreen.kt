@@ -158,6 +158,7 @@ fun RecipeDetailContent(
 
     var currentStepIndex by remember { mutableIntStateOf(0) }
     val totalSteps = steps.size
+    var hasFinished by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -344,8 +345,12 @@ fun RecipeDetailContent(
 
             when (intent) {
                 TomaIntent.NEXT_STEP -> {
-                    if (currentStepIndex < totalSteps) currentStepIndex++
-                    else onFinish(keyword, recipeDataJson)
+                    if (currentStepIndex < totalSteps) {
+                        currentStepIndex++
+                    } else if (!hasFinished) {
+                        hasFinished = true
+                        onFinish(keyword, recipeDataJson)
+                    }
                 }
 
                 TomaIntent.PREVIOUS_STEP -> {
@@ -543,8 +548,12 @@ fun RecipeDetailContent(
                     if (currentStepIndex > 0) currentStepIndex--
                 },
                 onNextClick = {
-                    if (currentStepIndex < totalSteps) currentStepIndex++
-                    else onFinish(keyword, recipeDataJson)
+                    if (currentStepIndex < totalSteps) {
+                        currentStepIndex++
+                    } else if (!hasFinished) {
+                        hasFinished = true
+                        onFinish(keyword, recipeDataJson)
+                    }
                 },
                 onMicClick = {
                     hardStopTtsAndPrepareListening()
