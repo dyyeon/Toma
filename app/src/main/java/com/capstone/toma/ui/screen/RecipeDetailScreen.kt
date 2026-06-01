@@ -188,6 +188,9 @@ fun RecipeDetailContent(
             stepTimes
         ) > 0
     }
+    // LaunchedEffect(voiceViewModel)의 collect 클로저는 최초 composition 시점 값을 캡처하므로
+    // step 변경 후 isTimerRecommended가 갱신돼도 클로저는 stale 값을 본다. rememberUpdatedState로 해결.
+    val isTimerRecommendedState = rememberUpdatedState(isTimerRecommended)
 
     fun hardStopTtsAndPrepareListening() {
         pendingTtsResumeJob?.cancel()
@@ -373,7 +376,7 @@ fun RecipeDetailContent(
                 }
 
                 TomaIntent.RECOMMENDED_TIMER -> {
-                    if (isTimerRecommended) {
+                    if (isTimerRecommendedState.value) {
                         if (!showStepTimer) {
                             recipeDetailViewModel.showTimerCard()
                             recipeDetailViewModel.startTimer()
@@ -389,7 +392,7 @@ fun RecipeDetailContent(
                 }
 
                 TomaIntent.START_TIMER -> {
-                    if (isTimerRecommended) {
+                    if (isTimerRecommendedState.value) {
                         if (!showStepTimer) {
                             recipeDetailViewModel.showTimerCard()
                             recipeDetailViewModel.startTimer()
