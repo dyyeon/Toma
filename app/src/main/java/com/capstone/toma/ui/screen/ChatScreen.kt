@@ -436,20 +436,22 @@ private fun ChatBubble(message: ChatMessage) {
                 }
             }
 
-            Surface(
-                shape = bubbleShape,
-                color = bubbleBgColor,
-                shadowElevation = if (isUser) 2.dp else 4.dp,
-                border = if (isUser) null else BorderStroke(1.dp, TomaCardBorder),
-                modifier = Modifier.widthIn(max = 250.dp)
-            ) {
-                Text(
-                    text = message.text,
-                    color = textColor,
-                    fontSize = 15.sp,
-                    lineHeight = 24.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                )
+            if (message.text.isNotEmpty()) {
+                Surface(
+                    shape = bubbleShape,
+                    color = bubbleBgColor,
+                    shadowElevation = if (isUser) 2.dp else 4.dp,
+                    border = if (isUser) null else BorderStroke(1.dp, TomaCardBorder),
+                    modifier = Modifier.widthIn(max = 250.dp)
+                ) {
+                    Text(
+                        text = message.text,
+                        color = textColor,
+                        fontSize = 15.sp,
+                        lineHeight = 24.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                }
             }
         }
 

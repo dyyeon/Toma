@@ -30,7 +30,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import coil.size.Size
 import com.capstone.toma.ui.theme.*
 import com.capstone.toma.ui.util.rememberMultipleClickHandler
 import org.json.JSONObject
@@ -209,8 +212,13 @@ private fun ConfirmImageSection(imageUrl: String?) {
                 )
             }
         } else {
+            val context = LocalContext.current
             AsyncImage(
-                model = imageUrl,
+                model = ImageRequest.Builder(context)
+                    .data(imageUrl)
+                    .size(Size.ORIGINAL)
+                    .crossfade(true)
+                    .build(),
                 contentDescription = "요리 이미지",
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop

@@ -50,21 +50,46 @@ class WebPageManager {
         }
     }
 
-    // Naver CDN serves small thumbnails via ?type=w80 / ?type=w160 etc.
-    // Replace with w966 (Naver's largest standard size). For other CDNs strip generic
-    // resize params that cause the image to be served at reduced resolution.
     private fun upgradeToFullResolution(url: String): String {
         return try {
             val uri = Uri.parse(url)
             val host = uri.host ?: return url
             when {
+                // Naver CDN: type 쿼리에 사이즈 숫자가 있으면 무조건 w966으로 교체 (w80, m120, ffn200_200_0 등 모두)
                 host.endsWith("pstatic.net") -> {
                     val typeParam = uri.getQueryParameter("type") ?: return url
-                    if (Regex("""^[wm]\d+$""").matches(typeParam)) {
-                        uri.buildUpon().clearQuery()
-                            .appendQueryParameter("type", "w966")
-                            .build().toString()
+                    if (typeParam.none { it.isDigit() }) return url
+                    val builder = uri.buildUpon().clearQuery()
+                    uri.queryParameterNames
+                        .filter { it != "type" }
+                        .forEach { builder.appendQueryParameter(it, uri.getQueryParameter(it)) }
+                    builder.appendQueryParameter("type", "w966").build().toString()
+                }
+                // 10000recipe: `_280X205`, `-280x205c` 같은 다양한 사이즈 접미사 제거
+                host.endsWith("ezmember.co.kr") -> {
+                    val path = uri.path ?: return url
+                    val stripped = path.replace(
+                        Regex("""[-_]\d+[Xx]\d+[a-zA-Z]?(?=\.[A-Za-z]{3,4}$)"""),
+                        ""
+                    )
+                    if (stripped == path) url
+                    else uri.buildUpon().path(stripped).build().toString()
+                }
+                // Kakao/Daum thumb proxy: `?fname=<원본URL>&width=...`. fname의 원본 URL을 그대로 사용.
+                host.endsWith("daumcdn.net") || host.endsWith("kakaocdn.net") -> {
+                    val fname = uri.getQueryParameter("fname")
+                    if (!fname.isNullOrBlank() &&
+                        (fname.startsWith("http://") || fname.startsWith("https://"))
+                    ) {
+                        fname
                     } else url
+                }
+                // Tistory: 경로 앞의 `/R800x0/` 같은 리사이즈 세그먼트 제거
+                host.endsWith("tistory.com") -> {
+                    val path = uri.path ?: return url
+                    val stripped = path.replace(Regex("""^/R\d+x\d+/"""), "/")
+                    if (stripped == path) url
+                    else uri.buildUpon().path(stripped).build().toString()
                 }
                 else -> {
                     val resizeKeys = setOf("w", "h", "width", "height", "resize", "size")
@@ -170,7 +195,10 @@ class WebPageManager {
 
     suspend fun searchFoodImage(keyword: String): String? = withContext(Dispatchers.IO) {
         try {
-            val encoded = URLEncoder.encode(keyword, "UTF-8")
+            val k = keyword.trim()
+            if (k.isBlank()) return@withContext null
+
+            val encoded = URLEncoder.encode(k, "UTF-8")
             val searchUrl = "https://www.10000recipe.com/recipe/list.html?q=$encoded"
             val request = Request.Builder()
                 .url("https://r.jina.ai/$searchUrl")
@@ -180,17 +208,45 @@ class WebPageManager {
                 if (!response.isSuccessful) return@use null
                 val content = response.body?.string() ?: return@use null
 
-                val imageRegex = Regex("""!\[.*?\]\((https://[^)]+\.(?:jpg|jpeg|png|webp|GIF)[^)]*)\)""", RegexOption.IGNORE_CASE)
-                val images = imageRegex.findAll(content).map { it.groupValues[1] }.toList()
-
-                images.find { it.contains("cache/recipe") }
-                    ?: images.firstOrNull {
-                        !it.contains("logo", ignoreCase = true) &&
-                        !it.contains("icon", ignoreCase = true)
-                    }
+                pickRecipeImage(content, k)
             }
         } catch (e: Exception) {
             null
         }
+    }
+
+    /**
+     * 마크다운 컨텐츠에서 키워드와 가장 일치하는 레시피 이미지를 선택한다.
+     *
+     * 점수 기준:
+     *  +100  : alt 텍스트가 키워드를 포함
+     *  +60   : 이미지 주변 텍스트 윈도우(±250자)에 키워드가 존재
+     *  +30   : URL이 cache/recipe 패턴을 포함 (10000recipe 썸네일)
+     *
+     * 제외 조건: logo, icon, banner, default, profile, avatar 등
+     * 최소 점수 60 미만이면 null 반환 → 잘못된 이미지를 보여주느니 안 보여주는 편이 낫다.
+     */
+    private fun pickRecipeImage(content: String, keyword: String): String? {
+        val imageRegex = Regex("""!\[([^\]]*)\]\((https://[^)]+\.(?:jpg|jpeg|png|webp|GIF)[^)]*)\)""", RegexOption.IGNORE_CASE)
+        val excludePatterns = listOf("logo", "icon", "banner", "default", "profile", "avatar", "thumb_p", "mugshot")
+
+        val candidates = imageRegex.findAll(content).mapNotNull { match ->
+            val alt = match.groupValues[1]
+            val url = match.groupValues[2]
+            if (excludePatterns.any { url.contains(it, ignoreCase = true) }) return@mapNotNull null
+
+            val start = maxOf(0, match.range.first - 250)
+            val end = minOf(content.length, match.range.last + 250)
+            val window = content.substring(start, end)
+
+            var score = 0
+            if (alt.contains(keyword, ignoreCase = true)) score += 100
+            if (window.contains(keyword, ignoreCase = true)) score += 60
+            if (url.contains("cache/recipe")) score += 30
+            if (score > 0) url to score else null
+        }.toList()
+
+        val best = candidates.maxByOrNull { it.second } ?: return null
+        return if (best.second >= 60) upgradeToFullResolution(best.first) else null
     }
 }

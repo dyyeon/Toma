@@ -212,8 +212,17 @@ private suspend fun analyzePageContent(
         // Only launched when the page scraper returned no image.
         val imgDeferred = if (prefetchedImage == null && keywordCandidate.isNotBlank()) {
             async(Dispatchers.IO) {
-                PublicRecipeManager().searchRecipe(keywordCandidate)?.mainImageUrl?.takeIf { it.isNotBlank() }
-                    ?: WebPageManager().searchFoodImage(keywordCandidate)
+                coroutineScope {
+                    val publicDeferred = async { PublicRecipeManager().searchRecipe(keywordCandidate) }
+                    val webDeferred = async { WebPageManager().searchFoodImage(keywordCandidate) }
+                    val publicImage = publicDeferred.await()?.mainImageUrl?.takeIf { it.isNotBlank() }
+                    if (publicImage != null) {
+                        webDeferred.cancel()
+                        publicImage
+                    } else {
+                        webDeferred.await()
+                    }
+                }
             }
         } else null
 
@@ -362,8 +371,9 @@ fun TomaNavHost(
                 navController.navigate(TomaDestination.Chat.route)
             }
             chatViewModel.startLinkAnalysis(
-                userDisplay   = "카메라로 레시피 찾기",
+                userDisplay   = "",
                 initialAiText = "사진을 분석하고 있어요. 잠시만 기다려 주세요... 📸",
+                imageUri = uri.toString(),
                 fixedSourceType = com.capstone.toma.model.RecipeSourceType.IMAGE
             ) { _ ->
                 com.capstone.toma.OpenAiManager().analyzeRecipeImageSuspend(context, uri.toString())
@@ -396,8 +406,9 @@ fun TomaNavHost(
                 navController.navigate(TomaDestination.Chat.route)
             }
             chatViewModel.startLinkAnalysis(
-                userDisplay = "사진으로 레시피 찾기",
+                userDisplay = "",
                 initialAiText = "사진을 분석하고 있어요. 잠시만 기다려 주세요... 📸",
+                imageUri = uri.toString(),
                 fixedSourceType = com.capstone.toma.model.RecipeSourceType.IMAGE
             ) { _ ->
                 val openAi = com.capstone.toma.OpenAiManager()

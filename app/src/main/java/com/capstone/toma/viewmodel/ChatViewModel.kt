@@ -16,6 +16,8 @@ import com.capstone.toma.ui.screen.AiChatUiState
 import com.capstone.toma.ui.screen.ChatMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -251,6 +253,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun startLinkAnalysis(
         userDisplay: String,
         initialAiText: String,
+        imageUri: String? = null,
         fixedSourceType: com.capstone.toma.model.RecipeSourceType? = null,
         onAnalyze: suspend (updateStatus: (String) -> Unit) -> VoiceRequestResult
     ) {
@@ -268,7 +271,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             id = userMessageId,
             text = userDisplay,
             isUser = true,
-            timestamp = userTimestamp
+            timestamp = userTimestamp,
+            imageUri = imageUri
         )
         val aiMessage = ChatMessage(
             id = aiMessageId,
@@ -408,16 +412,25 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                                         recipeTitle = recipeTitle
                                     )
                                     val imageUrl = withContext(Dispatchers.IO) {
-                                        val publicRecipe = PublicRecipeManager().searchRecipe(searchKeyword)
-                                        val publicImageUrl = if (
-                                            publicRecipe != null &&
-                                            com.capstone.toma.DishNameHelper.isImageConsistentWithRecipe(
-                                                publicRecipe.name, searchKeyword
-                                            )
-                                        ) {
-                                            publicRecipe.mainImageUrl.takeIf { it.isNotBlank() }
-                                        } else null
-                                        publicImageUrl ?: WebPageManager().searchFoodImage(searchKeyword)
+                                        coroutineScope {
+                                            val publicDeferred = async { PublicRecipeManager().searchRecipe(searchKeyword) }
+                                            val webDeferred = async { WebPageManager().searchFoodImage(searchKeyword) }
+                                            val publicRecipe = publicDeferred.await()
+                                            val publicImageUrl = if (
+                                                publicRecipe != null &&
+                                                com.capstone.toma.DishNameHelper.isImageConsistentWithRecipe(
+                                                    publicRecipe.name, searchKeyword
+                                                )
+                                            ) {
+                                                publicRecipe.mainImageUrl.takeIf { it.isNotBlank() }
+                                            } else null
+                                            if (publicImageUrl != null) {
+                                                webDeferred.cancel()
+                                                publicImageUrl
+                                            } else {
+                                                webDeferred.await()
+                                            }
+                                        }
                                     }
                                     if (imageUrl != null) {
                                         recipeJson.put("image_url", imageUrl)
