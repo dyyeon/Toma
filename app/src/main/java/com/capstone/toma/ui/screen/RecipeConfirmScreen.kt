@@ -18,7 +18,12 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import com.capstone.toma.RecipeImageFetcher
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,6 +55,17 @@ fun RecipeConfirmScreen(
         parseConfirmRecipe(keyword, recipeDataJson)
     }
 
+    var resolvedImageUrl by remember { mutableStateOf(recipe.imageUrl) }
+    var isLoadingImage by remember { mutableStateOf(recipe.imageUrl.isNullOrBlank()) }
+
+    LaunchedEffect(recipe.title) {
+        if (recipe.imageUrl.isNullOrBlank()) {
+            isLoadingImage = true
+            resolvedImageUrl = RecipeImageFetcher().fetchImageUrl(recipe.title)
+            isLoadingImage = false
+        }
+    }
+
     Scaffold(
         containerColor = Color(0xFFF8F9FA),
         bottomBar = {
@@ -77,7 +93,7 @@ fun RecipeConfirmScreen(
             }
 
             item {
-                ConfirmImageSection(recipe.imageUrl)
+                ConfirmImageSection(resolvedImageUrl, isLoadingImage)
             }
 
             item {
@@ -186,7 +202,7 @@ private fun ConfirmTopBar(
 }
 
 @Composable
-private fun ConfirmImageSection(imageUrl: String?) {
+private fun ConfirmImageSection(imageUrl: String?, isLoading: Boolean = false) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -199,30 +215,74 @@ private fun ConfirmImageSection(imageUrl: String?) {
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
-        if (imageUrl.isNullOrBlank()) {
-            Box(
-                modifier = Modifier.fillMaxSize().background(Color(0xFFFFF3E8)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.RestaurantMenu,
-                    contentDescription = null,
-                    tint = TomaMainOrange.copy(alpha = 0.5f),
-                    modifier = Modifier.size(64.dp)
+        when {
+            isLoading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color(0xFFFFF3E8)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = TomaMainOrange,
+                            modifier = Modifier.size(40.dp),
+                            strokeWidth = 3.dp
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "사진 찾는 중...",
+                            fontSize = 13.sp,
+                            color = TomaMainOrange.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
+            imageUrl.isNullOrBlank() -> {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(Color(0xFFFFF3E8)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.RestaurantMenu,
+                            contentDescription = null,
+                            tint = TomaMainOrange.copy(alpha = 0.5f),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "사진이 없는 레시피예요",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TomaMainOrange.copy(alpha = 0.7f)
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "저장 후 직접 추가할 수 있어요",
+                            fontSize = 12.sp,
+                            color = TomaMainOrange.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+            }
+            else -> {
+                val context = LocalContext.current
+                AsyncImage(
+                    model = ImageRequest.Builder(context)
+                        .data(imageUrl)
+                        .size(Size.ORIGINAL)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "요리 이미지",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
                 )
             }
-        } else {
-            val context = LocalContext.current
-            AsyncImage(
-                model = ImageRequest.Builder(context)
-                    .data(imageUrl)
-                    .size(Size.ORIGINAL)
-                    .crossfade(true)
-                    .build(),
-                contentDescription = "요리 이미지",
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
         }
     }
 }

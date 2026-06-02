@@ -47,6 +47,14 @@ val resolvedFoodSafetyApiKey = localProperties.getProperty("FOOD_SAFETY_API_KEY"
     ?: System.getenv("FOOD_SAFETY_API_KEY")
     ?: ""
 
+val resolvedNaverClientId = localProperties.getProperty("NAVER_CLIENT_ID")
+    ?: System.getenv("NAVER_CLIENT_ID")
+    ?: ""
+
+val resolvedNaverClientSecret = localProperties.getProperty("NAVER_CLIENT_SECRET")
+    ?: System.getenv("NAVER_CLIENT_SECRET")
+    ?: ""
+
 android {
     namespace = "com.capstone.toma"
     
@@ -64,6 +72,8 @@ android {
 
         buildConfigField("String", "OPENAI_API_KEY", "\"$resolvedOpenAiApiKey\"")
         buildConfigField("String", "FOOD_SAFETY_API_KEY", "\"$resolvedFoodSafetyApiKey\"")
+        buildConfigField("String", "NAVER_CLIENT_ID", "\"$resolvedNaverClientId\"")
+        buildConfigField("String", "NAVER_CLIENT_SECRET", "\"$resolvedNaverClientSecret\"")
     }
 
     buildTypes {
