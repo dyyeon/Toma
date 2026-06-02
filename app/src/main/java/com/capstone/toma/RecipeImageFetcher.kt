@@ -103,8 +103,15 @@ class RecipeImageFetcher {
                 val ct = response.header("Content-Type")?.lowercase()
                 if (ct != null && ct.startsWith("image/")) return true
                 // Content-Type이 없거나 모호하면 첫 바이트로 매직 넘버 체크
-                val bytes = response.body?.byteStream()?.readNBytes(8) ?: return false
-                isImageBytes(bytes)
+                return try {
+            val inputStream = response.body?.byteStream() ?: return false
+            val buffer = ByteArray(8)
+            val bytesRead = inputStream.read(buffer)
+            if (bytesRead < 8) return false
+            isImageBytes(buffer)
+        } catch (e: Exception) {
+            false
+        }
             }
         } catch (e: Exception) {
             false

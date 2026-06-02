@@ -1,3 +1,5 @@
+@file:Suppress("SpellCheckingInspection")
+
 package com.capstone.toma.ui.screen
 
 import androidx.compose.foundation.BorderStroke
@@ -83,8 +85,8 @@ fun TomaHomeScreen(
     onSearchQueryChange: (String) -> Unit,
     onSearchSubmit: () -> Unit,
     onMicClick: () -> Unit,
-    onYoutubeLinkChange: (String) -> Unit,
-    onYoutubeSubmit: () -> Unit,
+    onYouTubeLinkChange: (String) -> Unit,
+    onYouTubeSubmit: () -> Unit,
     onPhotoScanClick: () -> Unit = {},
     onRecentItemClick: (String) -> Unit = {},
     onRecentMoreClick: () -> Unit = {},
@@ -185,8 +187,8 @@ fun TomaHomeScreen(
                     ImportSection(
                         modifier = Modifier.padding(horizontal = 24.dp),
                         youtubeLink = uiState.youtubeLink,
-                        onYoutubeLinkChange = onYoutubeLinkChange,
-                        onYoutubeSubmit = onYoutubeSubmit,
+                        onYouTubeLinkChange = onYouTubeLinkChange,
+                        onYouTubeSubmit = onYouTubeSubmit,
                         onPhotoScanClick = onPhotoScanClick,
                         enabled = !uiState.isAnalyzing
                     )
@@ -344,8 +346,8 @@ fun AIRecipeSearchCard(
 @Composable
 fun ImportSection(
     youtubeLink: String,
-    onYoutubeLinkChange: (String) -> Unit,
-    onYoutubeSubmit: () -> Unit,
+    onYouTubeLinkChange: (String) -> Unit,
+    onYouTubeSubmit: () -> Unit,
     onPhotoScanClick: () -> Unit,
     enabled: Boolean,
     modifier: Modifier = Modifier
@@ -355,10 +357,10 @@ fun ImportSection(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        YoutubeImportCard(
+        YouTubeImportCard(
             linkText = youtubeLink,
-            onLinkChange = onYoutubeLinkChange,
-            onSubmit = onYoutubeSubmit,
+            onLinkChange = onYouTubeLinkChange,
+            onSubmit = onYouTubeSubmit,
             enabled = enabled
         )
 
@@ -373,7 +375,7 @@ fun ImportSection(
 
 
 @Composable
-fun YoutubeImportCard(
+fun YouTubeImportCard(
     linkText: String,
     onLinkChange: (String) -> Unit,
     onSubmit: () -> Unit,
@@ -783,8 +785,8 @@ fun PreviewTomaHomeScreen() {
         onSearchQueryChange = {},
         onSearchSubmit = {},
         onMicClick = {},
-        onYoutubeLinkChange = {},
-        onYoutubeSubmit = {},
+        onYouTubeLinkChange = {},
+        onYouTubeSubmit = {},
         onPhotoScanClick = {}
     )
 }

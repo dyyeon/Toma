@@ -1,4 +1,6 @@
-﻿package com.capstone.toma.navigation
+﻿@file:Suppress("SpellCheckingInspection")
+
+package com.capstone.toma.navigation
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -50,7 +52,7 @@ import org.json.JSONObject
 import java.io.File
 
 /** Returns true for any YouTube URL including Shorts (/shorts/), standard (/watch?v=), and youtu.be. */
-private fun String.isYoutubeUrl(): Boolean =
+private fun String.isYouTubeUrl(): Boolean =
     contains("youtube.com/watch") ||
     contains("youtube.com/shorts/") ||
     contains("youtu.be/") ||
@@ -166,7 +168,7 @@ private fun buildWebPrompt(url: String, title: String?, description: String?): S
 
 private suspend fun analyzePageContent(
     url: String,
-    isYoutube: Boolean,
+    isYouTube: Boolean,
     title: String?,
     description: String?,
     prefetchedImage: String?,
@@ -174,7 +176,7 @@ private suspend fun analyzePageContent(
     updateStatus: (String) -> Unit
 ): VoiceRequestResult {
     // 여러 요리를 묶은 브이로그/모음 영상 — AI로 요리 목록 추출 후 선택지 제공
-    if (isYoutube) {
+    if (isYouTube) {
         val multiRecipePattern = Regex("([3-9]|[1-9]\\d+)\\s*가지|주간\\s*밥상|밥상\\s*모음")
         if (title?.contains(multiRecipePattern) == true) {
             updateStatus("영상에 포함된 요리 목록을 확인하고 있어요... 🍽️")
@@ -201,9 +203,9 @@ private suspend fun analyzePageContent(
         else "전문가 AI가 내용을 분석하고 있어요... ✨"
     )
 
-    val isShorts = isYoutube && url.contains("youtube.com/shorts/", ignoreCase = true)
+    val isShorts = isYouTube && url.contains("youtube.com/shorts/", ignoreCase = true)
     val openAi = com.capstone.toma.OpenAiManager()
-    val prompt = if (isYoutube) buildYoutubePrompt(title, description, isShorts) else buildWebPrompt(url, title, description)
+    val prompt = if (isYouTube) buildYoutubePrompt(title, description, isShorts) else buildWebPrompt(url, title, description)
     val keywordCandidate = title?.replace(Regex("[^가-힣a-zA-Z0-9 ]"), " ")?.trim().orEmpty()
 
     return coroutineScope {
@@ -254,7 +256,7 @@ private suspend fun analyzePageContent(
 }
 
 private fun getAnalysisMessage(url: String): String {
-    val host = try { android.net.Uri.parse(url).host?.lowercase().orEmpty() } catch (e: Exception) { "" }
+    val host = try { Uri.parse(url).host?.lowercase().orEmpty() } catch (_: Exception) { "" }
     return when {
         host == "blog.naver.com" || host == "m.blog.naver.com" ->
             "네이버 블로그 레시피 분석 중입니다..."
@@ -282,7 +284,7 @@ private fun ChatViewModel.launchLinkAnalysis(
     resetAndNavigate: Boolean = true,
     userDisplay: String? = null
 ) {
-    val isYoutube = url.isYoutubeUrl()
+    val isYouTube = url.isYouTubeUrl()
     if (resetAndNavigate) {
         resetChat()
         navController.navigate(TomaDestination.Chat.route)
@@ -292,11 +294,11 @@ private fun ChatViewModel.launchLinkAnalysis(
     startLinkAnalysis(
         userDisplay = userBubbleText,
         initialAiText = aiStatusText,
-        fixedSourceType = if (isYoutube) com.capstone.toma.model.RecipeSourceType.YOUTUBE else com.capstone.toma.model.RecipeSourceType.WEB
+        fixedSourceType = if (isYouTube) com.capstone.toma.model.RecipeSourceType.YOUTUBE else com.capstone.toma.model.RecipeSourceType.WEB
     ) { updateStatus ->
         val webPageManager = WebPageManager()
         val youtubeManager = YouTubeManager()
-        val (t, d, img) = if (isYoutube) youtubeManager.fetchVideoInfoSuspend(url) else webPageManager.fetchPageInfoSuspend(url)
+        val (t, d, img) = if (isYouTube) youtubeManager.fetchVideoInfoSuspend(url) else webPageManager.fetchPageInfoSuspend(url)
 
         val fetchFailed = t == null && (d == null
             || d.startsWith("본문을 읽어오는데 실패")
@@ -314,7 +316,7 @@ private fun ChatViewModel.launchLinkAnalysis(
         }
 
         val history = uiState.value.messages.map { it.text to it.isUser }
-        analyzePageContent(url, isYoutube, t, d, img, history, updateStatus)
+        analyzePageContent(url, isYouTube, t, d, img, history, updateStatus)
     }
 }
 
@@ -481,8 +483,8 @@ fun TomaNavHost(
                         navController.navigateSingleTop(TomaDestination.VoiceGuide.route)
                     }
                 },
-                onYoutubeLinkChange = homeViewModel::updateYoutubeLink,
-                onYoutubeSubmit = {
+                onYouTubeLinkChange = homeViewModel::updateYouTubeLink,
+                onYouTubeSubmit = {
                     navClickHandler.processClick {
                         val link = homeUiState.youtubeLink
 
@@ -495,7 +497,7 @@ fun TomaNavHost(
                                     navController = navController,
                                     homeViewModel = homeViewModel
                                 )
-                                homeViewModel.updateYoutubeLink("")
+                                homeViewModel.updateYouTubeLink("")
                             } else {
                                 homeViewModel.showError("올바른 링크를 입력해주세요.")
                             }

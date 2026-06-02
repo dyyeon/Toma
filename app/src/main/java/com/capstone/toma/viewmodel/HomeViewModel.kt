@@ -33,7 +33,7 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(searchQuery = query) }
     }
 
-    fun updateYoutubeLink(link: String) {
+    fun updateYouTubeLink(link: String) {
         _uiState.update { it.copy(youtubeLink = link) }
     }
 
