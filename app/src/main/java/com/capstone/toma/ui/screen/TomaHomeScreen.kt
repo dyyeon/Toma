@@ -50,6 +50,10 @@ import com.capstone.toma.ui.component.TomaDrawerItem
 import com.capstone.toma.ui.component.TomaDrawerSheet
 import com.capstone.toma.ui.component.TomaTopAppBar
 import com.capstone.toma.ui.util.debouncedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.focus.onFocusChanged
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -159,6 +163,7 @@ fun TomaHomeScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .imePadding()
                     .verticalScroll(rememberScrollState())
             ) {
                 Spacer(modifier = Modifier.height(12.dp))
@@ -374,6 +379,7 @@ fun ImportSection(
 }
 
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun YouTubeImportCard(
     linkText: String,
@@ -384,6 +390,8 @@ fun YouTubeImportCard(
 ) {
     val icons = listOf(Icons.Filled.SmartDisplay, Icons.Default.Description, Icons.Default.Description)
     var iconIndex by remember { mutableIntStateOf(0) }
+    val bringIntoViewRequester = remember { BringIntoViewRequester() }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -428,7 +436,8 @@ fun YouTubeImportCard(
                     .height(40.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(Color(0xFFF8F9FA))
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 12.dp)
+                    .bringIntoViewRequester(bringIntoViewRequester),
                 contentAlignment = Alignment.CenterStart
             ) {
                 BasicTextField(
@@ -440,7 +449,13 @@ fun YouTubeImportCard(
                         color = TomaPrimaryText,
                         fontSize = 14.sp
                     ),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { focusState ->
+                            if (focusState.isFocused) {
+                                coroutineScope.launch { bringIntoViewRequester.bringIntoView() }
+                            }
+                        },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { onSubmit() }),
                     decorationBox = { innerTextField ->

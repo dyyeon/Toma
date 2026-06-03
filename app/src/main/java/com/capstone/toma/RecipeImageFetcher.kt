@@ -139,10 +139,7 @@ class RecipeImageFetcher {
                     async { listOfNotNull(tryPublicApi(kw)) },
                     async { tryNaverViewSearch(kw) },
                     async { tryRecipeSiteScraping(kw) },
-                    async { tryNaverImageSearch(kw) },
-                    async { tryDaumImageSearch(kw) },
-                    async { tryBingImageSearch(kw) },
-                    async { tryGoogleImageSearch(kw) }
+                    async { tryNaverImageSearch(kw) }
                 )
             }
             tasks.awaitAll().flatten()
@@ -228,50 +225,6 @@ class RecipeImageFetcher {
             results
         } catch (e: Exception) {
             Log.w(TAG, "naverView error", e); emptyList()
-        }
-    }
-
-    private fun tryDaumImageSearch(keyword: String): List<String> {
-        return try {
-            val query = URLEncoder.encode("$keyword 요리", "UTF-8")
-            val url = "https://search.daum.net/search?w=img&q=$query"
-            val html = fetchHtml(url) ?: return emptyList()
-            val results = extractImageUrls(html).filter { it.isFoodImage() }.take(8)
-            Log.d(TAG, "daum($keyword) → ${results.size} results")
-            results
-        } catch (e: Exception) {
-            Log.w(TAG, "daum error", e); emptyList()
-        }
-    }
-
-    private fun tryBingImageSearch(keyword: String): List<String> {
-        return try {
-            val query = URLEncoder.encode("$keyword 음식", "UTF-8")
-            val url = "https://www.bing.com/images/search?q=$query&form=HDRSC2"
-            val html = fetchHtml(url) ?: return emptyList()
-            val murl = Regex(""""murl":"([^"]+)"""")
-                .findAll(html)
-                .map { it.groupValues[1].replace("\\/", "/") }
-                .toList()
-            val fallback = if (murl.isEmpty()) extractImageUrls(html) else murl
-            val results = fallback.filter { it.isFoodImage() }.take(8)
-            Log.d(TAG, "bing($keyword) → ${results.size} results")
-            results
-        } catch (e: Exception) {
-            Log.w(TAG, "bing error", e); emptyList()
-        }
-    }
-
-    private fun tryGoogleImageSearch(keyword: String): List<String> {
-        return try {
-            val query = URLEncoder.encode("$keyword 요리", "UTF-8")
-            val url = "https://www.google.com/search?q=$query&tbm=isch&hl=ko&gbv=1"
-            val html = fetchHtml(url) ?: return emptyList()
-            val results = extractImageUrls(html).filter { it.isFoodImage() }.take(8)
-            Log.d(TAG, "google($keyword) → ${results.size} results")
-            results
-        } catch (e: Exception) {
-            Log.w(TAG, "google error", e); emptyList()
         }
     }
 
@@ -461,7 +414,7 @@ class RecipeImageFetcher {
 
     companion object {
         private const val TAG = "RecipeImageFetcher"
-        private const val MAX_CANDIDATES = 12
+        private const val MAX_CANDIDATES = 8
         private const val MAX_PAGES_PER_SEARCH = 2
         private const val MIN_ACCEPTABLE_SCORE = 4
         private const val DEFAULT_SCORE_NO_API = 7

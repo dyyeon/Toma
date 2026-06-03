@@ -1,3 +1,14 @@
 {
-  "language": "korean"
+  "language": "korean",
+  "permissions": {
+    "allow": [
+      "Edit",
+      "Write",
+      "Bash(sed -i *)",
+      "Bash(grep -n *)",
+      "Bash(grep -r *)",
+      "Bash(wc -l *)",
+      "Bash(sed -n *)"
+    ]
+  }
 }
