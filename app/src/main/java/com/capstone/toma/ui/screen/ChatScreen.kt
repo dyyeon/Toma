@@ -1,7 +1,12 @@
 package com.capstone.toma.ui.screen
 
-import android.media.MediaRecorder
-import android.os.Build
+import android.Manifest
+import android.content.pm.PackageManager
+import android.util.Log
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,19 +40,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.capstone.toma.OpenAiManager
 import com.capstone.toma.R
+import com.capstone.toma.VoiceUiState
+import com.capstone.toma.viewmodel.VoiceViewModel
 import androidx.compose.foundation.BorderStroke
 import com.capstone.toma.ui.util.debouncedClickable
 import com.capstone.toma.ui.util.rememberMultipleClickHandler
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withContext
-import java.io.File
-import kotlin.coroutines.resume
 
 private val TomaMainOrange = Color(0xFFEE8C2B)
 private val TomaBackground = Color(0xFFF8F9FA)
@@ -80,7 +78,7 @@ fun AiChatScreen(
     onBackClick: () -> Unit,
     onInputTextChange: (String) -> Unit,
     onSendMessage: () -> Unit,
-    onMicClick: () -> Unit = {},
+    voiceViewModel: VoiceViewModel? = null,
     onAddImageClick: () -> Unit = {},
     onErrorDismiss: () -> Unit = {},
     onHistoryClick: () -> Unit = {},
@@ -92,107 +90,61 @@ fun AiChatScreen(
     val snackbarHostState = remember { SnackbarHostState() }
 
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var isRecording by remember { mutableStateOf(false) }
-    var isTranscribing by remember { mutableStateOf(false) }
-    val recorder = remember { mutableStateOf<MediaRecorder?>(null) }
-    val audioFile = remember { File(context.cacheDir, "chat_voice.m4a") }
-    val vadJob = remember { arrayOf<kotlinx.coroutines.Job?>(null) }
 
-    DisposableEffect(Unit) {
-        onDispose {
-            vadJob[0]?.cancel()
-            runCatching { recorder.value?.stop(); recorder.value?.release() }
-            recorder.value = null
+    // VoiceViewModel을 통한 음성 인식 — 홈 화면과 동일한 방식
+    val voiceUiState by (voiceViewModel?.uiState?.collectAsState() ?: remember {
+        mutableStateOf<VoiceUiState>(VoiceUiState.Idle)
+    })
+    val isRecording = voiceUiState is VoiceUiState.Listening
+    val isTranscribing = voiceUiState is VoiceUiState.Processing
+
+    fun toast(msg: String) {
+        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+    }
+
+    // 음성 인식 결과를 입력창에 채우고 자동 전송
+    LaunchedEffect(voiceViewModel) {
+        voiceViewModel?.recognizedTextEvent?.collect { text ->
+            Log.d("ChatVoice", "recognizedText='$text'")
+            val trimmed = text.trim()
+            if (trimmed.isBlank()) return@collect
+            onInputTextChange(trimmed)
+            onSendMessage()
+        }
+    }
+
+    // 음성 인식 에러 메시지를 Toast로 노출
+    LaunchedEffect(voiceUiState) {
+        (voiceUiState as? VoiceUiState.Error)?.message?.let { toast(it) }
+    }
+
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            voiceViewModel?.startListeningManually()
+        } else {
+            toast("마이크 권한이 필요해요. 설정에서 권한을 허용해주세요.")
+        }
+    }
+
+    fun requestStartRecording() {
+        if (voiceViewModel == null) {
+            toast("음성 기능을 사용할 수 없습니다.")
+            return
+        }
+        val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            voiceViewModel.startListeningManually()
+        } else {
+            micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
     fun stopAndTranscribe() {
-        // Guard against double-invocation (auto-stop VAD + manual tap arriving together).
-        if (recorder.value == null) return
-        vadJob[0]?.cancel(); vadJob[0] = null
-        runCatching { recorder.value?.stop(); recorder.value?.release() }
-        recorder.value = null
-        isRecording = false
-        isTranscribing = true
-        scope.launch {
-            val text = withContext(Dispatchers.IO) {
-                suspendCancellableCoroutine { cont ->
-                    OpenAiManager().transcribeAudio(audioFile) { result ->
-                        cont.resume(result ?: "")
-                    }
-                }
-            }
-            isTranscribing = false
-            if (text.isNotBlank()) {
-                onInputTextChange(text)
-                onSendMessage()
-            }
-        }
-    }
-
-    fun startRecording() {
-        runCatching {
-            val mr = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                MediaRecorder(context)
-            } else {
-                @Suppress("DEPRECATION")
-                MediaRecorder()
-            }
-            mr.apply {
-                setAudioSource(MediaRecorder.AudioSource.MIC)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                setAudioSamplingRate(16000)
-                setOutputFile(audioFile.absolutePath)
-                prepare()
-                start()
-            }
-            recorder.value = mr
-            isRecording = true
-
-            vadJob[0] = scope.launch {
-                // Identical silence-detection rules to VoiceViewModel.runSilenceDetectionLoop:
-                // poll 100ms, threshold 800, 1.5s silence timeout, 10s hard cap,
-                // and only arm the silence watchdog after the user has spoken at least once.
-                val pollIntervalMs = 100L
-                val ampThreshold = 800
-                val silenceTimeoutMs = 1500L
-                val maxRecordingMs = 10_000L
-
-                val startedAt = System.currentTimeMillis()
-                var lastSpeechTime = startedAt
-                var hasSpokenAtLeastOnce = false
-                var firstPoll = true // discard first maxAmplitude() reading — it's always 0
-
-                while (isActive) {
-                    delay(pollIntervalMs)
-
-                    val now = System.currentTimeMillis()
-                    val elapsed = now - startedAt
-
-                    if (elapsed >= maxRecordingMs) {
-                        stopAndTranscribe()
-                        break
-                    }
-
-                    val amplitude = recorder.value?.maxAmplitude ?: 0
-
-                    if (firstPoll) {
-                        firstPoll = false
-                        continue
-                    }
-
-                    if (amplitude > ampThreshold) {
-                        lastSpeechTime = now
-                        hasSpokenAtLeastOnce = true
-                    } else if (hasSpokenAtLeastOnce && (now - lastSpeechTime) > silenceTimeoutMs) {
-                        stopAndTranscribe()
-                        break
-                    }
-                }
-            }
-        }
+        voiceViewModel?.stopListeningManually()
     }
 
     LaunchedEffect(uiState.messages.size, uiState.isTyping) {
@@ -229,7 +181,7 @@ fun AiChatScreen(
                 isTranscribing = isTranscribing,
                 onInputTextChange = onInputTextChange,
                 onSendMessage = onSendMessage,
-                onMicClick = { if (isRecording) stopAndTranscribe() else startRecording() },
+                onMicClick = { if (isRecording) stopAndTranscribe() else requestStartRecording() },
                 onAddImageClick = onAddImageClick
             )
         }
@@ -774,8 +726,7 @@ fun PreviewAiChatScreen() {
         onSendMessage = {
             messages = messages + ChatMessage("new", inputText, true, "오후 1:02")
             inputText = ""
-        },
-        onMicClick = {}
+        }
     )
 }
 
@@ -792,7 +743,6 @@ fun PreviewAiChatScreenTyping() {
         ),
         onBackClick = {},
         onInputTextChange = {},
-        onSendMessage = {},
-        onMicClick = {}
+        onSendMessage = {}
     )
 }

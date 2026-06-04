@@ -697,6 +697,7 @@ fun TomaNavHost(
 
             AiChatScreen(
                 uiState = chatUiState,
+                voiceViewModel = voiceViewModel,
                 onBackClick = { navigateBackSafely() },
                 onInputTextChange = chatViewModel::onInputTextChange,
                 onAddImageClick = { showImageSourceSheet = true },
